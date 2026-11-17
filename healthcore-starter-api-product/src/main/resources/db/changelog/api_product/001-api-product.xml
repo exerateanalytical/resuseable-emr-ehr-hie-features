@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — API-as-a-Product Partner Apps & Metering Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-api-product-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_developer_apps">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="partner_name" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="plan_tier" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="api_key_hash" type="VARCHAR(88)"><constraints nullable="false"/></column>
+            <column name="rate_limit_rpm" type="INT" defaultValueNumeric="120"><constraints nullable="false"/></column>
+            <column name="monthly_quota" type="BIGINT" defaultValueNumeric="100000"><constraints nullable="false"/></column>
+            <column name="current_month_calls" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="webhook_url" type="VARCHAR(400)"/>
+            <column name="webhook_secret" type="VARCHAR(128)"/>
+            <column name="sandbox_mode" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

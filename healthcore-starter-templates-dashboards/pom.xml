@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore - 600+ Templates, 7 Role Dashboards, Onboarding, Import/Export & DR
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>healthcore-starter-templates-dashboards</artifactId>
+    <name>Opes HealthCore 600+ Templates, Dashboards &amp; Onboarding Starter</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

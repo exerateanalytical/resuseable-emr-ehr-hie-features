@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Opes HealthCore SDK",
+  "description": "Reusable Java 25 + Spring Boot 4.0 and Kotlin Multiplatform offline-first EMR, EHR, HIE, PIS, LIS, Specialty Clinic, UHC/CBHI, and Disease Watch SDK by Jude Nshome — Opes Health Systems (Douala, Cameroon).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

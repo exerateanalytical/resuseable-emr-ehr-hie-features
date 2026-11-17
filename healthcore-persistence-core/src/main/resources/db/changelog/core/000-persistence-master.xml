@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Liquibase Multi-Dialect Core Changelog
+  Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
+  Website            : https://www.opeshealthsystems.com | Douala, Cameroon
+  =============================================================================
+  Supports PostgreSQL 16+, Windows SQL Server (MSSQL 2019/2022), and MySQL 8+
+  from one canonical ANSI SQL / Liquibase definition.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Cross-Database Portable Type Aliases -->
+    <property name="uuid_type" value="UUID" dbms="postgresql"/>
+    <property name="uuid_type" value="UNIQUEIDENTIFIER" dbms="mssql"/>
+    <property name="uuid_type" value="BINARY(16)" dbms="mysql"/>
+
+    <property name="ts_type" value="TIMESTAMPTZ" dbms="postgresql"/>
+    <property name="ts_type" value="DATETIMEOFFSET" dbms="mssql"/>
+    <property name="ts_type" value="DATETIME(6)" dbms="mysql"/>
+
+    <property name="clob_type" value="TEXT" dbms="postgresql"/>
+    <property name="clob_type" value="NVARCHAR(MAX)" dbms="mssql"/>
+    <property name="clob_type" value="LONGTEXT" dbms="mysql"/>
+
+    <!-- Enable non-blocking reader/writer snapshot isolation on Windows SQL Server -->
+    <changeSet id="core-000-mssql-rcsi" author="jude.nshome" dbms="mssql" runInTransaction="false">
+        <sql>
+            IF (SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = DB_NAME()) = 0
+            BEGIN
+                ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH NO_WAIT;
+            END
+        </sql>
+    </changeSet>
+
+    <!-- Transactional Outbox Table -->
+    <changeSet id="core-001-outbox" author="jude.nshome">
+        <createTable tableName="hc_outbox_events">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(140)"><constraints nullable="false" unique="true"/></column>
+            <column name="facility_id" type="${uuid_type}"/>
+            <column name="aggregate_type" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="aggregate_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="event_type" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="payload_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="correlation_id" type="VARCHAR(64)"/>
+            <column name="status" type="VARCHAR(24)" defaultValue="PENDING"><constraints nullable="false"/></column>
+            <column name="attempt_count" type="INT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="next_attempt_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="last_error" type="${clob_type}"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="sent_at" type="${ts_type}"/>
+        </createTable>
+        <createIndex tableName="hc_outbox_events" indexName="idx_hc_outbox_claim">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Inbound API Idempotency Deduplication Table -->
+    <changeSet id="core-002-idempotency" author="jude.nshome">
+        <createTable tableName="hc_inbound_idempotency">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(140)"><constraints nullable="false" unique="true"/></column>
+            <column name="request_hash" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="http_status" type="INT"><constraints nullable="false"/></column>
+            <column name="response_body" type="${clob_type}"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

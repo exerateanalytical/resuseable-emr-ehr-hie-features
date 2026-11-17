@@ -1,4 +1,6 @@
 target/
+build/
+.gradle/
 !.mvn/wrapper/maven-wrapper.jar
 .idea/
 *.iml
@@ -8,3 +10,5 @@ target/
 .DS_Store
 .env
 *.log
+*.hprof
+*.jfr

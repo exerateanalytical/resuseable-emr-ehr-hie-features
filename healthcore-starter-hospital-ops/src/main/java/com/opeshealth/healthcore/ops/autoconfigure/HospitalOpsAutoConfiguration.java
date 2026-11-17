@@ -1,0 +1,52 @@
+/*
+ * =============================================================================
+ * Opes HealthCore SDK — Hospital Operations Auto-Configuration
+ * Author / Architect : Jude Nshome — Opes Health Systems
+ * Email              : nshome@opesware.com
+ * Website            : https://www.opeshealthsystems.com
+ * Location           : Douala, Cameroon
+ * =============================================================================
+ */
+package com.opeshealth.healthcore.ops.autoconfigure;
+
+import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities;
+import com.opeshealth.healthcore.ops.service.HospitalOpsService;
+import com.opeshealth.healthcore.ops.service.HospitalOpsService.*;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+
+@AutoConfiguration
+@EntityScan(basePackageClasses = HospitalOpsEntities.class)
+@EnableJpaRepositories(basePackageClasses = HospitalOpsService.class)
+public class HospitalOpsAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public HospitalOpsService hospitalOpsService(
+            BloodUnitRepository bloodRepo,
+            SurgicalScheduleRepository surgeryRepo,
+            TelemedicineRepository telemedRepo,
+            ColdChainRepository coldChainRepo,
+            CrvsRepository crvsRepo,
+            CredentialRepository credentialRepo,
+            OutboxRelayService.OutboxRepository outboxRepo) {
+        return new HospitalOpsService(
+                bloodRepo, surgeryRepo, telemedRepo, coldChainRepo, crvsRepo, credentialRepo, outboxRepo);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public HospitalOpsController hospitalOpsController(
+            HospitalOpsService service,
+            BloodUnitRepository bloodRepo,
+            SurgicalScheduleRepository surgeryRepo,
+            TelemedicineRepository telemedRepo,
+            CrvsRepository crvsRepo,
+            CredentialRepository credentialRepo) {
+        return new HospitalOpsController(service, bloodRepo, surgeryRepo, telemedRepo, crvsRepo, credentialRepo);
+    }
+}

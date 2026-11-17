@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore - <1 Hour Reference Quickstart Host & Multi-DB Test Suite
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Demonstrates how developers assemble an industry-standard EMR, EHR, HIE, PIS,
+  LIS, Specialty Clinic, UHC/CBHI, and Disease Watch platform in < 1 hour simply
+  by declaring Opes HealthCore Maven starters.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>healthcore-quickstart-host</artifactId>
+    <name>Opes HealthCore Quickstart Reference Host</name>
+
+    <dependencies>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-persistence-core</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-security-audit</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-terminology-cdss</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-mpi</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-emr-clinical</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-pharmacy-lis</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-hie-interop</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-uhc-billing</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-public-health</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-hospital-ops</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-offline-sync</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-templates-dashboards</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-api-product</artifactId></dependency>
+
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+
+        <!-- Multi-DB Runtime Drivers: PostgreSQL, Windows SQL Server, MySQL -->
+        <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
+        <dependency><groupId>com.microsoft.sqlserver</groupId><artifactId>mssql-jdbc</artifactId></dependency>
+        <dependency><groupId>com.mysql</groupId><artifactId>mysql-connector-j</artifactId></dependency>
+
+        <!-- Testing: JUnit 5, ArchUnit & Testcontainers Multi-DB -->
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>com.tngtech.archunit</groupId><artifactId>archunit-junit5</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>mssqlserver</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><scope>test</scope></dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>4.0.0</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

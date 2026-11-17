@@ -1,0 +1,45 @@
+{
+  "realm": "opes-healthcore",
+  "enabled": true,
+  "displayName": "Opes HealthCore Medical Identity (Jude Nshome - Douala)",
+  "roles": {
+    "realm": [
+      { "name": "SUPER_ADMIN" },
+      { "name": "FACILITY_ADMIN" },
+      { "name": "CHIEF_MEDICAL_OFFICER" },
+      { "name": "ATTENDING_PHYSICIAN" },
+      { "name": "SPECIALIST_OPHTHALMOLOGIST" },
+      { "name": "DENTIST" },
+      { "name": "CARDIOLOGIST" },
+      { "name": "PEDIATRICIAN" },
+      { "name": "DERMATOLOGIST" },
+      { "name": "RESIDENT_TRAINEE" },
+      { "name": "NURSE" },
+      { "name": "PHARMACIST" },
+      { "name": "LAB_SCIENTIST" },
+      { "name": "RADIOLOGIST" },
+      { "name": "CHW_COMMUNITY_WORKER" },
+      { "name": "BILLING_INSURANCE_CLERK" },
+      { "name": "COMPLIANCE_AUDITOR" },
+      { "name": "PATIENT" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "healthcore-mobile-kmp",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["opeshealth://oauth/callback", "http://localhost:3000/*"]
+    }
+  ],
+  "users": [
+    {
+      "username": "dr.jude.nshome",
+      "enabled": true,
+      "email": "nshome@opesware.com",
+      "credentials": [{ "type": "password", "value": "OpesHealth2026!", "temporary": false }],
+      "realmRoles": ["ATTENDING_PHYSICIAN", "SUPER_ADMIN"]
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Pharmacy (PIS) & Laboratory (LIS) Multi-Dialect Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-pharmacy-lis-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_medication_batches">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="drug_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="drug_name" type="VARCHAR(200)"><constraints nullable="false"/></column>
+            <column name="lot_number" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="DATE"><constraints nullable="false"/></column>
+            <column name="quantity_on_hand" type="INT"><constraints nullable="false"/></column>
+            <column name="reorder_threshold" type="INT" defaultValueNumeric="20"><constraints nullable="false"/></column>
+            <column name="controlled_schedule" type="VARCHAR(16)"/>
+            <column name="quarantined" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_med_fefo" tableName="hc_medication_batches">
+            <column name="facility_id"/>
+            <column name="drug_code"/>
+            <column name="expiry_date"/>
+        </createIndex>
+
+        <createTable tableName="hc_pharmacy_dispenses">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="prescription_order_id" type="${uuid_type}"/>
+            <column name="batch_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="prescribed_drug_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="dispensed_drug_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="quantity_dispensed" type="INT"><constraints nullable="false"/></column>
+            <column name="partial_fill" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="pharmacist_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="controlled_witness_id" type="VARCHAR(120)"/>
+            <column name="dispensed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_lab_specimens">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="lab_order_id" type="${uuid_type}"/>
+            <column name="accession_barcode" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="specimen_type" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="rejection_reason" type="VARCHAR(200)"/>
+            <column name="collected_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_specimen_barcode" tableName="hc_lab_specimens" unique="true">
+            <column name="facility_id"/>
+            <column name="accession_barcode"/>
+        </createIndex>
+
+        <createTable tableName="hc_diagnostic_reports">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="specimen_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="loinc_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="test_name" type="VARCHAR(200)"><constraints nullable="false"/></column>
+            <column name="numeric_value" type="DECIMAL(12,4)"/>
+            <column name="text_value" type="VARCHAR(400)"/>
+            <column name="ucum_unit" type="VARCHAR(32)"/>
+            <column name="reference_range" type="VARCHAR(80)"/>
+            <column name="abnormal_flag" type="VARCHAR(16)"/>
+            <column name="westgard_qc_passed" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="panic_acknowledged_by" type="VARCHAR(120)"/>
+            <column name="verified_by" type="VARCHAR(120)"/>
+            <column name="verified_at" type="${ts_type}"/>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — CHW, Home Care, EPI & IDSR Surveillance Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-public-health-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_chw_households">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="household_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="village_or_quarter" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="district_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="head_of_household" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="assigned_chw_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="gps_lat" type="DECIMAL(9,6)"/>
+            <column name="gps_lon" type="DECIMAL(9,6)"/>
+        </createTable>
+
+        <createTable tableName="hc_chw_visits">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="household_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="chw_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="program_type" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="muac_mm" type="INT"/>
+            <column name="danger_signs_present" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="referral_qr_token" type="VARCHAR(128)"/>
+            <column name="notes" type="VARCHAR(500)"/>
+            <column name="visited_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_home_care_plans">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="care_track" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="assigned_nurse_or_chw" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="visit_frequency_days" type="INT" defaultValueNumeric="7"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_immunization_records">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="cvx_code" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="vaccine_name" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="dose_number" type="INT"><constraints nullable="false"/></column>
+            <column name="batch_lot" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="administered_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="next_due_date" type="DATE"/>
+        </createTable>
+
+        <createTable tableName="hc_surveillance_cases">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="district_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="disease_icd10" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="disease_name" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="case_classification" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="reported_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_contact_tracing_links">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="index_case_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="contact_name" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="contact_phone" type="VARCHAR(64)"/>
+            <column name="exposure_type" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="follow_up_status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

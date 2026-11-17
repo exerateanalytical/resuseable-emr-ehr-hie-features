@@ -1,102 +1,138 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK - Root Maven Reactor
+  Author / Architect : Jude Nshome
+  Organization       : Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Multi-module Maven aggregator for the Opes HealthCore reusable EMR/EHR/HIE
+  Spring Boot 4.0 + Java 25 framework. Built strictly without TypeScript.
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.2</version>
-        <relativePath/>
-    </parent>
-
-    <groupId>com.healthcore</groupId>
-    <artifactId>spring-boot-health-core</artifactId>
+    <groupId>com.opeshealth.healthcore</groupId>
+    <artifactId>healthcore-parent</artifactId>
     <version>1.0.0</version>
-    <name>Spring Boot EMR / EHR / HIE Core</name>
-    <description>Reusable Spring Boot 3 + PostgreSQL building blocks for EMR, EHR, and HIE systems</description>
+    <packaging>pom</packaging>
+
+    <name>Opes HealthCore SDK Reactor</name>
+    <description>
+        Universal, offline-first, API-first, DDD/CQRS Java 25 + Spring Boot 4.0 starter framework
+        for EMR, EHR, HIE, PIS, LIS, Specialty Clinics, UHC/CBHI, CHW, and Disease Surveillance.
+    </description>
+    <url>https://www.opeshealthsystems.com</url>
+
+    <organization>
+        <name>Opes Health Systems</name>
+        <url>https://www.opeshealthsystems.com</url>
+    </organization>
+
+    <developers>
+        <developer>
+            <id>jnshome</id>
+            <name>Jude Nshome</name>
+            <email>nshome@opesware.com</email>
+            <organization>Opes Health Systems</organization>
+            <organizationUrl>https://www.opeshealthsystems.com</organizationUrl>
+            <roles>
+                <role>Principal Architect</role>
+                <role>Lead Engineer</role>
+            </roles>
+            <timezone>Africa/Douala</timezone>
+        </developer>
+    </developers>
 
     <properties>
-        <java.version>21</java.version>
-        <hapi-fhir.version>7.6.1</hapi-fhir.version>
-        <springdoc.version>2.8.4</springdoc.version>
+        <java.version>25</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <dependencies>
-        <!-- Spring Boot Web, Validation, JPA, AOP, Security -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
+    <modules>
+        <module>healthcore-bom</module>
+        <module>healthcore-persistence-core</module>
+        <module>healthcore-security-audit</module>
+        <module>healthcore-starter-terminology-cdss</module>
+        <module>healthcore-starter-mpi</module>
+        <module>healthcore-starter-emr-clinical</module>
+        <module>healthcore-starter-pharmacy-lis</module>
+        <module>healthcore-starter-hie-interop</module>
+        <module>healthcore-starter-uhc-billing</module>
+        <module>healthcore-starter-public-health</module>
+        <module>healthcore-starter-hospital-ops</module>
+        <module>healthcore-starter-offline-sync</module>
+        <module>healthcore-starter-templates-dashboards</module>
+        <module>healthcore-starter-api-product</module>
+        <module>healthcore-quickstart-host</module>
+    </modules>
 
-        <!-- PostgreSQL + Flyway Migrations -->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
-
-        <!-- HL7 FHIR R4 Structures & Parser for HIE Interoperability -->
-        <dependency>
-            <groupId>ca.uhn.hapi.fhir</groupId>
-            <artifactId>hapi-fhir-structures-r4</artifactId>
-            <version>${hapi-fhir.version}</version>
-        </dependency>
-
-        <!-- OpenAPI / Swagger UI -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>${springdoc.version}</version>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-bom</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                        <release>25</release>
+                        <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.3</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
         <plugins>
+            <!-- Enforce JDK 25 baseline and strictly forbid TypeScript/Node artifacts -->
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-java25-and-no-typescript</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[25,)</version>
+                                </requireJavaVersion>
+                                <requireFilesDontExist>
+                                    <files>
+                                        <file>${project.basedir}/package.json</file>
+                                        <file>${project.basedir}/tsconfig.json</file>
+                                        <file>${project.basedir}/vite.config.ts</file>
+                                    </files>
+                                    <message>TypeScript and Node build files are strictly forbidden in Opes HealthCore.</message>
+                                </requireFilesDontExist>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -1,0 +1,109 @@
+# =============================================================================
+# Opes HealthCore SDK — Quickstart Host Multi-DB & OIDC Configuration
+# Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
+# Website            : https://www.opeshealthsystems.com | Douala, Cameroon
+# =============================================================================
+server:
+  port: 3000
+
+spring:
+  application:
+    name: opes-healthcore-quickstart
+  threads:
+    virtual:
+      enabled: true # Java 25 Project Loom Virtual Threads
+  profiles:
+    active: postgres,keycloak
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      hieExternal:
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+  retry:
+    instances:
+      sqlTransient:
+        max-attempts: 3
+        wait-duration: 150ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${HEALTHCORE_DB_URL:jdbc:postgresql://localhost:5432/healthcore}
+    username: ${HEALTHCORE_DB_USER:healthcore_app}
+    password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
+    driver-class-name: org.postgresql.Driver
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mssql
+  datasource:
+    url: ${HEALTHCORE_DB_URL:jdbc:sqlserver://localhost:1433;databaseName=healthcore;encrypt=true;trustServerCertificate=true}
+    username: ${HEALTHCORE_DB_USER:sa}
+    password: ${HEALTHCORE_DB_PASSWORD:OpesHealth!2026Strong}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: ${HEALTHCORE_DB_URL:jdbc:mysql://localhost:3306/healthcore?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${HEALTHCORE_DB_USER:healthcore_app}
+    password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+---
+spring:
+  config:
+    activate:
+      on-profile: keycloak
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: auth0
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.us.auth0.com/}
+          audiences: ${AUTH0_AUDIENCE:https://api.opeshealthsystems.com}

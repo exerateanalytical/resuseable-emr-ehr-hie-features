@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Terminology & CDSS Multi-Dialect Liquibase Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-terminology-cdss-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_code_systems">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="system_uri" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="display_en" type="VARCHAR(300)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="display_fr" type="VARCHAR(300)"/>
+            <column name="clinical_domain" type="VARCHAR(64)"/>
+            <column name="ucum_unit" type="VARCHAR(32)"/>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_codes_sys_code" tableName="hc_code_systems" unique="true">
+            <column name="system_uri"/>
+            <column name="code"/>
+        </createIndex>
+
+        <!-- Precomputed SNOMED CT / ATC IS-A transitive closure for O(1) cross-DB hierarchy checks -->
+        <createTable tableName="hc_concept_closure">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="system_uri" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ancestor_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="descendant_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="depth" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_closure_lookup" tableName="hc_concept_closure" unique="true">
+            <column name="system_uri"/>
+            <column name="ancestor_code"/>
+            <column name="descendant_code"/>
+        </createIndex>
+
+        <!-- Cross-terminology equivalence maps (e.g., SNOMED CT <-> ICD-10 <-> ICD-11) -->
+        <createTable tableName="hc_concept_maps">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="source_system" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="source_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_system" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="equivalence" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Evidence-based Drug-Drug & Drug-Condition CDSS interaction matrix -->
+        <createTable tableName="hc_ddi_rules">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="drug_a_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="drug_b_or_condition_code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rule_type" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="severity" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="clinical_message" type="VARCHAR(600)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="recommended_action" type="VARCHAR(400)"/>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

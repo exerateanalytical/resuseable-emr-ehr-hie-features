@@ -1,7 +1,14 @@
+# =============================================================================
+# Opes HealthCore SDK — Multi-Database & Keycloak Local Infrastructure
+# Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
+# Website            : https://www.opeshealthsystems.com | Douala, Cameroon
+# =============================================================================
+# Spin up PostgreSQL, Windows-compatible SQL Server, MySQL 8, and Keycloak
+# in < 60 seconds for 1-hour developer onboarding or multi-DB testing.
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: healthcore-postgres
+    container_name: opes-healthcore-postgres
     environment:
       POSTGRES_DB: healthcore
       POSTGRES_USER: healthcore_app
@@ -9,12 +16,53 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - healthcore_pgdata:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U healthcore_app -d healthcore"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: opes-healthcore-mssql
+    profiles: ["mssql", "all-dbs"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "OpesHealth!2026Strong"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+  mysql:
+    image: mysql:8.4
+    container_name: opes-healthcore-mysql
+    profiles: ["mysql", "all-dbs"]
+    environment:
+      MYSQL_DATABASE: healthcore
+      MYSQL_USER: healthcore_app
+      MYSQL_PASSWORD: change_me_in_prod
+      MYSQL_ROOT_PASSWORD: root_change_me
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: opes-healthcore-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin_change_me
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./healthcore-quickstart-host/src/main/resources/keycloak:/opt/keycloak/data/import:ro
 
 volumes:
-  healthcore_pgdata:
+  pg_data:
+  mssql_data:
+  mysql_data:

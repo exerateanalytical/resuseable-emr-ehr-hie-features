@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Institutional Onboarding, 600+ Templates, Bulk Import & DR Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-templates-dashboards-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_facility_nodes">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="parent_node_id" type="${uuid_type}"/>
+            <column name="node_type" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="facility_profile" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="name" type="VARCHAR(200)"><constraints nullable="false"/></column>
+            <column name="country" type="VARCHAR(64)"/>
+            <column name="city" type="VARCHAR(120)"/>
+            <column name="enabled_modules_csv" type="VARCHAR(400)"/>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_document_templates">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="template_code" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="pack_category" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"/>
+            <column name="title_en" type="VARCHAR(240)"><constraints nullable="false"/></column>
+            <column name="title_fr" type="VARCHAR(240)"><constraints nullable="false"/></column>
+            <column name="version_semver" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="fhir_questionnaire_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="xhtml_print_template" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="published" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_tpl_code" tableName="hc_document_templates">
+            <column name="template_code"/>
+            <column name="pack_category"/>
+        </createIndex>
+
+        <createTable tableName="hc_backup_manifests">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="db_engine" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="snapshot_uri" type="VARCHAR(400)"><constraints nullable="false"/></column>
+            <column name="sha256_checksum" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="restore_verified" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

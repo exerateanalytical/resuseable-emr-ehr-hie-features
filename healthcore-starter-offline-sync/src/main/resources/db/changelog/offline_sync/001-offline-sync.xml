@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Offline-First Sync & Conflict Resolution Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-offline-sync-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_sync_deltas">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="sync_seq" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="hlc_timestamp" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="origin_node_id" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="entity_type" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="entity_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="operation" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="payload_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_sync_fac_seq" tableName="hc_sync_deltas" unique="true">
+            <column name="facility_id"/>
+            <column name="sync_seq"/>
+        </createIndex>
+
+        <createTable tableName="hc_sync_tombstones">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="entity_type" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="entity_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="hlc_timestamp" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="deleted_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_sync_conflicts">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="entity_type" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="entity_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="origin_node_id" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="incoming_hlc" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="server_hlc" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="incoming_payload" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="resolved_by" type="VARCHAR(120)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

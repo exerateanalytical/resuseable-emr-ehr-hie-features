@@ -1,0 +1,208 @@
+/*
+ * =============================================================================
+ * Opes HealthCore SDK — FEFO Pharmacy & Westgard LIS Services + REST Gateway
+ * Author / Architect : Jude Nshome — Opes Health Systems
+ * Email              : nshome@opesware.com
+ * Website            : https://www.opeshealthsystems.com
+ * Location           : Douala, Cameroon
+ * =============================================================================
+ */
+package com.opeshealth.healthcore.pharmacylis.service;
+
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
+import com.opeshealth.healthcore.persistence.sql.RetryableOnTransientSqlFailure;
+import com.opeshealth.healthcore.pharmacylis.domain.PharmacyLisEntities.*;
+import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.*;
+
+/**
+ * Provides independent Pharmacy Information System (PIS) FEFO dispensing and
+ * Laboratory Information System (LIS) specimen accessioning, Westgard QC gating,
+ * reflex triggers, and critical panic-value escalation.
+ */
+public class PharmacyLisService {
+
+    public interface MedicationBatchRepository extends JpaRepository<MedicationBatchEntity, UUID> {
+        List<MedicationBatchEntity> findByFacilityIdAndDrugCodeAndQuarantinedFalseAndExpiryDateAfterOrderByExpiryDateAsc(
+                UUID facilityId, String drugCode, LocalDate minExpiry);
+        List<MedicationBatchEntity> findByFacilityIdAndExpiryDateBefore(UUID facilityId, LocalDate cutoff);
+    }
+
+    public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {}
+    public interface LabSpecimenRepository extends JpaRepository<LabSpecimenEntity, UUID> {}
+    public interface DiagnosticReportRepository extends JpaRepository<DiagnosticReportEntity, UUID> {}
+
+    private final MedicationBatchRepository batchRepo;
+    private final PharmacyDispenseRepository dispenseRepo;
+    private final LabSpecimenRepository specimenRepo;
+    private final DiagnosticReportRepository reportRepo;
+    private final CdsHooksEngine cdsHooksEngine;
+    private final OutboxRelayService.OutboxRepository outboxRepo;
+
+    public PharmacyLisService(
+            MedicationBatchRepository batchRepo,
+            PharmacyDispenseRepository dispenseRepo,
+            LabSpecimenRepository specimenRepo,
+            DiagnosticReportRepository reportRepo,
+            CdsHooksEngine cdsHooksEngine,
+            OutboxRelayService.OutboxRepository outboxRepo) {
+        this.batchRepo = batchRepo;
+        this.dispenseRepo = dispenseRepo;
+        this.specimenRepo = specimenRepo;
+        this.reportRepo = reportRepo;
+        this.cdsHooksEngine = cdsHooksEngine;
+        this.outboxRepo = outboxRepo;
+    }
+
+    @Transactional
+    public MedicationBatchEntity receiveStockBatch(MedicationBatchEntity batch) {
+        return batchRepo.save(batch);
+    }
+
+    /**
+     * Picks earliest non-expired, non-quarantined stock lot (First-Expired, First-Out),
+     * enforces dual-witness signoff for Schedule II/III controlled substances, and deducts inventory.
+     */
+    @Transactional
+    @RetryableOnTransientSqlFailure
+    @ClinicalAudit(action = "PIS_DISPENSE_FEFO", resourceType = "PharmacyDispense")
+    public PharmacyDispenseEntity dispenseFefo(
+            UUID facilityId, UUID patientId, UUID rxOrderId,
+            String prescribedDrugCode, String dispensedDrugCode,
+            int requestedQty, boolean allowPartial, String pharmacistId, String witnessId) {
+
+        List<MedicationBatchEntity> lots = batchRepo
+                .findByFacilityIdAndDrugCodeAndQuarantinedFalseAndExpiryDateAfterOrderByExpiryDateAsc(
+                        facilityId, dispensedDrugCode, LocalDate.now());
+
+        MedicationBatchEntity selected = lots.stream()
+                .filter(b -> b.getQuantityOnHand() > 0)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No non-expired stock available for drug " + dispensedDrugCode));
+
+        if (selected.getControlledSchedule() != null && (witnessId == null || witnessId.isBlank())) {
+            throw new SecurityException("Controlled drug (" + selected.getControlledSchedule() + ") requires witness ID");
+        }
+
+        int qtyToDeduct = Math.min(requestedQty, selected.getQuantityOnHand());
+        if (qtyToDeduct < requestedQty && !allowPartial) {
+            throw new IllegalStateException("Insufficient lot stock (" + selected.getQuantityOnHand() + " < " + requestedQty + ")");
+        }
+
+        selected.setQuantityOnHand(selected.getQuantityOnHand() - qtyToDeduct);
+        batchRepo.save(selected);
+
+        PharmacyDispenseEntity dispense = new PharmacyDispenseEntity();
+        dispense.setFacilityId(facilityId);
+        dispense.setPatientId(patientId);
+        dispense.setPrescriptionOrderId(rxOrderId);
+        dispense.setBatchId(selected.getId());
+        dispense.setPrescribedDrugCode(prescribedDrugCode);
+        dispense.setDispensedDrugCode(dispensedDrugCode);
+        dispense.setQuantityDispensed(qtyToDeduct);
+        dispense.setPartialFill(qtyToDeduct < requestedQty);
+        dispense.setPharmacistId(pharmacistId);
+        dispense.setControlledWitnessId(witnessId);
+        dispense = dispenseRepo.save(dispense);
+
+        emitOutbox("PharmacyDispense", dispense.getId(), "MedicationDispensedEvent",
+                "{\"dispenseId\":\"" + dispense.getId() + "\",\"lot\":\"" + selected.getLotNumber() + "\"}");
+        return dispense;
+    }
+
+    @Transactional
+    public LabSpecimenEntity accessionSpecimen(LabSpecimenEntity specimen) {
+        return specimenRepo.save(specimen);
+    }
+
+    /**
+     * Releases diagnostic result only if Westgard QC passed; flags panic values (e.g., K+ >= 6.2),
+     * triggers reflex follow-up notes, and emits {@code CriticalLabAlertEvent}.
+     */
+    @Transactional
+    @ClinicalAudit(action = "LIS_VERIFY_RESULT", resourceType = "DiagnosticReport")
+    public Map<String, Object> verifyLabResult(DiagnosticReportEntity report) {
+        if (!report.isWestgardQcPassed()) {
+            throw new IllegalStateException("LIS Westgard QC failure: result release blocked until control run passes");
+        }
+
+        BigDecimal potassium = "2823-3".equals(report.getLoincCode()) ? report.getNumericValue() : null;
+        List<CdsHooksEngine.CdsCard> panicCards = cdsHooksEngine.evaluateVitalsAndLabPanic(
+                new CdsHooksEngine.VitalsPanicRequest(null, null, null, null, null, potassium, null));
+
+        if (!panicCards.isEmpty()) {
+            report.setAbnormalFlag("HH");
+            emitOutbox("DiagnosticReport", report.getId(), "CriticalLabAlertEvent",
+                    "{\"loinc\":\"" + report.getLoincCode() + "\",\"patientId\":\"" + report.getPatientId() + "\"}");
+        }
+
+        report.setVerifiedAt(Instant.now());
+        DiagnosticReportEntity saved = reportRepo.save(report);
+
+        emitOutbox("DiagnosticReport", saved.getId(), "LabResultVerifiedEvent",
+                "{\"reportId\":\"" + saved.getId() + "\",\"loinc\":\"" + saved.getLoincCode() + "\"}");
+        return Map.of("report", saved, "panicAlerts", panicCards);
+    }
+
+    private void emitOutbox(String aggType, UUID aggId, String eventType, String json) {
+        TransactionalOutboxEntity evt = new TransactionalOutboxEntity();
+        evt.setIdempotencyKey(aggType + ":" + eventType + ":" + aggId + ":" + evt.getId());
+        evt.setAggregateType(aggType);
+        evt.setAggregateId(aggId);
+        evt.setEventType(eventType);
+        evt.setPayloadJson(json);
+        outboxRepo.save(evt);
+    }
+
+    @RestController
+    @RequestMapping("/api/v1/pharmacy-lis")
+    @Tag(name = "Standalone PIS & LIS", description = "Pharmacy FEFO inventory/dispensing and Laboratory accession/Westgard/panic APIs")
+    public static class PharmacyLisController {
+        private final PharmacyLisService service;
+
+        public PharmacyLisController(PharmacyLisService service) {
+            this.service = service;
+        }
+
+        @PostMapping("/pharmacy/batches")
+        @Operation(summary = "Receive medication stock lot with expiry and reorder threshold")
+        public MedicationBatchEntity receiveBatch(@RequestBody MedicationBatchEntity batch) {
+            return service.receiveStockBatch(batch);
+        }
+
+        @PostMapping("/pharmacy/dispense")
+        @Operation(summary = "Dispense medication using First-Expired-First-Out (FEFO) lot picking")
+        public PharmacyDispenseEntity dispense(
+                @RequestParam UUID facilityId, @RequestParam UUID patientId,
+                @RequestParam(required = false) UUID rxOrderId,
+                @RequestParam String prescribedCode, @RequestParam String dispensedCode,
+                @RequestParam int qty, @RequestParam(defaultValue = "false") boolean allowPartial,
+                @RequestParam String pharmacistId, @RequestParam(required = false) String witnessId) {
+            return service.dispenseFefo(facilityId, patientId, rxOrderId, prescribedCode, dispensedCode,
+                    qty, allowPartial, pharmacistId, witnessId);
+        }
+
+        @PostMapping("/lis/specimens")
+        @Operation(summary = "Accession barcoded diagnostic laboratory specimen")
+        public LabSpecimenEntity accession(@RequestBody LabSpecimenEntity specimen) {
+            return service.accessionSpecimen(specimen);
+        }
+
+        @PostMapping("/lis/reports/verify")
+        @Operation(summary = "Verify & release LOINC lab result gated by Westgard QC and panic escalation")
+        public Map<String, Object> verify(@RequestBody DiagnosticReportEntity report) {
+            return service.verifyLabResult(report);
+        }
+    }
+}

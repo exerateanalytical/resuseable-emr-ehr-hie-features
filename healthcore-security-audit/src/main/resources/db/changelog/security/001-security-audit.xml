@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Security, RBAC/Consent & SHA-256 Audit Ledger Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Multi-dialect ANSI Liquibase changelog compatible with PostgreSQL 16+,
+  Windows SQL Server 2019/2022, and MySQL 8.4+.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-security-audit-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_audit_chain_heads">
+            <column name="facility_key" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="last_hash" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sequence_number" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="hc_audit_logs">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="facility_key" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sequence_number" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actor_id" type="VARCHAR(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actor_role" type="VARCHAR(64)"/>
+            <column name="action" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="resource_type" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="resource_id" type="VARCHAR(120)"/>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="outcome" type="VARCHAR(24)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reason" type="VARCHAR(500)"/>
+            <column name="source_ip" type="VARCHAR(64)"/>
+            <column name="correlation_id" type="VARCHAR(64)"/>
+            <column name="prev_hash" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_hash" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="occurred_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_audit_facility_seq" tableName="hc_audit_logs" unique="true">
+            <column name="facility_key"/>
+            <column name="sequence_number"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_audit_patient" tableName="hc_audit_logs">
+            <column name="facility_key"/>
+            <column name="patient_id"/>
+            <column name="sequence_number"/>
+        </createIndex>
+
+        <createTable tableName="hc_consent_policies">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="facility_key" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_id" type="${uuid_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scope" type="VARCHAR(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="decision" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sensitivity_tag" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="grantee_ref" type="VARCHAR(120)"/>
+            <column name="granted_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="${ts_type}"/>
+            <column name="revoked" type="${bool_type}" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="witness_or_signature_ref" type="VARCHAR(256)"/>
+        </createTable>
+
+        <createIndex indexName="idx_hc_consent_patient" tableName="hc_consent_policies">
+            <column name="facility_key"/>
+            <column name="patient_id"/>
+            <column name="revoked"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

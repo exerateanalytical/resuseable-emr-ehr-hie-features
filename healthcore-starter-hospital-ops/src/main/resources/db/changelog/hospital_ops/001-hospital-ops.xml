@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Hospital Ops, Blood Bank, OT, Cold-Chain, CRVS Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-hospital-ops-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_blood_units">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="isbt_unit_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="component_type" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="abo_rhd" type="VARCHAR(8)"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="DATE"><constraints nullable="false"/></column>
+            <column name="crossmatched_patient_id" type="${uuid_type}"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="transfusion_verifier_1" type="VARCHAR(120)"/>
+            <column name="transfusion_verifier_2" type="VARCHAR(120)"/>
+        </createTable>
+
+        <createTable tableName="hc_surgical_schedules">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="theater_room" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="procedure_name" type="VARCHAR(240)"><constraints nullable="false"/></column>
+            <column name="lead_surgeon_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="who_checklist_completed" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="implant_udi" type="VARCHAR(128)"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="scheduled_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_telemedicine_sessions">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="clinician_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="signaling_room_token" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="low_bandwidth_audio_mode" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="started_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_cold_chain_telemetry">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="equipment_tag" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="temp_celsius" type="DECIMAL(5,2)"><constraints nullable="false"/></column>
+            <column name="excursion_alert" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_crvs_events">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="event_type" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="certificate_number" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="who_icd10_cause_of_death" type="VARCHAR(32)"/>
+            <column name="mortuary_compartment" type="VARCHAR(48)"/>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_practitioner_credentials">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="practitioner_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="license_number" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="regulatory_council" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="expires_on" type="DATE"><constraints nullable="false"/></column>
+            <column name="suspended" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

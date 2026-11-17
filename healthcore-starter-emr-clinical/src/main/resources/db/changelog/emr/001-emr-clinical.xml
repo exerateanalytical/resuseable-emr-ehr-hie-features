@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — 10-Stage EMR Clinical & Specialty Packs Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-emr-clinical-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_appointments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="practitioner_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="department_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="scheduled_start" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="scheduled_end" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="visit_reason" type="VARCHAR(300)"/>
+        </createTable>
+
+        <createTable tableName="hc_encounters">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_class" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="attending_id" type="VARCHAR(120)"/>
+            <column name="department_code" type="VARCHAR(64)"/>
+            <column name="primary_icd10" type="VARCHAR(32)"/>
+            <column name="started_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="ended_at" type="${ts_type}"/>
+        </createTable>
+
+        <createTable tableName="hc_triage_assessments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="esi_level" type="INT"><constraints nullable="false"/></column>
+            <column name="chief_complaint" type="VARCHAR(400)"><constraints nullable="false"/></column>
+            <column name="red_flags" type="VARCHAR(400)"/>
+            <column name="triaged_by" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="triaged_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_vital_signs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="temp_celsius" type="DECIMAL(5,2)"/>
+            <column name="heart_rate_bpm" type="INT"/>
+            <column name="resp_rate_per_min" type="INT"/>
+            <column name="systolic_bp" type="INT"/>
+            <column name="diastolic_bp" type="INT"/>
+            <column name="spo2_percent" type="INT"/>
+            <column name="weight_kg" type="DECIMAL(6,2)"/>
+            <column name="height_cm" type="DECIMAL(6,2)"/>
+            <column name="news2_score" type="INT"/>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_clinical_notes">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="note_type" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="revision_number" type="INT"><constraints nullable="false"/></column>
+            <column name="parent_note_id" type="${uuid_type}"/>
+            <column name="subjective" type="${clob_type}"/>
+            <column name="objective" type="${clob_type}"/>
+            <column name="assessment" type="${clob_type}"/>
+            <column name="plan_text" type="${clob_type}"/>
+            <column name="sensitivity_tag" type="VARCHAR(32)" defaultValue="GENERAL"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="author_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="cosigned_by" type="VARCHAR(120)"/>
+            <column name="signed_at" type="${ts_type}"/>
+        </createTable>
+
+        <createTable tableName="hc_clinical_orders">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_category" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="code_system" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="order_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="order_display" type="VARCHAR(300)"><constraints nullable="false"/></column>
+            <column name="dosage_or_instructions" type="VARCHAR(400)"/>
+            <column name="priority" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="cdss_override_reason" type="VARCHAR(300)"/>
+            <column name="ordered_by" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="ordered_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_ward_beds">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="ward_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="bed_number" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="occupied" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="active_admission_id" type="${uuid_type}"/>
+        </createTable>
+
+        <createTable tableName="hc_admissions">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="ward_bed_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="admitted_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="discharged_at" type="${ts_type}"/>
+            <column name="discharge_disposition" type="VARCHAR(48)"/>
+            <column name="discharge_summary" type="${clob_type}"/>
+        </createTable>
+
+        <createTable tableName="hc_emar_administrations">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="admission_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="scanned_patient_wristband" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="scanned_drug_barcode" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="dose_administered" type="VARCHAR(100)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="administered_by" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="administered_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_care_plans">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="care_category" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="goal_summary" type="VARCHAR(500)"><constraints nullable="false"/></column>
+            <column name="next_followup_date" type="DATE"/>
+            <column name="referral_destination" type="VARCHAR(160)"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_specialty_records">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="specialty_code" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="structured_payload_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="recorded_by" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

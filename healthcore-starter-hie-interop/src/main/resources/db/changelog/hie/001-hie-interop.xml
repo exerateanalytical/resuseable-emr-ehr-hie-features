@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — HIE Interoperability Multi-Dialect Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-hie-interop-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_fhir_subscriptions">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="criteria" type="VARCHAR(300)"><constraints nullable="false"/></column>
+            <column name="endpoint_url" type="VARCHAR(400)"><constraints nullable="false"/></column>
+            <column name="hmac_secret_ref" type="VARCHAR(128)"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_dicom_studies">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="study_instance_uid" type="VARCHAR(128)"><constraints nullable="false"/></column>
+            <column name="modality" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="study_description" type="VARCHAR(300)"/>
+            <column name="wado_rs_url" type="VARCHAR(400)"/>
+            <column name="series_count" type="INT" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="study_date" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_dicom_uid" tableName="hc_dicom_studies" unique="true">
+            <column name="study_instance_uid"/>
+        </createIndex>
+
+        <createTable tableName="hc_hie_dlq_messages">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="protocol" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="external_message_id" type="VARCHAR(128)"/>
+            <column name="raw_payload" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="error_detail" type="VARCHAR(500)"/>
+            <column name="replayed" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="failed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

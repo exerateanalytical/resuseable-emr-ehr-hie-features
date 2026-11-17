@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore BOM (Bill of Materials)
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Centralizes Spring Boot 4.0, Java 25, HAPI FHIR R4, HAPI HL7v2, Liquibase,
+  Resilience4j, Caffeine, Redis, PostgreSQL/MSSQL/MySQL JDBC drivers, and
+  Testcontainers dependency versions for all HealthCore starters and consumers.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.opeshealth.healthcore</groupId>
+    <artifactId>healthcore-bom</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>Opes HealthCore Bill of Materials</name>
+
+    <properties>
+        <spring-boot.version>4.0.0</spring-boot.version>
+        <hapi-fhir.version>8.0.0</hapi-fhir.version>
+        <hapi-hl7v2.version>2.5.1</hapi-hl7v2.version>
+        <liquibase.version>4.31.1</liquibase.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
+        <caffeine.version>3.2.0</caffeine.version>
+        <springdoc.version>3.0.0</springdoc.version>
+        <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+        <archunit.version>1.4.0</archunit.version>
+        <testcontainers.version>1.20.6</testcontainers.version>
+        <postgresql.version>42.7.5</postgresql.version>
+        <mssql.version>12.10.0.jre11</mssql.version>
+        <mysql.version>9.2.0</mysql.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot 4.0 BOM (Spring Framework 7, Jakarta EE 11, Java 25) -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Opes HealthCore Internal Starter BOM Entries -->
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-persistence-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-security-audit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-terminology-cdss</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-mpi</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-emr-clinical</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-pharmacy-lis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-hie-interop</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-uhc-billing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-public-health</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-hospital-ops</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-offline-sync</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-templates-dashboards</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-api-product</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Healthcare Standards: HL7 FHIR R4 + HL7 v2 -->
+            <dependency>
+                <groupId>ca.uhn.hapi.fhir</groupId>
+                <artifactId>hapi-fhir-structures-r4</artifactId>
+                <version>${hapi-fhir.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ca.uhn.hapi</groupId>
+                <artifactId>hapi-base</artifactId>
+                <version>${hapi-hl7v2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ca.uhn.hapi</groupId>
+                <artifactId>hapi-structures-v251</artifactId>
+                <version>${hapi-hl7v2.version}</version>
+            </dependency>
+
+            <!-- Multi-DB JDBC Drivers & Liquibase -->
+            <dependency>
+                <groupId>org.liquibase</groupId>
+                <artifactId>liquibase-core</artifactId>
+                <version>${liquibase.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.microsoft.sqlserver</groupId>
+                <artifactId>mssql-jdbc</artifactId>
+                <version>${mssql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${mysql.version}</version>
+            </dependency>
+
+            <!-- Speed & Resilience: Resilience4j + Caffeine + OpenAPI + PDF/A -->
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-spring-boot3</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openhtmltopdf</groupId>
+                <artifactId>openhtmltopdf-pdfbox</artifactId>
+                <version>${openhtmltopdf.version}</version>
+            </dependency>
+
+            <!-- Governance & Multi-DB Integration Testing -->
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

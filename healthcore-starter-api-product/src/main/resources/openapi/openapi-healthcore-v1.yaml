@@ -1,0 +1,47 @@
+openapi: 3.1.0
+info:
+  title: Opes HealthCore SDK — Universal Healthcare Platform API
+  version: 1.0.0
+  description: >
+    API-First, Offline-First, Multi-DB Healthcare Platform SDK built by Jude Nshome
+    (Opes Health Systems, Douala, Cameroon). Supports EMR, EHR, HIE (FHIR R4 / HL7v2),
+    Standalone Pharmacy (PIS), Diagnostic Lab (LIS), UHC/CBHI, CHW, and Disease Watch.
+  contact:
+    name: Jude Nshome — Opes Health Systems
+    email: nshome@opesware.com
+    url: https://www.opeshealthsystems.com
+servers:
+  - url: http://localhost:3000
+    description: Local / Embedded Development Runtime
+paths:
+  /fhir/r4/Patient/{id}:
+    get:
+      summary: Retrieve HL7 FHIR R4 Patient Golden Record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: FHIR R4 Patient JSON with ETag
+  /cds-services:
+    get:
+      summary: CDS Hooks 2.0 Discovery Endpoint
+      responses:
+        '200':
+          description: List of clinical decision support hooks
+  /api/v1/sync/pull:
+    get:
+      summary: Offline-First HLC + sync_seq delta pull for Mobile/iPad/Edge nodes
+      responses:
+        '200':
+          description: Ordered sync delta batch
+  /api/v1/platform/templates/{templateCode}/pdf:
+    post:
+      summary: Render any of 608 hospital document/report templates to PDF/A
+      responses:
+        '200':
+          description: PDF binary stream
