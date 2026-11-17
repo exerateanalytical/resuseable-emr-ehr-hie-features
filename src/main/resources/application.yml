@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: spring-boot-health-core
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:healthcore}
+    username: ${DB_USER:healthcore_app}
+    password: ${DB_PASSWORD:change_me_in_prod}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+healthcore:
+  hie:
+    endpoint-url: ${HIE_ENDPOINT_URL:http://localhost:8081/fhir}
+    relay-enabled: ${HIE_RELAY_ENABLED:true}
+    max-retry-attempts: 5
+
+logging:
+  level:
+    com.healthcore: INFO

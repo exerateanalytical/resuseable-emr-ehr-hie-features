@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: healthcore-postgres
+    environment:
+      POSTGRES_DB: healthcore
+      POSTGRES_USER: healthcore_app
+      POSTGRES_PASSWORD: change_me_in_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - healthcore_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthcore_app -d healthcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  healthcore_pgdata:
