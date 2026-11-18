@@ -42,11 +42,17 @@ public final class MpiEntities {
         @Column(name = "mrn", nullable = false, length = 64)
         private String mrn;
 
+        @Column(name = "name_prefix", length = 24)
+        private String namePrefix;
+
         @Column(name = "family_name", nullable = false, length = 120)
         private String familyName;
 
         @Column(name = "given_name", nullable = false, length = 120)
         private String givenName;
+
+        @Column(name = "middle_name", length = 120)
+        private String middleName;
 
         @Column(name = "birth_date", nullable = false)
         private LocalDate birthDate;
@@ -59,6 +65,15 @@ public final class MpiEntities {
 
         @Column(name = "primary_phone", length = 64)
         private String primaryPhone;
+
+        @Column(name = "secondary_phone", length = 64)
+        private String secondaryPhone;
+
+        @Column(name = "email", length = 160)
+        private String email;
+
+        @Column(name = "marital_status_code", length = 16)
+        private String maritalStatusCode;
 
         @Column(name = "preferred_language", length = 16)
         private String preferredLanguage = "en";
@@ -74,6 +89,9 @@ public final class MpiEntities {
 
         @Column(name = "deceased", nullable = false)
         private boolean deceased = false;
+
+        @Column(name = "deceased_at")
+        private Instant deceasedAt;
 
         @Version
         @Column(name = "version", nullable = false)
@@ -91,10 +109,14 @@ public final class MpiEntities {
         public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
         public String getMrn() { return mrn; }
         public void setMrn(String mrn) { this.mrn = mrn; }
+        public String getNamePrefix() { return namePrefix; }
+        public void setNamePrefix(String namePrefix) { this.namePrefix = namePrefix; }
         public String getFamilyName() { return familyName; }
         public void setFamilyName(String familyName) { this.familyName = familyName; }
         public String getGivenName() { return givenName; }
         public void setGivenName(String givenName) { this.givenName = givenName; }
+        public String getMiddleName() { return middleName; }
+        public void setMiddleName(String middleName) { this.middleName = middleName; }
         public LocalDate getBirthDate() { return birthDate; }
         public void setBirthDate(LocalDate birthDate) { this.birthDate = birthDate; }
         public String getGender() { return gender; }
@@ -103,6 +125,12 @@ public final class MpiEntities {
         public void setBloodGroup(String bloodGroup) { this.bloodGroup = bloodGroup; }
         public String getPrimaryPhone() { return primaryPhone; }
         public void setPrimaryPhone(String primaryPhone) { this.primaryPhone = primaryPhone; }
+        public String getSecondaryPhone() { return secondaryPhone; }
+        public void setSecondaryPhone(String secondaryPhone) { this.secondaryPhone = secondaryPhone; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public String getMaritalStatusCode() { return maritalStatusCode; }
+        public void setMaritalStatusCode(String maritalStatusCode) { this.maritalStatusCode = maritalStatusCode; }
         public String getPreferredLanguage() { return preferredLanguage; }
         public void setPreferredLanguage(String preferredLanguage) { this.preferredLanguage = preferredLanguage; }
         public boolean isGoldenRecord() { return goldenRecord; }
@@ -113,6 +141,8 @@ public final class MpiEntities {
         public void setActive(boolean active) { this.active = active; }
         public boolean isDeceased() { return deceased; }
         public void setDeceased(boolean deceased) { this.deceased = deceased; }
+        public Instant getDeceasedAt() { return deceasedAt; }
+        public void setDeceasedAt(Instant deceasedAt) { this.deceasedAt = deceasedAt; }
         public long getVersion() { return version; }
         public Instant getCreatedAt() { return createdAt; }
         public Instant getUpdatedAt() { return updatedAt; }
@@ -134,6 +164,15 @@ public final class MpiEntities {
         @Column(name = "identifier_system", nullable = false, length = 120)
         private String identifierSystem;
 
+        @Column(name = "identifier_use", length = 24)
+        private String identifierUse = "OFFICIAL";
+
+        @Column(name = "type_code", length = 32)
+        private String typeCode;
+
+        @Column(name = "assigner_name", length = 120)
+        private String assignerName;
+
         @Convert(converter = PiiVaultCrypto.EncryptedStringConverter.class)
         @Column(name = "encrypted_value", nullable = false, length = 512)
         private String encryptedValue;
@@ -149,6 +188,12 @@ public final class MpiEntities {
         public void setPatientId(UUID patientId) { this.patientId = patientId; }
         public String getIdentifierSystem() { return identifierSystem; }
         public void setIdentifierSystem(String identifierSystem) { this.identifierSystem = identifierSystem; }
+        public String getIdentifierUse() { return identifierUse; }
+        public void setIdentifierUse(String identifierUse) { this.identifierUse = identifierUse; }
+        public String getTypeCode() { return typeCode; }
+        public void setTypeCode(String typeCode) { this.typeCode = typeCode; }
+        public String getAssignerName() { return assignerName; }
+        public void setAssignerName(String assignerName) { this.assignerName = assignerName; }
         public String getEncryptedValue() { return encryptedValue; }
         public void setEncryptedValue(String encryptedValue) {
             this.encryptedValue = encryptedValue;
@@ -170,14 +215,23 @@ public final class MpiEntities {
         @Column(name = "patient_id", nullable = false)
         private UUID patientId;
 
+        @Column(name = "address_use", length = 24)
+        private String addressUse = "HOME";
+
         @Column(name = "address_line", length = 250)
         private String addressLine;
 
         @Column(name = "city_or_village", length = 120)
         private String cityOrVillage;
 
+        @Column(name = "district", length = 120)
+        private String district;
+
         @Column(name = "region_or_state", length = 120)
         private String regionOrState;
+
+        @Column(name = "postal_code", length = 32)
+        private String postalCode;
 
         @Column(name = "country", length = 64)
         private String country;
@@ -188,26 +242,42 @@ public final class MpiEntities {
         @Column(name = "emergency_contact_phone", length = 64)
         private String emergencyContactPhone;
 
+        @Column(name = "emergency_contact_email", length = 160)
+        private String emergencyContactEmail;
+
         @Column(name = "emergency_relationship", length = 40)
         private String emergencyRelationship;
+
+        @Column(name = "communication_preferred", nullable = false)
+        private boolean communicationPreferred = true;
 
         public UUID getId() { return id; }
         public UUID getPatientId() { return patientId; }
         public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getAddressUse() { return addressUse; }
+        public void setAddressUse(String addressUse) { this.addressUse = addressUse; }
         public String getAddressLine() { return addressLine; }
         public void setAddressLine(String addressLine) { this.addressLine = addressLine; }
         public String getCityOrVillage() { return cityOrVillage; }
         public void setCityOrVillage(String cityOrVillage) { this.cityOrVillage = cityOrVillage; }
+        public String getDistrict() { return district; }
+        public void setDistrict(String district) { this.district = district; }
         public String getRegionOrState() { return regionOrState; }
         public void setRegionOrState(String regionOrState) { this.regionOrState = regionOrState; }
+        public String getPostalCode() { return postalCode; }
+        public void setPostalCode(String postalCode) { this.postalCode = postalCode; }
         public String getCountry() { return country; }
         public void setCountry(String country) { this.country = country; }
         public String getEmergencyContactName() { return emergencyContactName; }
         public void setEmergencyContactName(String emergencyContactName) { this.emergencyContactName = emergencyContactName; }
         public String getEmergencyContactPhone() { return emergencyContactPhone; }
         public void setEmergencyContactPhone(String emergencyContactPhone) { this.emergencyContactPhone = emergencyContactPhone; }
+        public String getEmergencyContactEmail() { return emergencyContactEmail; }
+        public void setEmergencyContactEmail(String emergencyContactEmail) { this.emergencyContactEmail = emergencyContactEmail; }
         public String getEmergencyRelationship() { return emergencyRelationship; }
         public void setEmergencyRelationship(String emergencyRelationship) { this.emergencyRelationship = emergencyRelationship; }
+        public boolean isCommunicationPreferred() { return communicationPreferred; }
+        public void setCommunicationPreferred(boolean communicationPreferred) { this.communicationPreferred = communicationPreferred; }
     }
 
     /** Dialect-independent phonetic blocking key computed in pure Java at write time. */

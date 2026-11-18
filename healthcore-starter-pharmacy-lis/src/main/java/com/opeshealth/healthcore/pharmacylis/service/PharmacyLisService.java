@@ -9,7 +9,10 @@
  */
 package com.opeshealth.healthcore.pharmacylis.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import com.opeshealth.healthcore.persistence.sql.RetryableOnTransientSqlFailure;
 import com.opeshealth.healthcore.pharmacylis.domain.PharmacyLisEntities.*;
@@ -17,7 +20,11 @@ import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -40,9 +47,21 @@ public class PharmacyLisService {
         List<MedicationBatchEntity> findByFacilityIdAndExpiryDateBefore(UUID facilityId, LocalDate cutoff);
     }
 
-    public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {}
-    public interface LabSpecimenRepository extends JpaRepository<LabSpecimenEntity, UUID> {}
-    public interface DiagnosticReportRepository extends JpaRepository<DiagnosticReportEntity, UUID> {}
+    public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {
+        @Modifying
+        @Query("UPDATE PharmacyDispenseEntity p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
+    }
+    public interface LabSpecimenRepository extends JpaRepository<LabSpecimenEntity, UUID> {
+        @Modifying
+        @Query("UPDATE LabSpecimenEntity l SET l.patientId = :survivorId WHERE l.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
+    }
+    public interface DiagnosticReportRepository extends JpaRepository<DiagnosticReportEntity, UUID> {
+        @Modifying
+        @Query("UPDATE DiagnosticReportEntity r SET r.patientId = :survivorId WHERE r.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
+    }
 
     private final MedicationBatchRepository batchRepo;
     private final PharmacyDispenseRepository dispenseRepo;
@@ -64,6 +83,31 @@ public class PharmacyLisService {
         this.reportRepo = reportRepo;
         this.cdsHooksEngine = cdsHooksEngine;
         this.outboxRepo = outboxRepo;
+    }
+
+    private static final ObjectMapper MERGE_MAPPER = new ObjectMapper();
+
+    /** Cascades MPI Golden Record merges emitted via Outbox into pharmacy dispenses, lab specimens & reports. */
+    @EventListener
+    @Transactional
+    public void onOutboxDomainEvent(HealthCoreDomainEvent event) {
+        if (event == null || !"PatientMergedEvent".equals(event.eventType()) || event.payloadJson() == null) {
+            return;
+        }
+        try {
+            JsonNode root = MERGE_MAPPER.readTree(event.payloadJson());
+            String src = root.path("sourceId").asText("");
+            String surv = root.path("survivingId").asText("");
+            if (!src.isBlank() && !surv.isBlank()) {
+                UUID sourceId = UUID.fromString(src);
+                UUID survivorId = UUID.fromString(surv);
+                dispenseRepo.relinkPatient(sourceId, survivorId);
+                specimenRepo.relinkPatient(sourceId, survivorId);
+                reportRepo.relinkPatient(sourceId, survivorId);
+            }
+        } catch (Exception ignored) {
+            // Malformed payload does not break other event consumers
+        }
     }
 
     @Transactional

@@ -37,6 +37,7 @@
     <include file="classpath:db/changelog/security/001-security-audit.xml"/>
     <include file="classpath:db/changelog/terminology/001-terminology-cdss.xml"/>
     <include file="classpath:db/changelog/mpi/001-mpi.xml"/>
+    <include file="classpath:db/changelog/mpi/002-mpi-fhir-demographics.xml"/>
     <include file="classpath:db/changelog/emr/001-emr-clinical.xml"/>
     <include file="classpath:db/changelog/emr/002-emr-ward-workflows.xml"/>
     <include file="classpath:db/changelog/pharmacy_lis/001-pharmacy-lis.xml"/>
@@ -54,5 +55,7 @@
     <include file="classpath:db/changelog/templates_dashboards/002-templates-responses.xml"/>
     <include file="classpath:db/changelog/api_product/001-api-product.xml"/>
     <include file="classpath:db/changelog/workflow/001-workflow-engine.xml"/>
+    <include file="classpath:db/changelog/quickstart/001-practitioners.xml"/>
+    <include file="classpath:db/changelog/quickstart/002-observations.xml"/>
     <include file="classpath:db/changelog/core/003-postgresql-optimizations.xml"/>
 </databaseChangeLog>

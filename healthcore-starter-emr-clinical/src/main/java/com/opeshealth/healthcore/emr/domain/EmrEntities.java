@@ -92,6 +92,7 @@ public final class EmrEntities {
         public String getPrimaryIcd10() { return primaryIcd10; }
         public void setPrimaryIcd10(String primaryIcd10) { this.primaryIcd10 = primaryIcd10; }
         public Instant getStartedAt() { return startedAt; }
+        public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
         public Instant getEndedAt() { return endedAt; }
         public void setEndedAt(Instant endedAt) { this.endedAt = endedAt; }
     }

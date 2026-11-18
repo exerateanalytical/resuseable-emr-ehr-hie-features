@@ -23,7 +23,11 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hl7.fhir.r4.model.*;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -59,10 +63,16 @@ public class HieInteropService {
     public interface DicomStudyRepository extends JpaRepository<DicomStudyEntity, UUID> {
         List<DicomStudyEntity> findByPatientIdOrderByStudyDateDesc(UUID patientId);
         Optional<DicomStudyEntity> findFirstByStudyInstanceUid(String studyInstanceUid);
+        @Modifying
+        @Query("UPDATE DicomStudyEntity d SET d.patientId = :survivorId WHERE d.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface HieDlqRepository extends JpaRepository<HieDlqMessageEntity, UUID> {}
     public interface IheDocumentRepository extends JpaRepository<IheDocumentEntity, UUID> {
         List<IheDocumentEntity> findByPatientIdOrderByIndexedAtDesc(UUID patientId);
+        @Modifying
+        @Query("UPDATE IheDocumentEntity i SET i.patientId = :survivorId WHERE i.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 
     private static final FhirContext FHIR_R4 = FhirContext.forR4();
@@ -91,6 +101,15 @@ public class HieInteropService {
         this.dlqRepo = dlqRepo;
         this.docRepo = docRepo;
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** Cascades MPI Golden Record merges to DICOM imaging studies and IHE MHD documents. */
+    @EventListener
+    @Transactional
+    public void onPatientMerged(MpiCommandService.PatientMergedApplicationEvent event) {
+        if (event == null) return;
+        dicomRepo.relinkPatient(event.sourcePatientId(), event.survivingPatientId());
+        docRepo.relinkPatient(event.sourcePatientId(), event.survivingPatientId());
     }
 
     /** Generates an HL7 FHIR R4 International Patient Summary (IPS) Document Bundle. */

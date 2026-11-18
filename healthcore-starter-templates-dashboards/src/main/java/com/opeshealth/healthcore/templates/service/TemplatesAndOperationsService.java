@@ -293,13 +293,13 @@ public class TemplatesAndOperationsService implements ApplicationRunner {
             }
             case "PHARMACY" -> {
                 metrics.put("activeMedicationBatches", queryLongOrZero("SELECT COUNT(*) FROM hc_medication_batches WHERE quantity_on_hand > 0"));
-                metrics.put("prescriptionsCount", queryLongOrZero("SELECT COUNT(*) FROM hc_prescriptions"));
-                metrics.put("dispensedItemsCount", queryLongOrZero("SELECT COUNT(*) FROM hc_dispense_events"));
+                metrics.put("prescriptionsCount", queryLongOrZero("SELECT COUNT(*) FROM hc_clinical_orders WHERE order_category = 'MEDICATION'"));
+                metrics.put("dispensedItemsCount", queryLongOrZero("SELECT COUNT(*) FROM hc_pharmacy_dispenses"));
             }
             case "LAB" -> {
-                metrics.put("labOrdersCount", queryLongOrZero("SELECT COUNT(*) FROM hc_lab_orders"));
+                metrics.put("labOrdersCount", queryLongOrZero("SELECT COUNT(*) FROM hc_clinical_orders WHERE order_category = 'LAB'"));
                 metrics.put("diagnosticSpecimensCount", queryLongOrZero("SELECT COUNT(*) FROM hc_lab_specimens"));
-                metrics.put("verifiedLabResults", queryLongOrZero("SELECT COUNT(*) FROM hc_lab_results"));
+                metrics.put("verifiedLabResults", queryLongOrZero("SELECT COUNT(*) FROM hc_diagnostic_reports WHERE verified_by IS NOT NULL"));
             }
             case "BILLING" -> {
                 metrics.put("activeCbhiPolicies", queryLongOrZero("SELECT COUNT(*) FROM hc_cbhi_policies WHERE active = true"));

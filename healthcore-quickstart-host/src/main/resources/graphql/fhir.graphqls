@@ -1,0 +1,434 @@
+# =============================================================================
+# Opes HealthCore SDK — HL7 FHIR R4 GraphQL Schema Definition
+# Author / Architect : Jude Nshome — Opes Health Systems
+# Email              : nshome@opesware.com
+# Website            : https://www.opeshealthsystems.com
+# Location           : Douala, Cameroon
+# =============================================================================
+
+type Query {
+    patient(id: ID!): FhirPatient
+    patients(filter: PatientFilterInput, offset: Int = 0, count: Int = 20): FhirPatientConnection!
+
+    practitioner(id: ID!): FhirPractitioner
+    practitioners(filter: PractitionerFilterInput, offset: Int = 0, count: Int = 20): FhirPractitionerConnection!
+
+    encounter(id: ID!): FhirEncounter
+    encounters(filter: EncounterFilterInput, offset: Int = 0, count: Int = 20): FhirEncounterConnection!
+
+    observation(id: ID!): FhirObservation
+    observations(filter: ObservationFilterInput, offset: Int = 0, count: Int = 20): FhirObservationConnection!
+}
+
+type Mutation {
+    createPatient(input: PatientCreateInput!): FhirPatient!
+    updatePatient(id: ID!, input: PatientUpdateInput!, expectedVersion: String): FhirPatient!
+    deactivatePatient(id: ID!): FhirDeactivationResult!
+
+    createPractitioner(input: PractitionerCreateInput!): FhirPractitioner!
+    deactivatePractitioner(id: ID!): FhirDeactivationResult!
+
+    createEncounter(input: EncounterCreateInput!): FhirEncounter!
+    updateEncounter(id: ID!, input: EncounterUpdateInput!, expectedVersion: String): FhirEncounter!
+    cancelEncounter(id: ID!): FhirDeactivationResult!
+
+    createObservation(input: ObservationCreateInput!): FhirObservation!
+    markObservationEnteredInError(id: ID!): FhirDeactivationResult!
+}
+
+# -----------------------------------------------------------------------------
+# Shared HL7 FHIR R4 Datatypes
+# -----------------------------------------------------------------------------
+
+type FhirMeta {
+    versionId: String
+    lastUpdated: String
+    profile: [String!]!
+}
+
+type FhirCoding {
+    system: String
+    code: String
+    display: String
+}
+
+type FhirCodeableConcept {
+    coding: [FhirCoding!]!
+    text: String
+}
+
+type FhirIdentifier {
+    use: String
+    type: FhirCodeableConcept
+    system: String
+    value: String
+    assignerDisplay: String
+}
+
+type FhirHumanName {
+    use: String
+    text: String
+    family: String
+    given: [String!]!
+    prefix: [String!]!
+    suffix: [String!]!
+}
+
+type FhirContactPoint {
+    system: String
+    value: String
+    use: String
+    rank: Int
+}
+
+type FhirAddress {
+    use: String
+    line: [String!]!
+    city: String
+    district: String
+    state: String
+    postalCode: String
+    country: String
+}
+
+type FhirReference {
+    reference: String
+    type: String
+    display: String
+}
+
+type FhirPeriod {
+    start: String
+    end: String
+}
+
+type FhirQuantity {
+    value: Float
+    unit: String
+    system: String
+    code: String
+}
+
+type FhirReferenceRange {
+    low: FhirQuantity
+    high: FhirQuantity
+    text: String
+}
+
+# -----------------------------------------------------------------------------
+# FHIR Resource Types & Connected Cross-Resource Resolvers
+# -----------------------------------------------------------------------------
+
+type FhirPatient {
+    id: ID!
+    resourceType: String!
+    meta: FhirMeta
+    identifier: [FhirIdentifier!]!
+    active: Boolean
+    name: [FhirHumanName!]!
+    telecom: [FhirContactPoint!]!
+    address: [FhirAddress!]!
+    gender: String
+    birthDate: String
+    deceasedBoolean: Boolean
+    deceasedDateTime: String
+    facilityId: ID
+    encounters(status: String, count: Int = 20): [FhirEncounter!]!
+    observations(code: String, category: String, count: Int = 20): [FhirObservation!]!
+}
+
+type FhirPractitionerQualification {
+    identifier: [FhirIdentifier!]!
+    code: FhirCodeableConcept
+    period: FhirPeriod
+    issuerDisplay: String
+}
+
+type FhirPractitioner {
+    id: ID!
+    resourceType: String!
+    meta: FhirMeta
+    identifier: [FhirIdentifier!]!
+    active: Boolean
+    name: [FhirHumanName!]!
+    telecom: [FhirContactPoint!]!
+    address: [FhirAddress!]!
+    gender: String
+    birthDate: String
+    qualification: [FhirPractitionerQualification!]!
+    communication: [FhirCodeableConcept!]!
+    facilityId: ID
+    encounters(status: String, count: Int = 20): [FhirEncounter!]!
+}
+
+type FhirEncounterParticipant {
+    type: [FhirCodeableConcept!]!
+    individual: FhirReference
+}
+
+type FhirEncounterDiagnosis {
+    condition: FhirReference
+    use: FhirCodeableConcept
+    rank: Int
+}
+
+type FhirEncounterLocation {
+    location: FhirReference
+    status: String
+}
+
+type FhirEncounter {
+    id: ID!
+    resourceType: String!
+    meta: FhirMeta
+    identifier: [FhirIdentifier!]!
+    status: String!
+    encounterClass: FhirCoding
+    type: [FhirCodeableConcept!]!
+    priority: FhirCodeableConcept
+    subject: FhirReference
+    participant: [FhirEncounterParticipant!]!
+    period: FhirPeriod
+    reasonCode: [FhirCodeableConcept!]!
+    diagnosis: [FhirEncounterDiagnosis!]!
+    location: [FhirEncounterLocation!]!
+    serviceProvider: FhirReference
+    patient: FhirPatient
+    attendingPractitioner: FhirPractitioner
+    observations(code: String, count: Int = 20): [FhirObservation!]!
+}
+
+type FhirObservationComponent {
+    code: FhirCodeableConcept
+    valueQuantity: FhirQuantity
+    valueString: String
+    valueCodeableConcept: FhirCodeableConcept
+    interpretation: [FhirCodeableConcept!]!
+    referenceRange: [FhirReferenceRange!]!
+}
+
+type FhirObservation {
+    id: ID!
+    resourceType: String!
+    meta: FhirMeta
+    identifier: [FhirIdentifier!]!
+    status: String!
+    category: [FhirCodeableConcept!]!
+    code: FhirCodeableConcept
+    subject: FhirReference
+    encounterReference: FhirReference
+    effectiveDateTime: String
+    issued: String
+    performer: [FhirReference!]!
+    valueQuantity: FhirQuantity
+    valueString: String
+    valueBoolean: Boolean
+    valueCodeableConcept: FhirCodeableConcept
+    interpretation: [FhirCodeableConcept!]!
+    referenceRange: [FhirReferenceRange!]!
+    note: [String!]!
+    component: [FhirObservationComponent!]!
+    patient: FhirPatient
+    encounter: FhirEncounter
+}
+
+# -----------------------------------------------------------------------------
+# Paged Connection Types
+# -----------------------------------------------------------------------------
+
+type FhirPatientConnection {
+    total: Int!
+    offset: Int!
+    count: Int!
+    items: [FhirPatient!]!
+}
+
+type FhirPractitionerConnection {
+    total: Int!
+    offset: Int!
+    count: Int!
+    items: [FhirPractitioner!]!
+}
+
+type FhirEncounterConnection {
+    total: Int!
+    offset: Int!
+    count: Int!
+    items: [FhirEncounter!]!
+}
+
+type FhirObservationConnection {
+    total: Int!
+    offset: Int!
+    count: Int!
+    items: [FhirObservation!]!
+}
+
+type FhirDeactivationResult {
+    id: ID!
+    resourceType: String!
+    status: String!
+    deactivatedAt: String!
+}
+
+# -----------------------------------------------------------------------------
+# Search Filter & Mutation Input Types
+# -----------------------------------------------------------------------------
+
+input PatientFilterInput {
+    id: ID
+    facilityId: ID
+    identifier: String
+    name: String
+    nameContains: String
+    family: String
+    given: String
+    birthdateFrom: String
+    birthdateTo: String
+    gender: String
+    phone: String
+    email: String
+    active: Boolean
+}
+
+input PractitionerFilterInput {
+    id: ID
+    facilityId: ID
+    identifier: String
+    name: String
+    family: String
+    given: String
+    gender: String
+    qualification: String
+    active: Boolean
+}
+
+input EncounterFilterInput {
+    id: ID
+    facilityId: ID
+    patient: String
+    status: String
+    encounterClass: String
+    practitioner: String
+    location: String
+    reasonCode: String
+    dateFrom: String
+    dateTo: String
+}
+
+input ObservationFilterInput {
+    id: ID
+    facilityId: ID
+    identifier: String
+    patient: String
+    encounter: String
+    performer: String
+    category: String
+    code: String
+    codeText: String
+    status: String
+    dateFrom: String
+    dateTo: String
+}
+
+input PatientCreateInput {
+    facilityId: ID
+    mrn: String
+    familyName: String!
+    givenName: String!
+    middleName: String
+    gender: String!
+    birthDate: String!
+    phone: String
+    email: String
+    addressLine: String
+    city: String
+    country: String
+}
+
+input PatientUpdateInput {
+    facilityId: ID
+    familyName: String
+    givenName: String
+    middleName: String
+    gender: String
+    birthDate: String
+    phone: String
+    email: String
+    active: Boolean
+}
+
+input PractitionerCreateInput {
+    facilityId: ID
+    identifierSystem: String
+    identifierValue: String
+    namePrefix: String
+    familyName: String!
+    givenName: String!
+    gender: String!
+    birthDate: String
+    phone: String
+    email: String
+    qualificationCode: String
+    qualificationDisplay: String
+    qualificationIssuer: String
+    communicationCode: String
+}
+
+input EncounterCreateInput {
+    facilityId: ID
+    status: String!
+    encounterClass: String!
+    patientId: ID!
+    attendingPractitionerId: ID
+    locationCode: String
+    reasonIcd10Code: String
+    reasonDisplay: String
+    startedAt: String
+    endedAt: String
+}
+
+input EncounterUpdateInput {
+    status: String!
+    encounterClass: String!
+    patientId: ID!
+    attendingPractitionerId: ID
+    locationCode: String
+    reasonIcd10Code: String
+    startedAt: String
+    endedAt: String
+}
+
+input ObservationComponentInput {
+    codeSystem: String
+    code: String!
+    codeDisplay: String
+    valueQuantity: Float
+    valueUnit: String
+    valueUnitCode: String
+    valueString: String
+}
+
+input ObservationCreateInput {
+    facilityId: ID
+    identifierSystem: String
+    identifierValue: String
+    status: String!
+    categoryCode: String
+    categoryDisplay: String
+    codeSystem: String
+    code: String!
+    codeDisplay: String
+    codeText: String
+    patientId: ID!
+    encounterId: ID
+    performerId: ID
+    effectiveDateTime: String
+    valueQuantity: Float
+    valueUnit: String
+    valueUnitCode: String
+    valueString: String
+    valueBoolean: Boolean
+    noteText: String
+    components: [ObservationComponentInput!]
+}

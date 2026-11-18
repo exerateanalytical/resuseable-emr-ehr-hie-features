@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Quickstart Server FHIR R4 Observation Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="002-quickstart-observations" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_observations">
+            <column name="id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="facility_id" type="${uuid_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="practitioner_id" type="${uuid_type}"/>
+            <column name="identifier_system" type="VARCHAR(120)"/>
+            <column name="identifier_value" type="VARCHAR(120)"/>
+            <column name="status" type="VARCHAR(32)" defaultValue="final">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category_system" type="VARCHAR(160)"/>
+            <column name="category_code" type="VARCHAR(64)"/>
+            <column name="category_display" type="VARCHAR(160)"/>
+            <column name="code_system" type="VARCHAR(160)"/>
+            <column name="code" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code_display" type="VARCHAR(200)"/>
+            <column name="code_text" type="VARCHAR(250)"/>
+            <column name="subject_reference" type="VARCHAR(160)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="encounter_reference" type="VARCHAR(160)"/>
+            <column name="performer_reference" type="VARCHAR(160)"/>
+            <column name="performer_display" type="VARCHAR(160)"/>
+            <column name="effective_at" type="${ts_type}"/>
+            <column name="issued_at" type="${ts_type}"/>
+            <column name="value_type" type="VARCHAR(32)"/>
+            <column name="value_quantity" type="DECIMAL(18,4)"/>
+            <column name="value_unit" type="VARCHAR(48)"/>
+            <column name="value_unit_system" type="VARCHAR(120)"/>
+            <column name="value_unit_code" type="VARCHAR(48)"/>
+            <column name="value_string" type="${clob_type}"/>
+            <column name="value_boolean" type="${bool_type}"/>
+            <column name="value_code_system" type="VARCHAR(160)"/>
+            <column name="value_code" type="VARCHAR(64)"/>
+            <column name="value_code_display" type="VARCHAR(200)"/>
+            <column name="interpretation_code" type="VARCHAR(32)"/>
+            <column name="interpretation_display" type="VARCHAR(120)"/>
+            <column name="ref_range_low" type="DECIMAL(18,4)"/>
+            <column name="ref_range_high" type="DECIMAL(18,4)"/>
+            <column name="ref_range_text" type="VARCHAR(160)"/>
+            <column name="note_text" type="${clob_type}"/>
+            <column name="components_json" type="${clob_type}"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_observations_fac_pat_eff" tableName="hc_observations">
+            <column name="facility_id"/>
+            <column name="patient_id"/>
+            <column name="effective_at"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_observations_fac_code_st" tableName="hc_observations">
+            <column name="facility_id"/>
+            <column name="code"/>
+            <column name="status"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_observations_fac_enc" tableName="hc_observations">
+            <column name="facility_id"/>
+            <column name="encounter_id"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_observations_fac_ident" tableName="hc_observations">
+            <column name="facility_id"/>
+            <column name="identifier_system"/>
+            <column name="identifier_value"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

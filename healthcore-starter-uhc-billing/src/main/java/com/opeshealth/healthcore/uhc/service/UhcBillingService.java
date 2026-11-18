@@ -9,14 +9,21 @@
  */
 package com.opeshealth.healthcore.uhc.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import com.opeshealth.healthcore.persistence.sql.RetryableOnTransientSqlFailure;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.uhc.domain.UhcBillingEntities.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -33,16 +40,29 @@ public class UhcBillingService {
     public interface TariffRepository extends JpaRepository<TariffScheduleEntity, UUID> {}
     public interface PatientAccountRepository extends JpaRepository<PatientAccountEntity, UUID> {
         Optional<PatientAccountEntity> findByFacilityIdAndPatientId(UUID facilityId, UUID patientId);
+        @Modifying
+        @Query("UPDATE PatientAccountEntity a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface LedgerEntryRepository extends JpaRepository<LedgerEntryEntity, UUID> {}
     public interface CbhiPolicyRepository extends JpaRepository<CbhiPolicyEntity, UUID> {
         Optional<CbhiPolicyEntity> findByPolicyNumberAndActiveTrue(String policyNumber);
         List<CbhiPolicyEntity> findByPatientIdAndActiveTrue(UUID patientId);
+        @Modifying
+        @Query("UPDATE CbhiPolicyEntity p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
-    public interface InsuranceClaimRepository extends JpaRepository<InsuranceClaimEntity, UUID> {}
+    public interface InsuranceClaimRepository extends JpaRepository<InsuranceClaimEntity, UUID> {
+        @Modifying
+        @Query("UPDATE InsuranceClaimEntity c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
+    }
     public interface PaymentTransactionRepository extends JpaRepository<PaymentTransactionEntity, UUID> {}
     public interface UhcVoucherRepository extends JpaRepository<UhcVoucherEntity, UUID> {
         Optional<UhcVoucherEntity> findByVoucherCode(String voucherCode);
+        @Modifying
+        @Query("UPDATE UhcVoucherEntity v SET v.patientId = :survivorId WHERE v.patientId = :sourceId")
+        int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 
     /** Pluggable Mobile Money / Payer Gateway SPI (MTN MoMo, Orange Money, Stripe, Bank). */
@@ -93,6 +113,32 @@ public class UhcBillingService {
         this.voucherRepo = voucherRepo;
         this.outboxRepo = outboxRepo;
         adapters.forEach(a -> paymentAdapters.put(a.providerCode(), a));
+    }
+
+    private static final ObjectMapper MERGE_MAPPER = new ObjectMapper();
+
+    /** Cascades MPI Golden Record merges emitted via Outbox into billing accounts, CBHI policies, claims & vouchers. */
+    @EventListener
+    @Transactional
+    public void onOutboxDomainEvent(HealthCoreDomainEvent event) {
+        if (event == null || !"PatientMergedEvent".equals(event.eventType()) || event.payloadJson() == null) {
+            return;
+        }
+        try {
+            JsonNode root = MERGE_MAPPER.readTree(event.payloadJson());
+            String src = root.path("sourceId").asText("");
+            String surv = root.path("survivingId").asText("");
+            if (!src.isBlank() && !surv.isBlank()) {
+                UUID sourceId = UUID.fromString(src);
+                UUID survivorId = UUID.fromString(surv);
+                accountRepo.relinkPatient(sourceId, survivorId);
+                cbhiRepo.relinkPatient(sourceId, survivorId);
+                claimRepo.relinkPatient(sourceId, survivorId);
+                voucherRepo.relinkPatient(sourceId, survivorId);
+            }
+        } catch (Exception ignored) {
+            // Malformed payload does not break other event consumers
+        }
     }
 
     /** Posts an immutable DEBIT charge and updates account balance under optimistic version control. */

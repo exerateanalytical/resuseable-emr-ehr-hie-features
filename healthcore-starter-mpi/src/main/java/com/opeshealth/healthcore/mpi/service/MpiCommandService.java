@@ -18,6 +18,8 @@ import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,15 +38,35 @@ public class MpiCommandService {
     public interface PatientRepository extends JpaRepository<PatientAggregateEntity, UUID> {
         Optional<PatientAggregateEntity> findByFacilityIdAndMrn(UUID facilityId, String mrn);
         List<PatientAggregateEntity> findByIdIn(Collection<UUID> ids);
+        List<PatientAggregateEntity> findByFacilityIdAndActiveTrueOrderByUpdatedAtDesc(UUID facilityId);
+        Optional<PatientAggregateEntity> findByFacilityIdAndEmailIgnoreCase(UUID facilityId, String email);
+        List<PatientAggregateEntity> findByFacilityIdAndPrimaryPhone(UUID facilityId, String primaryPhone);
+        List<PatientAggregateEntity> findByFacilityIdAndFamilyNameIgnoreCaseAndBirthDate(
+                UUID facilityId, String familyName, LocalDate birthDate);
+
+        @Query("""
+                SELECT p FROM PatientAggregateEntity p
+                WHERE p.facilityId = :facilityId
+                  AND p.goldenRecord = true
+                  AND p.active = true
+                  AND (LOWER(p.familyName) LIKE LOWER(CONCAT(:prefix, '%'))
+                       OR LOWER(p.givenName) LIKE LOWER(CONCAT(:prefix, '%')))
+                ORDER BY p.familyName ASC, p.givenName ASC
+                """)
+        List<PatientAggregateEntity> searchActiveGoldenByNamePrefix(
+                @Param("facilityId") UUID facilityId, @Param("prefix") String prefix);
     }
 
     public interface PatientIdentifierRepository extends JpaRepository<PatientIdentifierEntity, UUID> {
         Optional<PatientIdentifierEntity> findByIdentifierSystemAndBlindIndex(String system, String blindIndex);
         List<PatientIdentifierEntity> findByPatientId(UUID patientId);
+        List<PatientIdentifierEntity> findByPatientIdOrderByIdentifierSystemAsc(UUID patientId);
+        Optional<PatientIdentifierEntity> findFirstByPatientIdAndIdentifierSystem(UUID patientId, String identifierSystem);
     }
 
     public interface PatientDemographicsRepository extends JpaRepository<PatientDemographicsEntity, UUID> {
         Optional<PatientDemographicsEntity> findByPatientId(UUID patientId);
+        void deleteByPatientId(UUID patientId);
     }
 
     public interface PatientPhoneticRepository extends JpaRepository<PatientPhoneticIndexEntity, UUID> {
@@ -57,19 +79,53 @@ public class MpiCommandService {
     public record RegisterPatientCommand(
             UUID facilityId,
             String mrn,
+            String namePrefix,
             String familyName,
             String givenName,
+            String middleName,
             LocalDate birthDate,
             String gender,
             String bloodGroup,
             String primaryPhone,
+            String secondaryPhone,
+            String email,
+            String maritalStatusCode,
             String preferredLanguage,
             String nationalIdSystem,
             String nationalIdValue,
+            String addressLine,
             String cityOrVillage,
+            String district,
+            String regionOrState,
+            String postalCode,
+            String country,
             String emergencyContactName,
-            String emergencyContactPhone
-    ) {}
+            String emergencyContactPhone,
+            String emergencyContactEmail,
+            String emergencyRelationship
+    ) {
+        /** Backward-compatible constructor preserving existing 14-argument callers. */
+        public RegisterPatientCommand(
+                UUID facilityId,
+                String mrn,
+                String familyName,
+                String givenName,
+                LocalDate birthDate,
+                String gender,
+                String bloodGroup,
+                String primaryPhone,
+                String preferredLanguage,
+                String nationalIdSystem,
+                String nationalIdValue,
+                String cityOrVillage,
+                String emergencyContactName,
+                String emergencyContactPhone) {
+            this(facilityId, mrn, null, familyName, givenName, null, birthDate, gender, bloodGroup,
+                    primaryPhone, null, null, null, preferredLanguage, nationalIdSystem, nationalIdValue,
+                    null, cityOrVillage, null, null, null, null,
+                    emergencyContactName, emergencyContactPhone, null, null);
+        }
+    }
 
     public record PatientMergedApplicationEvent(
             UUID facilityId, UUID sourcePatientId, UUID survivingPatientId, UUID mergeHistoryId) {}
@@ -124,39 +180,59 @@ public class MpiCommandService {
         patient.setMrn(cmd.mrn() != null && !cmd.mrn().isBlank()
                 ? cmd.mrn()
                 : "OPES-" + System.currentTimeMillis());
+        patient.setNamePrefix(cmd.namePrefix());
         patient.setFamilyName(cmd.familyName());
         patient.setGivenName(cmd.givenName());
+        patient.setMiddleName(cmd.middleName());
         patient.setBirthDate(cmd.birthDate());
         patient.setGender(cmd.gender());
         patient.setBloodGroup(cmd.bloodGroup());
         patient.setPrimaryPhone(cmd.primaryPhone());
+        patient.setSecondaryPhone(cmd.secondaryPhone());
+        patient.setEmail(cmd.email());
+        patient.setMaritalStatusCode(cmd.maritalStatusCode());
         patient.setPreferredLanguage(cmd.preferredLanguage() != null ? cmd.preferredLanguage() : "en");
         patient = patientRepo.save(patient);
 
-        if (cmd.nationalIdValue() != null && !cmd.nationalIdValue().isBlank()) {
+        if (cmd.nationalIdValue() != null && !cmd.nationalIdValue().isBlank() && identifierRepo != null) {
             PatientIdentifierEntity ident = new PatientIdentifierEntity();
             ident.setPatientId(patient.getId());
             ident.setIdentifierSystem(cmd.nationalIdSystem() != null ? cmd.nationalIdSystem() : "urn:opes:national-id");
+            ident.setIdentifierUse("OFFICIAL");
+            ident.setTypeCode("NI");
             ident.setEncryptedValue(cmd.nationalIdValue());
             identifierRepo.save(ident);
         }
 
-        PatientDemographicsEntity demo = new PatientDemographicsEntity();
-        demo.setPatientId(patient.getId());
-        demo.setCityOrVillage(cmd.cityOrVillage());
-        demo.setEmergencyContactName(cmd.emergencyContactName());
-        demo.setEmergencyContactPhone(cmd.emergencyContactPhone());
-        demographicsRepo.save(demo);
+        if (demographicsRepo != null) {
+            PatientDemographicsEntity demo = new PatientDemographicsEntity();
+            demo.setPatientId(patient.getId());
+            demo.setAddressLine(cmd.addressLine());
+            demo.setCityOrVillage(cmd.cityOrVillage());
+            demo.setDistrict(cmd.district());
+            demo.setRegionOrState(cmd.regionOrState());
+            demo.setPostalCode(cmd.postalCode());
+            demo.setCountry(cmd.country());
+            demo.setEmergencyContactName(cmd.emergencyContactName());
+            demo.setEmergencyContactPhone(cmd.emergencyContactPhone());
+            demo.setEmergencyContactEmail(cmd.emergencyContactEmail());
+            demo.setEmergencyRelationship(cmd.emergencyRelationship());
+            demographicsRepo.save(demo);
+        }
 
-        PatientPhoneticIndexEntity phonetic = new PatientPhoneticIndexEntity();
-        phonetic.setPatientId(patient.getId());
-        phonetic.setFamilyMetaphone(FellegiSunterMatcher.phoneticKey(cmd.familyName()));
-        phonetic.setGivenMetaphone(FellegiSunterMatcher.phoneticKey(cmd.givenName()));
-        phonetic.setBirthYear(cmd.birthDate().getYear());
-        phoneticRepo.save(phonetic);
+        if (phoneticRepo != null) {
+            PatientPhoneticIndexEntity phonetic = new PatientPhoneticIndexEntity();
+            phonetic.setPatientId(patient.getId());
+            phonetic.setFamilyMetaphone(FellegiSunterMatcher.phoneticKey(cmd.familyName()));
+            phonetic.setGivenMetaphone(FellegiSunterMatcher.phoneticKey(cmd.givenName()));
+            phonetic.setBirthYear(cmd.birthDate().getYear());
+            phoneticRepo.save(phonetic);
+        }
 
-        emitOutboxEvent("Patient", patient.getId(), "PatientRegisteredEvent",
-                "{\"patientId\":\"" + patient.getId() + "\",\"mrn\":\"" + patient.getMrn() + "\"}");
+        if (outboxRepo != null) {
+            emitOutboxEvent("Patient", patient.getId(), "PatientRegisteredEvent",
+                    "{\"patientId\":\"" + patient.getId() + "\",\"mrn\":\"" + patient.getMrn() + "\"}");
+        }
         return patient;
     }
 

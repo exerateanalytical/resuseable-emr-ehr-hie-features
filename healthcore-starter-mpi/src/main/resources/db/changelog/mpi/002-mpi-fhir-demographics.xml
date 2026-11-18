@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — MPI FHIR R4 Demographics, Names & Contact Details
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="002-mpi-fhir-demographics-columns" author="jude.nshome@opeshealthsystems.com">
+        <addColumn tableName="hc_patients">
+            <column name="name_prefix" type="VARCHAR(24)"/>
+            <column name="middle_name" type="VARCHAR(120)"/>
+            <column name="secondary_phone" type="VARCHAR(64)"/>
+            <column name="email" type="VARCHAR(160)"/>
+            <column name="marital_status_code" type="VARCHAR(16)"/>
+            <column name="deceased_at" type="${ts_type}"/>
+        </addColumn>
+
+        <addColumn tableName="hc_patient_identifiers">
+            <column name="identifier_use" type="VARCHAR(24)" defaultValue="OFFICIAL"/>
+            <column name="type_code" type="VARCHAR(32)"/>
+            <column name="assigner_name" type="VARCHAR(120)"/>
+        </addColumn>
+
+        <addColumn tableName="hc_patient_demographics">
+            <column name="address_use" type="VARCHAR(24)" defaultValue="HOME"/>
+            <column name="district" type="VARCHAR(120)"/>
+            <column name="postal_code" type="VARCHAR(32)"/>
+            <column name="emergency_contact_email" type="VARCHAR(160)"/>
+            <column name="communication_preferred" type="${bool_type}" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <createIndex indexName="idx_hc_patient_fac_email" tableName="hc_patients">
+            <column name="facility_id"/>
+            <column name="email"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_patient_fac_active" tableName="hc_patients">
+            <column name="facility_id"/>
+            <column name="active"/>
+        </createIndex>
+
+        <createIndex indexName="idx_hc_pat_demog_patient" tableName="hc_patient_demographics">
+            <column name="patient_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

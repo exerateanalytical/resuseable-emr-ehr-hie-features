@@ -44,7 +44,7 @@ class HealthCoreArchitectureTest {
                 .that().resideInAPackage("..persistence..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "..emr..", "..pharmacylis..", "..uhc..", "..publichealth..",
-                        "..hie..", "..ops..", "..templates..", "..apiproduct..")
+                        "..hie..", "..ops..", "..templates..", "..apiproduct..", "..workflow..")
                 .check(MAIN_CLASSES);
     }
 
@@ -54,7 +54,7 @@ class HealthCoreArchitectureTest {
                 .that().resideInAPackage("..security..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "..emr..", "..pharmacylis..", "..uhc..", "..publichealth..",
-                        "..hie..", "..ops..", "..templates..")
+                        "..hie..", "..ops..", "..templates..", "..workflow..")
                 .check(MAIN_CLASSES);
     }
 

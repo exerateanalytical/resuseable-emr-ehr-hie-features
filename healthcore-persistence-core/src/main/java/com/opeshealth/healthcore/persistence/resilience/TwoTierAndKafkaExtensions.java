@@ -246,9 +246,12 @@ public final class TwoTierAndKafkaExtensions {
         }
     }
 
+    /** Event emitted on Spring's bus whenever PostgreSQL LISTEN receives a cross-pod {@code pg_notify}. */
+    public record PostgresClusterNotificationEvent(String channel, String payload) {}
+
     /**
-     * Zero-broker PostgreSQL {@code pg_notify} fanout publisher alongside Spring in-process events,
-     * enabling multi-pod clusters to receive instant clinical/HIE wakeups directly from PostgreSQL 16+.
+     * Zero-broker PostgreSQL {@code pg_notify} fanout publisher + {@code LISTEN healthcore_events}
+     * Java 25 Virtual-Thread subscriber enabling multi-pod clusters to receive instant clinical/HIE wakeups.
      */
     @Configuration
     @ConditionalOnProperty(prefix = "healthcore.postgres.notify", name = "enabled", havingValue = "true")
@@ -273,6 +276,89 @@ public final class TwoTierAndKafkaExtensions {
                     log.debug("Dispatched PostgreSQL pg_notify healthcore_events for {}", notifyBody);
                 }
             };
+        }
+
+        @Bean
+        public PostgresNotifyListener postgresNotifyListener(
+                javax.sql.DataSource dataSource,
+                ApplicationEventPublisher springPublisher,
+                Environment env) {
+            String url = env.getProperty("spring.datasource.url", "");
+            boolean isPostgres = url.isEmpty() || url.contains(":postgresql:");
+            return new PostgresNotifyListener(dataSource, springPublisher, isPostgres);
+        }
+    }
+
+    /** Virtual-Thread PostgreSQL {@code LISTEN healthcore_events} consumer without hard compile coupling. */
+    public static class PostgresNotifyListener implements org.springframework.context.SmartLifecycle {
+        private static final Logger log = LoggerFactory.getLogger(PostgresNotifyListener.class);
+        private final javax.sql.DataSource dataSource;
+        private final ApplicationEventPublisher publisher;
+        private final boolean isPostgres;
+        private final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(false);
+        private java.util.concurrent.ExecutorService executor;
+
+        public PostgresNotifyListener(
+                javax.sql.DataSource dataSource,
+                ApplicationEventPublisher publisher,
+                boolean isPostgres) {
+            this.dataSource = dataSource;
+            this.publisher = publisher;
+            this.isPostgres = isPostgres;
+        }
+
+        @Override
+        public void start() {
+            if (!isPostgres || !running.compareAndSet(false, true)) {
+                return;
+            }
+            executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+            executor.submit(this::listenLoop);
+        }
+
+        private void listenLoop() {
+            while (running.get()) {
+                try (java.sql.Connection conn = dataSource.getConnection();
+                     java.sql.Statement st = conn.createStatement()) {
+                    st.execute("LISTEN healthcore_events");
+                    Class<?> pgConnClass = Class.forName("org.postgresql.PGConnection");
+                    Object pgConn = conn.unwrap(pgConnClass);
+                    var getNotifications = pgConnClass.getMethod("getNotifications", int.class);
+                    while (running.get() && !conn.isClosed()) {
+                        Object[] notes = (Object[]) getNotifications.invoke(pgConn, 2000);
+                        if (notes != null) {
+                            for (Object n : notes) {
+                                String channel = (String) n.getClass().getMethod("getName").invoke(n);
+                                String param = (String) n.getClass().getMethod("getParameter").invoke(n);
+                                publisher.publishEvent(new PostgresClusterNotificationEvent(channel, param));
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    if (running.get()) {
+                        log.debug("PostgreSQL LISTEN reconnect scheduled: {}", ex.getMessage());
+                        try {
+                            Thread.sleep(3000L);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void stop() {
+            running.set(false);
+            if (executor != null) {
+                executor.shutdownNow();
+            }
+        }
+
+        @Override
+        public boolean isRunning() {
+            return running.get();
         }
     }
 }

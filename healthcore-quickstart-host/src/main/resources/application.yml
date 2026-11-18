@@ -36,8 +36,25 @@ spring:
         order_updates: true
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
+  graphql:
+    http:
+      path: /graphql
+    schema:
+      locations: classpath:graphql/
+      file-extensions: .graphqls,.gqls
+    graphiql:
+      enabled: ${HEALTHCORE_GRAPHIQL_ENABLED:false}
+      path: /graphiql
 
 healthcore:
+  security:
+    rate-limit:
+      enabled: ${HEALTHCORE_RATE_LIMIT_ENABLED:true}
+      fhir-requests-per-minute: ${HEALTHCORE_RATE_LIMIT_FHIR_RPM:120}
+      bundle-requests-per-minute: ${HEALTHCORE_RATE_LIMIT_BUNDLE_RPM:30}
+      anonymous-requests-per-minute: ${HEALTHCORE_RATE_LIMIT_ANON_RPM:60}
+      refill-period-seconds: 60
+      max-cached-buckets: 10000
   postgres:
     rls:
       enabled: false # Set true after applying postgres/enable-rls-policies.sql with non-superuser DB role
@@ -184,6 +201,21 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8085/realms/opes-healthcore/protocol/openid-connect/certs}
+
+healthcore:
+  security:
+    keycloak:
+      enabled: true
+      issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}
+      jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8085/realms/opes-healthcore/protocol/openid-connect/certs}
+      client-id: ${KEYCLOAK_CLIENT_ID:healthcore-mobile-kmp}
+      allowed-origins: ${KEYCLOAK_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8085}
+  smart:
+    authorization-endpoint: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}/protocol/openid-connect/auth
+    token-endpoint: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}/protocol/openid-connect/token
+    introspection-endpoint: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}/protocol/openid-connect/token/introspect
+    revocation-endpoint: ${KEYCLOAK_ISSUER_URI:http://localhost:8085/realms/opes-healthcore}/protocol/openid-connect/revoke
 
 ---
 spring:

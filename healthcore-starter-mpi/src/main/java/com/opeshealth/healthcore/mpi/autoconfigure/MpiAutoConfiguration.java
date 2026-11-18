@@ -13,6 +13,7 @@ import com.opeshealth.healthcore.mpi.domain.MpiEntities;
 import com.opeshealth.healthcore.mpi.fhir.FhirPatientController;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.service.PatientService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -45,9 +46,22 @@ public class MpiAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public PatientService patientService(
+            MpiCommandService.PatientRepository patientRepo,
+            MpiCommandService.PatientIdentifierRepository identifierRepo,
+            MpiCommandService.PatientDemographicsRepository demographicsRepo,
+            MpiCommandService.PatientPhoneticRepository phoneticRepo,
+            OutboxRelayService.OutboxRepository outboxRepo) {
+        return new PatientService(patientRepo, identifierRepo, demographicsRepo, phoneticRepo, outboxRepo);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public FhirPatientController fhirPatientController(
             MpiCommandService mpiService,
-            MpiCommandService.PatientRepository patientRepo) {
-        return new FhirPatientController(mpiService, patientRepo);
+            MpiCommandService.PatientRepository patientRepo,
+            MpiCommandService.PatientIdentifierRepository identifierRepo,
+            MpiCommandService.PatientDemographicsRepository demographicsRepo) {
+        return new FhirPatientController(mpiService, patientRepo, identifierRepo, demographicsRepo);
     }
 }
