@@ -142,7 +142,10 @@ public class OfflineSyncService {
         long findMaxSyncSeq(@Param("facilityId") UUID facilityId);
     }
 
-    public interface SyncTombstoneRepository extends JpaRepository<SyncTombstoneEntity, UUID> {}
+    public interface SyncTombstoneRepository extends JpaRepository<SyncTombstoneEntity, UUID> {
+        List<SyncTombstoneEntity> findByFacilityIdAndDeletedAtGreaterThanOrderByDeletedAtAsc(
+                UUID facilityId, Instant since, org.springframework.data.domain.Pageable pageable);
+    }
     public interface SyncConflictRepository extends JpaRepository<SyncConflictEntity, UUID> {
         List<SyncConflictEntity> findByFacilityIdAndStatus(UUID facilityId, String status);
     }
@@ -239,6 +242,61 @@ public class OfflineSyncService {
         return Map.of("appliedCount", applied, "conflictCount", quarantined, "latestSyncSeq", seq);
     }
 
+    /**
+     * Resolves a quarantined clinical sync conflict using an explicit clinician decision:
+     * <ul>
+     *   <li>{@code ACCEPT_INCOMING} — promotes the offline payload into {@code hc_sync_deltas} with a fresh {@code sync_seq} and HLC stamp</li>
+     *   <li>{@code KEEP_SERVER} — retains the authoritative server record and closes the conflict</li>
+     * </ul>
+     */
+    @Transactional
+    @ClinicalAudit(action = "OFFLINE_CONFLICT_RESOLVE", resourceType = "SyncConflict")
+    public Map<String, Object> resolveConflict(UUID conflictId, String resolution, String resolvedBy) {
+        SyncConflictEntity conflict = conflictRepo.findById(conflictId)
+                .orElseThrow(() -> new NoSuchElementException("Sync conflict not found: " + conflictId));
+        if (!"OPEN".equalsIgnoreCase(conflict.getStatus())) {
+            return Map.of("conflictId", conflictId, "status", conflict.getStatus(), "alreadyResolved", true);
+        }
+
+        String choice = resolution == null ? "KEEP_SERVER" : resolution.trim().toUpperCase(Locale.ROOT);
+        conflict.setResolvedBy(resolvedBy != null && !resolvedBy.isBlank() ? resolvedBy : "system-clinician");
+
+        if ("ACCEPT_INCOMING".equals(choice)) {
+            long nextSeq = deltaRepo.findMaxSyncSeq(conflict.getFacilityId()) + 1;
+            String stampedHlc = hlc.nextTimestamp();
+            SyncDeltaRecordEntity promoted = new SyncDeltaRecordEntity();
+            promoted.setFacilityId(conflict.getFacilityId());
+            promoted.setSyncSeq(nextSeq);
+            promoted.setHlcTimestamp(stampedHlc);
+            promoted.setOriginNodeId(conflict.getOriginNodeId());
+            promoted.setEntityType(conflict.getEntityType());
+            promoted.setEntityId(conflict.getEntityId());
+            promoted.setOperation("UPSERT");
+            promoted.setPayloadJson(conflict.getIncomingPayload());
+            deltaRepo.save(promoted);
+
+            conflict.setStatus("RESOLVED_INCOMING");
+            conflictRepo.save(conflict);
+            return Map.of(
+                    "conflictId", conflictId,
+                    "status", "RESOLVED_INCOMING",
+                    "promotedSyncSeq", nextSeq,
+                    "hlcTimestamp", stampedHlc
+            );
+        }
+
+        conflict.setStatus("RESOLVED_SERVER_WINS");
+        conflictRepo.save(conflict);
+        return Map.of("conflictId", conflictId, "status", "RESOLVED_SERVER_WINS");
+    }
+
+    @Transactional(readOnly = true)
+    public List<SyncTombstoneEntity> pullTombstones(UUID facilityId, Instant since, int limit) {
+        Instant floor = since != null ? since : Instant.EPOCH;
+        return tombstoneRepo.findByFacilityIdAndDeletedAtGreaterThanOrderByDeletedAtAsc(
+                facilityId, floor, PageRequest.of(0, Math.min(limit, 500)));
+    }
+
     @RestController
     @RequestMapping("/api/v1/sync")
     @Tag(name = "Offline-First Sync & QR Card", description = "HLC + sync_seq delta pull/push, clinical conflict queue & Ed25519 QR IPS Health Card")
@@ -280,6 +338,26 @@ public class OfflineSyncService {
         @Operation(summary = "List unresolved clinical sync conflicts awaiting clinician review")
         public List<SyncConflictEntity> conflicts(@RequestParam UUID facilityId) {
             return conflictRepo.findByFacilityIdAndStatus(facilityId, "OPEN");
+        }
+
+        @PostMapping("/conflicts/{conflictId}/resolve")
+        @PreAuthorize("hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_facility:manage')")
+        @Operation(summary = "Resolve an offline clinical sync conflict (ACCEPT_INCOMING or KEEP_SERVER)")
+        public Map<String, Object> resolveConflict(
+                @PathVariable UUID conflictId,
+                @RequestParam String resolution,
+                @RequestParam(defaultValue = "clinician") String resolvedBy) {
+            return service.resolveConflict(conflictId, resolution, resolvedBy);
+        }
+
+        @GetMapping("/tombstones")
+        @PreAuthorize("isAuthenticated()")
+        @Operation(summary = "Fetch soft-delete tombstones since a given ISO-8601 instant")
+        public List<SyncTombstoneEntity> tombstones(
+                @RequestParam UUID facilityId,
+                @RequestParam(required = false) Instant since,
+                @RequestParam(defaultValue = "200") int limit) {
+            return service.pullTombstones(facilityId, since, limit);
         }
 
         @PostMapping("/qr-card/sign")

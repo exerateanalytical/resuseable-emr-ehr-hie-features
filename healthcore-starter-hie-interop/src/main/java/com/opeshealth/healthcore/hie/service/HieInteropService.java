@@ -254,8 +254,44 @@ public class HieInteropService {
                 """.formatted(UUID.randomUUID(), pat.getMrn(), pat.getGivenName(), pat.getFamilyName(), summaryText);
     }
 
+    /** Generates an HL7 FHIR R4 CapabilityStatement describing supported HIE resources and operations. */
+    public String generateCapabilityStatementJson() {
+        CapabilityStatement cs = new CapabilityStatement();
+        cs.setId("opes-healthcore-r4-capability");
+        cs.setStatus(Enumerations.PublicationStatus.ACTIVE);
+        cs.setDate(new Date());
+        cs.setPublisher("Opes Health Systems — Jude Nshome");
+        cs.setKind(CapabilityStatement.CapabilityStatementKind.INSTANCE);
+        cs.setFhirVersion(Enumerations.FHIRVersion._4_0_1);
+        cs.addFormat("application/fhir+json");
+        cs.addFormat("application/fhir+ndjson");
+
+        CapabilityStatement.CapabilityStatementRestComponent rest = cs.addRest();
+        rest.setMode(CapabilityStatement.RestfulCapabilityMode.SERVER);
+        rest.getSecurity().setCors(true);
+        rest.getSecurity().addService()
+                .addCoding()
+                .setSystem("http://terminology.hl7.org/CodeSystem/restful-security-service")
+                .setCode("SMART-on-FHIR");
+
+        for (String resType : List.of("Patient", "Coverage", "Claim", "DocumentReference", "Organization", "Location", "Subscription")) {
+            CapabilityStatement.CapabilityStatementRestResourceComponent res = rest.addResource();
+            res.setType(resType);
+            res.addInteraction().setCode(CapabilityStatement.TypeRestfulInteraction.READ);
+            res.addInteraction().setCode(CapabilityStatement.TypeRestfulInteraction.SEARCHTYPE);
+            if ("Patient".equals(resType) || "DocumentReference".equals(resType) || "Subscription".equals(resType)) {
+                res.addInteraction().setCode(CapabilityStatement.TypeRestfulInteraction.CREATE);
+                res.addInteraction().setCode(CapabilityStatement.TypeRestfulInteraction.UPDATE);
+            }
+        }
+        rest.addOperation().setName("summary").setDefinition("http://hl7.org/fhir/uv/ips/OperationDefinition/summary");
+        rest.addOperation().setName("export").setDefinition("http://hl7.org/fhir/uv/bulkdata/OperationDefinition/export");
+        rest.addOperation().setName("ihe-pix").setDefinition("https://profiles.ihe.net/ITI/PIXm/OperationDefinition/IHE.PIXm.pix");
+        return FHIR_R4.newJsonParser().setPrettyPrint(true).encodeResourceToString(cs);
+    }
+
     @RestController
-    @Tag(name = "FHIR R4 HIE Gateway", description = "FHIR R4 IPS $summary, Bulk NDJSON $export, atomic Transaction Bundle & signed REST-Hook Subscriptions")
+    @Tag(name = "FHIR R4 HIE Gateway", description = "FHIR R4 metadata CapabilityStatement, IPS $summary, Bulk NDJSON $export, atomic Transaction Bundle & signed REST-Hook Subscriptions")
     public static class FhirHieController {
         private final HieInteropService service;
         private final FhirSubscriptionRepository subscriptionRepo;
@@ -263,6 +299,12 @@ public class HieInteropService {
         public FhirHieController(HieInteropService service, FhirSubscriptionRepository subscriptionRepo) {
             this.service = service;
             this.subscriptionRepo = subscriptionRepo;
+        }
+
+        @GetMapping(value = "/fhir/r4/metadata", produces = "application/fhir+json")
+        @Operation(summary = "Return HL7 FHIR R4 CapabilityStatement for Opes HealthCore HIE Gateway")
+        public String capabilityStatement() {
+            return service.generateCapabilityStatementJson();
         }
 
         @GetMapping(value = "/fhir/r4/Patient/{id}/$summary", produces = "application/fhir+json")

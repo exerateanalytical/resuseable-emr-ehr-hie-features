@@ -78,3 +78,24 @@ SELECT * FROM local_sync_outbox WHERE synced = 0 ORDER BY hlc_timestamp ASC;
 
 markOutboxSynced:
 UPDATE local_sync_outbox SET synced = 1 WHERE id = ?;
+
+selectCheckpoint:
+SELECT * FROM local_sync_checkpoint WHERE facility_id = ?;
+
+upsertCheckpoint:
+INSERT OR REPLACE INTO local_sync_checkpoint(facility_id, last_sync_seq, last_synced_at)
+VALUES (?, ?, ?);
+
+deleteLocalPatientById:
+DELETE FROM local_patient WHERE id = ?;
+
+insertClinicalNote:
+INSERT OR REPLACE INTO local_clinical_note(id, patient_id, subjective, objective, assessment, plan_text, specialty_code, stylus_strokes_json, status, hlc_timestamp)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLocalNotesForPatient:
+SELECT * FROM local_clinical_note WHERE patient_id = ? ORDER BY hlc_timestamp DESC;
+
+selectVitalsForPatient:
+SELECT * FROM local_vital_signs WHERE patient_id = ? ORDER BY recorded_at DESC;
+

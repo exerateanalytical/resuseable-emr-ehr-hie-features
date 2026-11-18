@@ -43,8 +43,13 @@ healthcore:
       enabled: false # Set true after applying postgres/enable-rls-policies.sql with non-superuser DB role
     notify:
       enabled: false # Set true for zero-broker PostgreSQL LISTEN/NOTIFY outbox fanout
+  cache:
+    redis:
+      enabled: false # Set true with spring-boot-starter-data-redis for L1 Caffeine + L2 Redis + Pub/Sub invalidation
   outbox:
     enabled: true
+    kafka:
+      enabled: false # Set true when Apache Kafka broker is configured
     rabbitmq:
       enabled: false # Set true when RabbitMQ AMQP broker is configured
   coldchain:

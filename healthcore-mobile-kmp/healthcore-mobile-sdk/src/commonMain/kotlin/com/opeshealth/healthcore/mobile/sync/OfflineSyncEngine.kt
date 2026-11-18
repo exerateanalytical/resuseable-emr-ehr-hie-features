@@ -17,8 +17,11 @@ import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlin.math.max
 import kotlin.random.Random
 
@@ -220,6 +223,18 @@ class OfflineVaultSyncRepository(
     fun enqueueClinicalNoteOffline(patientId: String, soapText: String, stylusJson: String, wallClockMs: Long): String {
         val noteId = hlc.nextUuidV7(wallClockMs)
         val stamp = hlc.nextStamp(wallClockMs)
+        queries.insertClinicalNote(
+            id = noteId,
+            patient_id = patientId,
+            subjective = soapText,
+            objective = null,
+            assessment = null,
+            plan_text = null,
+            specialty_code = "GENERAL",
+            stylus_strokes_json = stylusJson,
+            status = "SIGNED_OFFLINE",
+            hlc_timestamp = stamp
+        )
         val payload = """{"patientId":"$patientId","noteText":${json.encodeToString(soapText)},"stylus":$stylusJson}"""
         queries.enqueueOutboxMutation(
             id = noteId,
@@ -230,6 +245,40 @@ class OfflineVaultSyncRepository(
             payload_json = payload
         )
         return noteId
+    }
+
+    fun recordVitalsOffline(
+        patientId: String,
+        tempC: Double?,
+        heartRateBpm: Int?,
+        respRate: Int?,
+        systolicBp: Int?,
+        spo2Percent: Int?,
+        wallClockMs: Long
+    ): Int {
+        val news2 = OfflineClinicalSafetyEngine.computeNews2Score(tempC, heartRateBpm, respRate, systolicBp, spo2Percent)
+        val vitalId = hlc.nextUuidV7(wallClockMs)
+        val stamp = hlc.nextStamp(wallClockMs)
+        queries.insertVitalSigns(
+            id = vitalId,
+            patient_id = patientId,
+            temp_celsius = tempC,
+            heart_rate_bpm = heartRateBpm?.toLong(),
+            resp_rate_per_min = respRate?.toLong(),
+            systolic_bp = systolicBp?.toLong(),
+            spo2_percent = spo2Percent?.toLong(),
+            news2_score = news2.toLong(),
+            recorded_at = stamp
+        )
+        queries.enqueueOutboxMutation(
+            id = vitalId,
+            entity_type = "Observation",
+            entity_id = vitalId,
+            operation = "UPSERT",
+            hlc_timestamp = stamp,
+            payload_json = """{"patientId":"$patientId","news2Score":$news2,"spo2":${spo2Percent ?: 0}}"""
+        )
+        return news2
     }
 
     fun enqueueChwMuacVisitOffline(patientId: String, muacMm: Int, wallClockMs: Long): String {
@@ -247,7 +296,10 @@ class OfflineVaultSyncRepository(
         return visitId
     }
 
-    suspend fun syncWithServer(facilityId: String, bearerToken: String, sinceSyncSeq: Long = 0L): Result<Int> {
+    fun currentSyncCursor(facilityId: String): Long =
+        queries.selectCheckpoint(facilityId).executeAsOneOrNull()?.last_sync_seq ?: 0L
+
+    suspend fun syncWithServer(facilityId: String, bearerToken: String, sinceSyncSeq: Long? = null): Result<Int> {
         return runCatching {
             val pending = queries.selectPendingOutbox().executeAsList()
             if (pending.isNotEmpty()) {
@@ -270,8 +322,42 @@ class OfflineVaultSyncRepository(
                     pending.forEach { queries.markOutboxSynced(it.id) }
                 }
             }
-            httpClient.get("$baseUrl/api/v1/sync/pull?facilityId=$facilityId&sinceSeq=$sinceSyncSeq") {
+
+            val cursor = sinceSyncSeq ?: currentSyncCursor(facilityId)
+            val pullResp = httpClient.get("$baseUrl/api/v1/sync/pull?facilityId=$facilityId&sinceSeq=$cursor") {
                 header(HttpHeaders.Authorization, "Bearer $bearerToken")
+            }
+            if (pullResp.status.isSuccess()) {
+                val root = json.parseToJsonElement(pullResp.bodyAsText()).jsonObject
+                val nextSeq = root["nextSyncSeq"]?.jsonPrimitive?.longOrNull ?: cursor
+                val serverHlc = root["serverHlc"]?.jsonPrimitive?.contentOrNull ?: hlc.nextStamp(0L)
+                root["deltas"]?.jsonArray?.forEach { elem ->
+                    val delta = elem.jsonObject
+                    val entityType = delta["entityType"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val entityId = delta["entityId"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                    val op = delta["operation"]?.jsonPrimitive?.contentOrNull ?: "UPSERT"
+                    val payloadStr = delta["payloadJson"]?.jsonPrimitive?.contentOrNull ?: "{}"
+                    if (entityType == "Patient") {
+                        if (op.equals("DELETE", ignoreCase = true)) {
+                            queries.deleteLocalPatientById(entityId)
+                        } else {
+                            val pObj = json.parseToJsonElement(payloadStr).jsonObject
+                            queries.insertOrReplacePatient(
+                                id = entityId,
+                                facility_id = facilityId,
+                                mrn = pObj["mrn"]?.jsonPrimitive?.contentOrNull ?: entityId,
+                                family_name = pObj["familyName"]?.jsonPrimitive?.contentOrNull ?: "Unknown",
+                                given_name = pObj["givenName"]?.jsonPrimitive?.contentOrNull ?: "Patient",
+                                birth_date = pObj["birthDate"]?.jsonPrimitive?.contentOrNull ?: "1970-01-01",
+                                gender = pObj["gender"]?.jsonPrimitive?.contentOrNull ?: "unknown",
+                                blood_group = pObj["bloodGroup"]?.jsonPrimitive?.contentOrNull,
+                                allergies_csv = pObj["allergiesCsv"]?.jsonPrimitive?.contentOrNull,
+                                hlc_timestamp = delta["hlcTimestamp"]?.jsonPrimitive?.contentOrNull ?: serverHlc
+                            )
+                        }
+                    }
+                }
+                queries.upsertCheckpoint(facilityId, nextSeq, serverHlc)
             }
             pending.size
         }

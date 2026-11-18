@@ -14,6 +14,7 @@ import com.opeshealth.healthcore.hie.domain.HieEntities.DicomStudyEntity;
 import com.opeshealth.healthcore.hie.domain.HieEntities.FhirSubscriptionEntity;
 import com.opeshealth.healthcore.hie.service.DicomPacsProxyService;
 import com.opeshealth.healthcore.hie.service.FhirOutboxSubscriptionRelay;
+import com.opeshealth.healthcore.hie.service.HieInteropService;
 import com.opeshealth.healthcore.hie.service.HieInteropService.DicomStudyRepository;
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientAggregateEntity;
 import com.opeshealth.healthcore.mpi.match.FellegiSunterMatcher;
@@ -27,6 +28,7 @@ import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import com.opeshealth.healthcore.persistence.resilience.ResilienceAndGovernanceSupport.PostgresAdvisoryLockHelper;
+import com.opeshealth.healthcore.persistence.resilience.TwoTierAndKafkaExtensions.TwoTierCacheManager;
 import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.Dhis2MappingEntity;
 import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.Dhis2SyncLogEntity;
 import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.SurveillanceCaseEntity;
@@ -37,6 +39,8 @@ import com.opeshealth.healthcore.publichealth.service.PublicHealthService.Survei
 import com.opeshealth.healthcore.security.audit.PhiRedactionConverter;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock;
+import com.opeshealth.healthcore.sync.service.OfflineSyncService;
+import com.opeshealth.healthcore.sync.service.OfflineSyncService.*;
 import com.opeshealth.healthcore.templates.domain.TemplatesAndOnboardingEntities.BackupManifestEntity;
 import com.opeshealth.healthcore.templates.service.HospitalTemplateCatalog;
 import com.opeshealth.healthcore.templates.service.TemplatesAndOperationsService.PostgresBackupProvider;
@@ -53,6 +57,7 @@ import com.opeshealth.healthcore.workflow.service.WorkflowOrchestrationService;
 import com.opeshealth.healthcore.workflow.service.WorkflowOrchestrationService.*;
 import com.opeshealth.healthcore.workflow.spi.WorkflowSpi.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.http.ResponseEntity;
 
 import java.lang.reflect.Proxy;
@@ -500,5 +505,86 @@ class HealthCoreDomainSafetyTest {
         Map<String, Object> result = client.importExpandedValueSetJson(expanded);
         assertEquals(2, ((Number) result.get("importedCount")).intValue());
         assertEquals(2, saved.size());
+    }
+
+    @Test
+    void offlineSyncResolvesConflictByPromotingIncomingDeltaOrKeepingServer() {
+        UUID facId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        SyncConflictEntity conflict = new SyncConflictEntity();
+        conflict.setFacilityId(facId);
+        conflict.setEntityType("ClinicalNote");
+        conflict.setEntityId(noteId);
+        conflict.setOriginNodeId("ipad-3");
+        conflict.setIncomingHlc("1700000000000:0001:ipad-3");
+        conflict.setServerHlc("1700000000050:0001:srv");
+        conflict.setIncomingPayload("{\"noteText\":\"Updated offline note\"}");
+
+        List<SyncDeltaRecordEntity> savedDeltas = new ArrayList<>();
+        SyncDeltaRepository deltaRepo = (SyncDeltaRepository) Proxy.newProxyInstance(
+                SyncDeltaRepository.class.getClassLoader(),
+                new Class<?>[]{SyncDeltaRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "findMaxSyncSeq" -> 41L;
+                    case "save" -> {
+                        SyncDeltaRecordEntity d = (SyncDeltaRecordEntity) a[0];
+                        savedDeltas.add(d);
+                        yield d;
+                    }
+                    default -> List.of();
+                });
+        SyncConflictRepository conflictRepo = (SyncConflictRepository) Proxy.newProxyInstance(
+                SyncConflictRepository.class.getClassLoader(),
+                new Class<?>[]{SyncConflictRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "findById" -> Optional.of(conflict);
+                    case "save" -> a[0];
+                    default -> List.of();
+                });
+
+        OfflineSyncService sync = new OfflineSyncService(
+                deltaRepo, null, conflictRepo, new HybridLogicalClock("server-1"), null);
+        Map<String, Object> res = sync.resolveConflict(conflict.getId(), "ACCEPT_INCOMING", "dr.nshome");
+
+        assertEquals("RESOLVED_INCOMING", res.get("status"));
+        assertEquals(42L, ((Number) res.get("promotedSyncSeq")).longValue());
+        assertEquals(1, savedDeltas.size());
+        assertEquals(42L, savedDeltas.getFirst().getSyncSeq());
+        assertEquals("RESOLVED_INCOMING", conflict.getStatus());
+    }
+
+    @Test
+    void hieCapabilityStatementMetadataListsCoreFhirR4ResourcesAndOperations() {
+        HieInteropService hie = new HieInteropService(null, null, null, null, null, null);
+        String metadataJson = hie.generateCapabilityStatementJson();
+        assertTrue(metadataJson.contains("\"resourceType\": \"CapabilityStatement\""));
+        assertTrue(metadataJson.contains("\"SMART-on-FHIR\""));
+        assertTrue(metadataJson.contains("\"Patient\""));
+        assertTrue(metadataJson.contains("\"DocumentReference\""));
+        assertTrue(metadataJson.contains("\"Subscription\""));
+        assertTrue(metadataJson.contains("\"summary\""));
+    }
+
+    @Test
+    void twoTierCachePromotesL2HitsToL1AndBroadcastsEvictions() {
+        var l1 = new ConcurrentMapCacheManager("terminologyConcepts");
+        var l2 = new ConcurrentMapCacheManager("terminologyConcepts");
+        List<String> broadcasts = new ArrayList<>();
+
+        TwoTierCacheManager twoTier = new TwoTierCacheManager(
+                l1, l2, (cache, key) -> broadcasts.add(cache + "::" + key));
+
+        l2.getCache("terminologyConcepts").put("loinc:8867-4", "Heart rate");
+        assertNull(l1.getCache("terminologyConcepts").get("loinc:8867-4"));
+
+        // L2 hit promotes back into L1
+        assertEquals("Heart rate", twoTier.getCache("terminologyConcepts").get("loinc:8867-4", String.class));
+        assertEquals("Heart rate", l1.getCache("terminologyConcepts").get("loinc:8867-4", String.class));
+
+        // Eviction notifies cluster peers
+        twoTier.getCache("terminologyConcepts").evict("loinc:8867-4");
+        assertTrue(broadcasts.contains("terminologyConcepts::loinc:8867-4"));
+        assertNull(l1.getCache("terminologyConcepts").get("loinc:8867-4"));
+        assertNull(l2.getCache("terminologyConcepts").get("loinc:8867-4"));
     }
 }
