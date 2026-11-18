@@ -10,6 +10,9 @@
 package com.opeshealth.healthcore.hie.autoconfigure;
 
 import com.opeshealth.healthcore.hie.domain.HieEntities;
+import com.opeshealth.healthcore.hie.service.DicomPacsProxyService;
+import com.opeshealth.healthcore.hie.service.DicomPacsProxyService.DicomPacsController;
+import com.opeshealth.healthcore.hie.service.FhirOutboxSubscriptionRelay;
 import com.opeshealth.healthcore.hie.service.HieInteropService;
 import com.opeshealth.healthcore.hie.service.HieInteropService.*;
 import com.opeshealth.healthcore.hie.service.Hl7MllpTcpServer;
@@ -52,6 +55,23 @@ public class HieInteropAutoConfiguration {
         return new HieInteropService(patientRepo, subscriptionRepo, dicomRepo, dlqRepo, docRepo, jdbcTemplate);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public DicomPacsProxyService dicomPacsProxyService(
+            DicomStudyRepository dicomRepo,
+            HieDlqRepository dlqRepo) {
+        return new DicomPacsProxyService(dicomRepo, dlqRepo);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "healthcore.hie.subscription-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public FhirOutboxSubscriptionRelay fhirOutboxSubscriptionRelay(
+            FhirSubscriptionRepository subscriptionRepo,
+            HieInteropService hieService) {
+        return new FhirOutboxSubscriptionRelay(subscriptionRepo, hieService);
+    }
+
     @Bean @ConditionalOnMissingBean @Conditional(OnFhirHieSlice.class)
     public FhirHieController fhirHieController(
             HieInteropService service,
@@ -71,6 +91,11 @@ public class HieInteropAutoConfiguration {
             HieInteropService service,
             DicomStudyRepository dicomRepo) {
         return new Hl7AstmDicomController(service, dicomRepo);
+    }
+
+    @Bean @ConditionalOnMissingBean @Conditional(OnHl7AstmDicomSlice.class)
+    public DicomPacsController dicomPacsController(DicomPacsProxyService proxy) {
+        return new DicomPacsController(proxy);
     }
 
     @Bean

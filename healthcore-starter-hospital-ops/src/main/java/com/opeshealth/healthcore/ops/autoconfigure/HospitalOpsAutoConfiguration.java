@@ -10,6 +10,7 @@
 package com.opeshealth.healthcore.ops.autoconfigure;
 
 import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities;
+import com.opeshealth.healthcore.ops.service.BiomedicalColdChainMqttClient;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.*;
 import com.opeshealth.healthcore.persistence.autoconfigure.ModuleSliceConditionSupport;
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
@@ -29,6 +31,7 @@ import java.util.List;
 @AutoConfiguration
 @EntityScan(basePackageClasses = HospitalOpsEntities.class)
 @EnableJpaRepositories(basePackageClasses = HospitalOpsService.class)
+@Import(BiomedicalColdChainMqttClient.class)
 public class HospitalOpsAutoConfiguration {
 
     private static final String BLOOD_MARKER = "com.opeshealth.healthcore.starters.BloodBankStarter";
@@ -113,7 +116,7 @@ public class HospitalOpsAutoConfiguration {
             return ModuleSliceConditionSupport.isSliceEnabled(c, "healthcore.modules.telemedicine.enabled", TELEMED_MARKER, GROUP_MARKERS);
         }
     }
-    static class OnBiomedSlice implements Condition {
+    public static class OnBiomedSlice implements Condition {
         @Override public boolean matches(ConditionContext c, AnnotatedTypeMetadata m) {
             return ModuleSliceConditionSupport.isSliceEnabled(c, "healthcore.modules.biomedical-coldchain.enabled", BIOMED_MARKER, GROUP_MARKERS);
         }

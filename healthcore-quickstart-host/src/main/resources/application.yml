@@ -41,9 +41,37 @@ healthcore:
   postgres:
     rls:
       enabled: false # Set true after applying postgres/enable-rls-policies.sql with non-superuser DB role
+    notify:
+      enabled: false # Set true for zero-broker PostgreSQL LISTEN/NOTIFY outbox fanout
+  outbox:
+    enabled: true
+    rabbitmq:
+      enabled: false # Set true when RabbitMQ AMQP broker is configured
+  coldchain:
+    mqtt:
+      enabled: false # Set true with Eclipse Paho broker for 2C-8C WHO PQS fridge telemetry
+      broker-url: ${HEALTHCORE_MQTT_URL:tcp://localhost:1883}
+      topic: ${HEALTHCORE_MQTT_TOPIC:healthcore/+/coldchain/#}
+      client-id: ${HEALTHCORE_MQTT_CLIENT_ID:healthcore-coldchain-subscriber}
   workflow:
     sla-scan-interval-ms: 60000 # Scans overdue ACTIVE workflow instances via PostgreSQL partial index
+  dhis2:
+    enabled: false # Set true with DHIS2 /api/dataValueSets & /api/tracker endpoint
+    base-url: ${HEALTHCORE_DHIS2_URL:}
+    username: ${HEALTHCORE_DHIS2_USER:}
+    password: ${HEALTHCORE_DHIS2_PASSWORD:}
+    sync-interval-ms: 300000
+  terminology:
+    remote-sync:
+      enabled: false # Set true to expand/cache ValueSets from external FHIR Terminology Server
+      fhir-server-url: ${HEALTHCORE_FHIR_TERMINOLOGY_URL:}
+      interval-ms: 86400000
   hie:
+    subscription-relay:
+      enabled: true # Auto-relays Outbox domain events to matching ACTIVE FHIR Subscriptions
+    dicom:
+      pacs-enabled: false # Set true with Orthanc/DCM4CHEE DICOMweb base URL
+      pacs-base-url: ${HEALTHCORE_PACS_DICOMWEB_URL:}
     mllp:
       enabled: false # Enable via -Dhealthcore.hie.mllp.enabled=true to bind HL7v2 TCP listener
       port: 2575
@@ -65,6 +93,23 @@ resilience4j:
         sliding-window-size: 10
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
+      dhis2Outbound:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+      pacsProxy:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+      terminologyRemote:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 60s
+  bulkhead:
+    instances:
+      hieOutbound:
+        max-concurrent-calls: 25
+        max-wait-duration: 500ms
   timelimiter:
     instances:
       hieWebhook:

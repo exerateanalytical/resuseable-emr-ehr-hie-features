@@ -231,4 +231,31 @@ public final class ResilienceAndGovernanceSupport {
             return ResponseEntity.status(status).body(pd);
         }
     }
+
+    /**
+     * Lightweight PostgreSQL transaction-scoped advisory lock helper ({@code pg_try_advisory_xact_lock})
+     * preventing duplicate execution of scheduled tasks (IDSR reports, PITR snapshots, bulk exports)
+     * across multi-pod deployments without external ZooKeeper/etcd infrastructure.
+     */
+    public static class PostgresAdvisoryLockHelper {
+        private final JdbcTemplate jdbcTemplate;
+        private final boolean postgresDialect;
+
+        public PostgresAdvisoryLockHelper(JdbcTemplate jdbcTemplate, boolean postgresDialect) {
+            this.jdbcTemplate = jdbcTemplate;
+            this.postgresDialect = postgresDialect;
+        }
+
+        public boolean tryAcquireTransactionLock(String lockKey) {
+            if (!postgresDialect) {
+                return true;
+            }
+            Boolean acquired = jdbcTemplate.queryForObject(
+                    "SELECT pg_try_advisory_xact_lock(hashtext(?))",
+                    Boolean.class,
+                    lockKey
+            );
+            return Boolean.TRUE.equals(acquired);
+        }
+    }
 }

@@ -13,12 +13,14 @@ import com.opeshealth.healthcore.mpi.domain.MpiEntities;
 import com.opeshealth.healthcore.mpi.fhir.FhirPatientController;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = MpiEntities.class)
@@ -34,9 +36,11 @@ public class MpiAutoConfiguration {
             MpiCommandService.PatientPhoneticRepository phoneticRepo,
             MpiCommandService.PatientMergeRepository mergeRepo,
             OutboxRelayService.OutboxRepository outboxRepo,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ObjectProvider<JdbcTemplate> jdbcTemplateProvider) {
         return new MpiCommandService(
-                patientRepo, identifierRepo, demographicsRepo, phoneticRepo, mergeRepo, outboxRepo, eventPublisher);
+                patientRepo, identifierRepo, demographicsRepo, phoneticRepo, mergeRepo,
+                outboxRepo, eventPublisher, jdbcTemplateProvider.getIfAvailable());
     }
 
     @Bean

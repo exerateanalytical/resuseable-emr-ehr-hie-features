@@ -11,6 +11,7 @@ package com.opeshealth.healthcore.emr.domain;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Filter;
 
 import java.math.BigDecimal;
@@ -28,6 +29,7 @@ public final class EmrEntities {
     private EmrEntities() {}
 
     @Entity @Table(name = "hc_appointments")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AppointmentEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -60,6 +62,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_encounters")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class EncounterEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -210,6 +213,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_clinical_orders")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class ClinicalOrderEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -279,6 +283,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_admissions")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AdmissionEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -343,6 +348,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_care_plans")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class CarePlanEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();

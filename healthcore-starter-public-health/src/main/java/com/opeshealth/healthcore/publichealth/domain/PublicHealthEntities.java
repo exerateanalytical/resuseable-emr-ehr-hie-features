@@ -262,4 +262,74 @@ public final class PublicHealthEntities {
         public Instant getUpdatedAt() { return updatedAt; }
         public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
     }
+
+    /** Maps local facility/district and clinical ICD-10/EPI/CHW codes to DHIS2 UIDs. */
+    @Entity @Table(name = "hc_dhis2_mappings")
+    @org.hibernate.annotations.BatchSize(size = 32)
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class Dhis2MappingEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "district_code", nullable = false, length = 64) private String districtCode;
+        @Column(name = "source_domain", nullable = false, length = 32) private String sourceDomain; // IDSR, EPI, CHW, CHRONIC
+        @Column(name = "source_code", nullable = false, length = 64) private String sourceCode;
+        @Column(name = "dhis2_org_unit_uid", nullable = false, length = 32) private String dhis2OrgUnitUid;
+        @Column(name = "dhis2_data_element_uid", nullable = false, length = 32) private String dhis2DataElementUid;
+        @Column(name = "dhis2_category_option_uid", length = 32) private String dhis2CategoryOptionUid;
+        @Column(name = "dhis2_program_uid", length = 32) private String dhis2ProgramUid;
+        @Column(name = "active", nullable = false) private boolean active = true;
+        @Column(name = "created_at", nullable = false) private Instant createdAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getDistrictCode() { return districtCode; }
+        public void setDistrictCode(String districtCode) { this.districtCode = districtCode; }
+        public String getSourceDomain() { return sourceDomain; }
+        public void setSourceDomain(String sourceDomain) { this.sourceDomain = sourceDomain; }
+        public String getSourceCode() { return sourceCode; }
+        public void setSourceCode(String sourceCode) { this.sourceCode = sourceCode; }
+        public String getDhis2OrgUnitUid() { return dhis2OrgUnitUid; }
+        public void setDhis2OrgUnitUid(String dhis2OrgUnitUid) { this.dhis2OrgUnitUid = dhis2OrgUnitUid; }
+        public String getDhis2DataElementUid() { return dhis2DataElementUid; }
+        public void setDhis2DataElementUid(String dhis2DataElementUid) { this.dhis2DataElementUid = dhis2DataElementUid; }
+        public String getDhis2CategoryOptionUid() { return dhis2CategoryOptionUid; }
+        public void setDhis2CategoryOptionUid(String dhis2CategoryOptionUid) { this.dhis2CategoryOptionUid = dhis2CategoryOptionUid; }
+        public String getDhis2ProgramUid() { return dhis2ProgramUid; }
+        public void setDhis2ProgramUid(String dhis2ProgramUid) { this.dhis2ProgramUid = dhis2ProgramUid; }
+        public boolean isActive() { return active; }
+        public void setActive(boolean active) { this.active = active; }
+        public Instant getCreatedAt() { return createdAt; }
+    }
+
+    /** Audit record of outbound DHIS2 dataValueSets and Tracker API transmissions. */
+    @Entity @Table(name = "hc_dhis2_sync_logs")
+    public static class Dhis2SyncLogEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "sync_mode", nullable = false, length = 32) private String syncMode; // DATA_VALUE_SET, TRACKER_EVENT
+        @Column(name = "district_code", nullable = false, length = 64) private String districtCode;
+        @Column(name = "period_code", nullable = false, length = 32) private String periodCode;
+        @Lob @Column(name = "payload_json", nullable = false) private String payloadJson;
+        @Column(name = "http_status") private Integer httpStatus;
+        @Column(name = "status", nullable = false, length = 24) private String status = "DRY_RUN"; // DRY_RUN, SENT, FAILED
+        @Column(name = "dhis2_import_summary", length = 600) private String dhis2ImportSummary;
+        @Column(name = "created_at", nullable = false) private Instant createdAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public String getSyncMode() { return syncMode; }
+        public void setSyncMode(String syncMode) { this.syncMode = syncMode; }
+        public String getDistrictCode() { return districtCode; }
+        public void setDistrictCode(String districtCode) { this.districtCode = districtCode; }
+        public String getPeriodCode() { return periodCode; }
+        public void setPeriodCode(String periodCode) { this.periodCode = periodCode; }
+        public String getPayloadJson() { return payloadJson; }
+        public void setPayloadJson(String payloadJson) { this.payloadJson = payloadJson; }
+        public Integer getHttpStatus() { return httpStatus; }
+        public void setHttpStatus(Integer httpStatus) { this.httpStatus = httpStatus; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public String getDhis2ImportSummary() { return dhis2ImportSummary; }
+        public void setDhis2ImportSummary(String dhis2ImportSummary) { this.dhis2ImportSummary = dhis2ImportSummary; }
+        public Instant getCreatedAt() { return createdAt; }
+    }
 }

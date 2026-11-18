@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — DHIS2 Aggregate Mapping & Sync Audit Log Tables
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="003-dhis2-sync-tables" author="jude.nshome@opeshealthsystems.com">
+        <!-- Maps facility/district & ICD-10/EPI/CHW codes to DHIS2 UIDs -->
+        <createTable tableName="hc_dhis2_mappings">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="district_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="source_domain" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="source_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="dhis2_org_unit_uid" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="dhis2_data_element_uid" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="dhis2_category_option_uid" type="VARCHAR(32)"/>
+            <column name="dhis2_program_uid" type="VARCHAR(32)"/>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_dhis2_map_unique" tableName="hc_dhis2_mappings" unique="true">
+            <column name="district_code"/>
+            <column name="source_domain"/>
+            <column name="source_code"/>
+        </createIndex>
+
+        <!-- Audit log of DHIS2 dataValueSets and Tracker submissions -->
+        <createTable tableName="hc_dhis2_sync_logs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="sync_mode" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="district_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="period_code" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="payload_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="http_status" type="INT"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="dhis2_import_summary" type="VARCHAR(600)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createIndex indexName="idx_hc_dhis2_logs_district_period" tableName="hc_dhis2_sync_logs">
+            <column name="district_code"/>
+            <column name="period_code"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

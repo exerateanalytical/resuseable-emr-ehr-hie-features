@@ -73,6 +73,16 @@ public class FhirPatientController {
         return mpiService.findProbabilisticMatches(familyName, givenName, birthDate, gender, phone);
     }
 
+    @GetMapping("/api/v1/mpi/patients/fuzzy-search")
+    @PreAuthorize("hasAuthority('PERM_patient:read')")
+    @Operation(summary = "Fuzzy patient name/MRN lookup using PostgreSQL pg_trgm GIN trigram similarity")
+    public List<PatientAggregateEntity> fuzzySearch(
+            @RequestParam UUID facilityId,
+            @RequestParam String query,
+            @RequestParam(defaultValue = "20") int limit) {
+        return mpiService.findByFacilityAndFuzzyName(facilityId, query, limit);
+    }
+
     @PostMapping("/api/v1/mpi/patients/merge")
     @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_facility:manage')")
     @Operation(summary = "Reversibly merge duplicate patient record into surviving Golden Record")

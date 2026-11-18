@@ -18,8 +18,11 @@ import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
@@ -81,6 +84,7 @@ public class MpiCommandService {
     private final PatientMergeRepository mergeRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
     private final ApplicationEventPublisher eventPublisher;
+    private final JdbcTemplate jdbcTemplate;
 
     public MpiCommandService(
             PatientRepository patientRepo,
@@ -90,6 +94,18 @@ public class MpiCommandService {
             PatientMergeRepository mergeRepo,
             OutboxRelayService.OutboxRepository outboxRepo,
             ApplicationEventPublisher eventPublisher) {
+        this(patientRepo, identifierRepo, demographicsRepo, phoneticRepo, mergeRepo, outboxRepo, eventPublisher, null);
+    }
+
+    public MpiCommandService(
+            PatientRepository patientRepo,
+            PatientIdentifierRepository identifierRepo,
+            PatientDemographicsRepository demographicsRepo,
+            PatientPhoneticRepository phoneticRepo,
+            PatientMergeRepository mergeRepo,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            ApplicationEventPublisher eventPublisher,
+            JdbcTemplate jdbcTemplate) {
         this.patientRepo = patientRepo;
         this.identifierRepo = identifierRepo;
         this.demographicsRepo = demographicsRepo;
@@ -97,6 +113,7 @@ public class MpiCommandService {
         this.mergeRepo = mergeRepo;
         this.outboxRepo = outboxRepo;
         this.eventPublisher = eventPublisher;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -172,6 +189,77 @@ public class MpiCommandService {
                 .filter(mc -> mc.score() >= 0.50)
                 .sorted(Comparator.comparingDouble(MatchCandidate::score).reversed())
                 .toList();
+    }
+
+    /**
+     * Fuzzy patient lookup leveraging PostgreSQL {@code pg_trgm} GIN trigram indexes
+     * ({@code gin_trgm_ops} on {@code hc_patients}) when running on PostgreSQL 16+,
+     * with a portable JPA substring fallback for MSSQL, MySQL, and H2 test suites.
+     */
+    @Transactional(readOnly = true)
+    public List<PatientAggregateEntity> findByFacilityAndFuzzyName(UUID facilityId, String query, int limit) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        String trimmed = query.trim();
+
+        if (isPostgreSql()) {
+            try {
+                String likePattern = "%" + trimmed + "%";
+                List<UUID> orderedIds = jdbcTemplate.queryForList(
+                        """
+                        SELECT id FROM hc_patients
+                        WHERE facility_id = ?
+                          AND golden_record = true
+                          AND active = true
+                          AND (
+                            family_name % ? OR given_name % ? OR mrn ILIKE ?
+                            OR lower(family_name) LIKE lower(?) OR lower(given_name) LIKE lower(?)
+                          )
+                        ORDER BY GREATEST(similarity(family_name, ?), similarity(given_name, ?)) DESC, updated_at DESC
+                        LIMIT ?
+                        """,
+                        UUID.class,
+                        facilityId, trimmed, trimmed, likePattern, likePattern, likePattern, trimmed, trimmed, safeLimit
+                );
+                if (orderedIds.isEmpty()) {
+                    return List.of();
+                }
+                Map<UUID, PatientAggregateEntity> byId = new HashMap<>();
+                for (PatientAggregateEntity p : patientRepo.findByIdIn(orderedIds)) {
+                    byId.put(p.getId(), p);
+                }
+                return orderedIds.stream().map(byId::get).filter(Objects::nonNull).toList();
+            } catch (Exception ignored) {
+                // Fall back cleanly if pg_trgm extension is not enabled in the current database
+            }
+        }
+
+        String needle = trimmed.toLowerCase(Locale.ROOT);
+        return patientRepo.findAll().stream()
+                .filter(p -> Objects.equals(p.getFacilityId(), facilityId) && p.isGoldenRecord() && p.isActive())
+                .filter(p -> p.getFamilyName().toLowerCase(Locale.ROOT).contains(needle)
+                        || p.getGivenName().toLowerCase(Locale.ROOT).contains(needle)
+                        || p.getMrn().toLowerCase(Locale.ROOT).contains(needle))
+                .limit(safeLimit)
+                .toList();
+    }
+
+    private boolean isPostgreSql() {
+        if (jdbcTemplate == null) {
+            return false;
+        }
+        DataSource ds = jdbcTemplate.getDataSource();
+        if (ds == null) {
+            return false;
+        }
+        try (Connection conn = ds.getConnection()) {
+            String product = conn.getMetaData().getDatabaseProductName();
+            return product != null && product.toLowerCase(Locale.ROOT).contains("postgresql");
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     /** Executes a reversible Golden Record merge and emits {@code PatientMergedEvent}. */

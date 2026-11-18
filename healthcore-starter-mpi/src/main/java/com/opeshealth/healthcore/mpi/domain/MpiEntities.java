@@ -12,6 +12,7 @@ package com.opeshealth.healthcore.mpi.domain;
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Filter;
 
 import java.time.Instant;
@@ -28,6 +29,7 @@ public final class MpiEntities {
 
     @Entity
     @Table(name = "hc_patients")
+    @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class PatientAggregateEntity {
         @Id
@@ -120,6 +122,7 @@ public final class MpiEntities {
     /** Encrypted National ID / Passport / Insurance / Biometric identifier with HMAC blind index. */
     @Entity
     @Table(name = "hc_patient_identifiers")
+    @BatchSize(size = 32)
     public static class PatientIdentifierEntity {
         @Id
         @Column(name = "id", nullable = false, updatable = false)
@@ -158,6 +161,7 @@ public final class MpiEntities {
 
     @Entity
     @Table(name = "hc_patient_demographics")
+    @BatchSize(size = 32)
     public static class PatientDemographicsEntity {
         @Id
         @Column(name = "id", nullable = false, updatable = false)

@@ -9,9 +9,12 @@
  */
 package com.opeshealth.healthcore.terminology.autoconfigure;
 
+import com.opeshealth.healthcore.persistence.resilience.ResilienceAndGovernanceSupport.PostgresAdvisoryLockHelper;
 import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
 import com.opeshealth.healthcore.terminology.domain.TerminologyEntities;
+import com.opeshealth.healthcore.terminology.service.FhirTerminologySyncClient;
 import com.opeshealth.healthcore.terminology.service.TerminologyService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -47,5 +50,21 @@ public class TerminologyCdssAutoConfiguration {
             TerminologyService terminologyService,
             CdsHooksEngine cdsHooksEngine) {
         return new CdsHooksEngine.CdsHooksController(terminologyService, cdsHooksEngine);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FhirTerminologySyncClient fhirTerminologySyncClient(
+            TerminologyService terminologyService,
+            ObjectProvider<PostgresAdvisoryLockHelper> lockHelperProvider) {
+        return new FhirTerminologySyncClient(terminologyService, lockHelperProvider.getIfAvailable());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FhirTerminologySyncClient.TerminologyManagementController terminologyManagementController(
+            TerminologyService terminologyService,
+            FhirTerminologySyncClient syncClient) {
+        return new FhirTerminologySyncClient.TerminologyManagementController(terminologyService, syncClient);
     }
 }

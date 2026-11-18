@@ -12,6 +12,7 @@ package com.opeshealth.healthcore.terminology.service;
 import com.opeshealth.healthcore.terminology.domain.TerminologyEntities.*;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -187,10 +188,12 @@ public class TerminologyService implements ApplicationRunner {
      * <ul>
      *   <li>{@code CSV}: {@code systemUri,code,displayEn,displayFr,clinicalDomain,ucumUnit}</li>
      *   <li>{@code SNOMED_RF2}: tab-delimited {@code id\teffectiveTime\tactive\tmoduleId\tconceptId\tlanguageCode\ttypeId\tterm\tcaseSignificanceId}</li>
+     *   <li>{@code SNOMED_RF2_RELATIONSHIP}: tab-delimited {@code sct2_Relationship_Snapshot} building full multi-hop IS-A ({@code typeId=116680003}) closure edges into {@code hc_concept_closure}</li>
      *   <li>{@code FHIR_CODESYSTEM}: FHIR R4 JSON {@code {"url":"...", "concept":[{"code":"...", "display":"..."}]}}</li>
      * </ul>
      */
     @Transactional
+    @CacheEvict(cacheNames = {"terminologyConcepts", "snomedClosure"}, allEntries = true)
     public Map<String, Object> bulkImportConcepts(String format, String content) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("Import content cannot be blank");
@@ -249,6 +252,37 @@ public class TerminologyService implements ApplicationRunner {
                     }
                 }
             }
+            case "SNOMED_RF2_RELATIONSHIP" -> {
+                Map<String, Set<String>> childrenByParent = new HashMap<>();
+                String[] lines = content.split("\\r?\\n");
+                for (String rawLine : lines) {
+                    String line = rawLine.trim();
+                    if (line.isEmpty() || line.startsWith("id\t")) {
+                        continue;
+                    }
+                    String[] cols = line.split("\\t", -1);
+                    // RF2 Relationship: active=1 at [2], sourceId (child) at [4], destinationId (parent) at [5], typeId=116680003 (IS-A) at [7]
+                    if (cols.length < 8 || !"1".equals(cols[2].trim()) || !"116680003".equals(cols[7].trim())) {
+                        skipped++;
+                        continue;
+                    }
+                    String child = cols[4].trim();
+                    String parent = cols[5].trim();
+                    if (!child.isBlank() && !parent.isBlank() && !child.equals(parent)) {
+                        childrenByParent.computeIfAbsent(parent, k -> new LinkedHashSet<>()).add(child);
+                    }
+                }
+                List<ConceptClosureEntity> toSave = computeTransitiveClosureEdges(SNOMED, childrenByParent);
+                for (ConceptClosureEntity edge : toSave) {
+                    if (!closureRepo.existsBySystemUriAndAncestorCodeAndDescendantCode(
+                            SNOMED, edge.getAncestorCode(), edge.getDescendantCode())) {
+                        closureRepo.save(edge);
+                        imported++;
+                    } else {
+                        skipped++;
+                    }
+                }
+            }
             case "FHIR_CODESYSTEM" -> {
                 try {
                     com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -275,6 +309,43 @@ public class TerminologyService implements ApplicationRunner {
         }
 
         return Map.of("format", fmt, "importedCount", imported, "skippedCount", skipped);
+    }
+
+    /**
+     * Computes cycle-safe multi-hop BFS transitive closure edges {@code (ancestor -> descendant, depth)}
+     * from a parent-to-children IS-A adjacency graph for O(1) cross-DB CDSS subsumption queries.
+     */
+    public static List<ConceptClosureEntity> computeTransitiveClosureEdges(
+            String systemUri, Map<String, Set<String>> childrenByParent) {
+        List<ConceptClosureEntity> edges = new ArrayList<>();
+        for (String ancestor : childrenByParent.keySet()) {
+            Map<String, Integer> minDepth = new LinkedHashMap<>();
+            ArrayDeque<String> queue = new ArrayDeque<>();
+            for (String directChild : childrenByParent.getOrDefault(ancestor, Set.of())) {
+                if (!directChild.equals(ancestor) && minDepth.putIfAbsent(directChild, 1) == null) {
+                    queue.add(directChild);
+                }
+            }
+            while (!queue.isEmpty()) {
+                String current = queue.poll();
+                int nextDepth = minDepth.get(current) + 1;
+                if (nextDepth > 32) continue;
+                for (String child : childrenByParent.getOrDefault(current, Set.of())) {
+                    if (!child.equals(ancestor) && minDepth.putIfAbsent(child, nextDepth) == null) {
+                        queue.add(child);
+                    }
+                }
+            }
+            for (Map.Entry<String, Integer> e : minDepth.entrySet()) {
+                ConceptClosureEntity closure = new ConceptClosureEntity();
+                closure.setSystemUri(systemUri);
+                closure.setAncestorCode(ancestor);
+                closure.setDescendantCode(e.getKey());
+                closure.setDepth(e.getValue());
+                edges.add(closure);
+            }
+        }
+        return edges;
     }
 
     private void seedConcept(String sys, String code, String en, String fr, String domain, String ucum) {

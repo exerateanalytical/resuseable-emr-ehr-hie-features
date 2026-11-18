@@ -11,9 +11,13 @@ package com.opeshealth.healthcore.publichealth.autoconfigure;
 
 import com.opeshealth.healthcore.persistence.autoconfigure.ModuleSliceConditionSupport;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.resilience.ResilienceAndGovernanceSupport.PostgresAdvisoryLockHelper;
 import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities;
+import com.opeshealth.healthcore.publichealth.service.Dhis2PushClient;
+import com.opeshealth.healthcore.publichealth.service.Dhis2PushClient.*;
 import com.opeshealth.healthcore.publichealth.service.PublicHealthService;
 import com.opeshealth.healthcore.publichealth.service.PublicHealthService.*;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -28,7 +32,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = PublicHealthEntities.class)
-@EnableJpaRepositories(basePackageClasses = PublicHealthService.class)
+@EnableJpaRepositories(basePackageClasses = {PublicHealthService.class, Dhis2PushClient.class})
 public class PublicHealthAutoConfiguration {
 
     private static final String CHW_MARKER = "com.opeshealth.healthcore.starters.ChwHomeCareStarter";
@@ -53,6 +57,17 @@ public class PublicHealthAutoConfiguration {
                 contactRepo, cifRepo, cascadeRepo, outboxRepo);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public Dhis2PushClient dhis2PushClient(
+            Dhis2MappingRepository mappingRepo,
+            Dhis2SyncLogRepository syncLogRepo,
+            SurveillanceCaseRepository surveillanceRepo,
+            ObjectProvider<PostgresAdvisoryLockHelper> lockHelperProvider) {
+        return new Dhis2PushClient(
+                mappingRepo, syncLogRepo, surveillanceRepo, lockHelperProvider.getIfAvailable());
+    }
+
     @Bean @ConditionalOnMissingBean @Conditional(OnChwHomeCareSlice.class)
     public ChwHomeCareController chwHomeCareController(
             PublicHealthService service,
@@ -73,6 +88,14 @@ public class PublicHealthAutoConfiguration {
             PublicHealthService service,
             ContactTracingRepository contactRepo) {
         return new DiseaseSurveillanceController(service, contactRepo);
+    }
+
+    @Bean @ConditionalOnMissingBean @Conditional(OnDiseaseSurveillanceSlice.class)
+    public Dhis2Controller dhis2Controller(
+            Dhis2PushClient client,
+            Dhis2MappingRepository mappingRepo,
+            Dhis2SyncLogRepository logRepo) {
+        return new Dhis2Controller(client, mappingRepo, logRepo);
     }
 
     static class OnChwHomeCareSlice implements Condition {

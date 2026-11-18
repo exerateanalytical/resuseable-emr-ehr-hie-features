@@ -18,6 +18,7 @@ import com.opeshealth.healthcore.hie.domain.HieEntities.*;
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientAggregateEntity;
 import com.opeshealth.healthcore.mpi.fhir.FhirPatientController;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,6 +58,7 @@ public class HieInteropService {
     }
     public interface DicomStudyRepository extends JpaRepository<DicomStudyEntity, UUID> {
         List<DicomStudyEntity> findByPatientIdOrderByStudyDateDesc(UUID patientId);
+        Optional<DicomStudyEntity> findFirstByStudyInstanceUid(String studyInstanceUid);
     }
     public interface HieDlqRepository extends JpaRepository<HieDlqMessageEntity, UUID> {}
     public interface IheDocumentRepository extends JpaRepository<IheDocumentEntity, UUID> {
@@ -149,8 +151,9 @@ public class HieInteropService {
         return parser.encodeResourceToString(response);
     }
 
-    /** Dispatches HMAC-signed FHIR Subscription REST-Hook payloads guarded by Resilience4j CircuitBreaker. */
+    /** Dispatches HMAC-signed FHIR Subscription REST-Hook payloads guarded by Resilience4j CircuitBreaker &amp; Bulkhead. */
     @CircuitBreaker(name = "hieWebhook", fallbackMethod = "webhookFallback")
+    @Bulkhead(name = "hieOutbound", fallbackMethod = "webhookFallback")
     public Map<String, Object> dispatchSignedWebhook(UUID subscriptionId, String resourceJson) {
         FhirSubscriptionEntity sub = subscriptionRepo.findById(subscriptionId)
                 .orElseThrow(() -> new NoSuchElementException("Subscription not found: " + subscriptionId));

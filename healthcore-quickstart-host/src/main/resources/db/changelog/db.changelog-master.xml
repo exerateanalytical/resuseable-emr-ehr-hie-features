@@ -46,6 +46,7 @@
     <include file="classpath:db/changelog/uhc_billing/002-uhc-vouchers.xml"/>
     <include file="classpath:db/changelog/public_health/001-public-health.xml"/>
     <include file="classpath:db/changelog/public_health/002-public-health-cascades.xml"/>
+    <include file="classpath:db/changelog/public_health/003-dhis2-sync.xml"/>
     <include file="classpath:db/changelog/hospital_ops/001-hospital-ops.xml"/>
     <include file="classpath:db/changelog/hospital_ops/002-hospital-ops-expanded.xml"/>
     <include file="classpath:db/changelog/offline_sync/001-offline-sync.xml"/>

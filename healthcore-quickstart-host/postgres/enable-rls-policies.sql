@@ -46,6 +46,7 @@ DECLARE
         'hc_surveillance_cases',
         'hc_idsr_cif_forms',
         'hc_chronic_cascades',
+        'hc_dhis2_mappings',
         'hc_workflow_definitions',
         'hc_workflow_instances',
         'hc_workflow_step_logs',

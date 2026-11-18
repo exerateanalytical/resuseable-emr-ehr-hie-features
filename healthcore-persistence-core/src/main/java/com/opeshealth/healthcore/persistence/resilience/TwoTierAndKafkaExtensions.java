@@ -13,17 +13,21 @@ import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.env.Environment;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.time.Duration;
@@ -31,11 +35,13 @@ import java.util.Collection;
 import java.util.concurrent.Callable;
 
 /**
- * Provides drop-in distributed scalability extensions when Redis or Apache Kafka
- * starters are added to a host application:
+ * Provides drop-in distributed scalability extensions when Redis, Kafka, RabbitMQ, or
+ * PostgreSQL native {@code LISTEN/NOTIFY} are enabled in a host application:
  * <ul>
  *   <li>{@link TwoTierCacheConfiguration} — L1 Caffeine read-through + L2 Redis cluster sync</li>
  *   <li>{@link KafkaEventPublisherConfiguration} — Kafka-backed {@link OutboxRelayService.EventPublisherSpi}</li>
+ *   <li>{@link RabbitEventPublisherConfiguration} — RabbitMQ AMQP {@link OutboxRelayService.EventPublisherSpi}</li>
+ *   <li>{@link PostgresNotifyEventConfiguration} — Zero-broker PostgreSQL {@code pg_notify} real-time event fanout</li>
  * </ul>
  */
 public final class TwoTierAndKafkaExtensions {
@@ -121,6 +127,57 @@ public final class TwoTierAndKafkaExtensions {
                 String topic = "healthcore." + event.getAggregateType().toLowerCase();
                 kafkaTemplate.send(topic, event.getAggregateId().toString(), event.getPayloadJson());
                 log.debug("Published outbox event {} to Kafka topic {}", event.getEventType(), topic);
+            };
+        }
+    }
+
+    /**
+     * RabbitMQ AMQP outbox relay adapter activated via {@code healthcore.outbox.rabbitmq.enabled=true}.
+     */
+    @Configuration
+    @ConditionalOnClass(RabbitTemplate.class)
+    @ConditionalOnProperty(prefix = "healthcore.outbox.rabbitmq", name = "enabled", havingValue = "true")
+    public static class RabbitEventPublisherConfiguration {
+        private static final Logger log = LoggerFactory.getLogger(RabbitEventPublisherConfiguration.class);
+
+        @Bean
+        @Primary
+        public OutboxRelayService.EventPublisherSpi rabbitOutboxEventPublisher(RabbitTemplate rabbitTemplate) {
+            return (TransactionalOutboxEntity event) -> {
+                String routingKey = "healthcore." + event.getAggregateType().toLowerCase() + "." + event.getEventType();
+                rabbitTemplate.convertAndSend("healthcore.events", routingKey, event.getPayloadJson());
+                log.debug("Published outbox event {} to RabbitMQ exchange healthcore.events ({})",
+                        event.getEventType(), routingKey);
+            };
+        }
+    }
+
+    /**
+     * Zero-broker PostgreSQL {@code pg_notify} fanout publisher alongside Spring in-process events,
+     * enabling multi-pod clusters to receive instant clinical/HIE wakeups directly from PostgreSQL 16+.
+     */
+    @Configuration
+    @ConditionalOnProperty(prefix = "healthcore.postgres.notify", name = "enabled", havingValue = "true")
+    public static class PostgresNotifyEventConfiguration {
+        private static final Logger log = LoggerFactory.getLogger(PostgresNotifyEventConfiguration.class);
+
+        @Bean
+        @Primary
+        public OutboxRelayService.EventPublisherSpi postgresNotifyOutboxPublisher(
+                JdbcTemplate jdbcTemplate,
+                ApplicationEventPublisher springPublisher,
+                Environment env) {
+            OutboxRelayService.SpringInProcessEventPublisher inProcess =
+                    new OutboxRelayService.SpringInProcessEventPublisher(springPublisher);
+            String url = env.getProperty("spring.datasource.url", "");
+            boolean isPostgres = url.isEmpty() || url.contains(":postgresql:");
+            return (TransactionalOutboxEntity event) -> {
+                inProcess.publish(event);
+                if (isPostgres) {
+                    String notifyBody = event.getAggregateType() + ":" + event.getEventType() + ":" + event.getAggregateId();
+                    jdbcTemplate.queryForObject("SELECT pg_notify('healthcore_events', ?)", Object.class, notifyBody);
+                    log.debug("Dispatched PostgreSQL pg_notify healthcore_events for {}", notifyBody);
+                }
             };
         }
     }

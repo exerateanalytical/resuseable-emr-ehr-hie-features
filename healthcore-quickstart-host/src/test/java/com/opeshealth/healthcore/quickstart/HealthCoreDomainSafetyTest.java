@@ -10,18 +10,42 @@
 package com.opeshealth.healthcore.quickstart;
 
 import com.opeshealth.healthcore.emr.specialty.SpecialtyPackSpi;
+import com.opeshealth.healthcore.hie.domain.HieEntities.DicomStudyEntity;
+import com.opeshealth.healthcore.hie.domain.HieEntities.FhirSubscriptionEntity;
+import com.opeshealth.healthcore.hie.service.DicomPacsProxyService;
+import com.opeshealth.healthcore.hie.service.FhirOutboxSubscriptionRelay;
+import com.opeshealth.healthcore.hie.service.HieInteropService.DicomStudyRepository;
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientAggregateEntity;
 import com.opeshealth.healthcore.mpi.match.FellegiSunterMatcher;
+import com.opeshealth.healthcore.mpi.service.MpiCommandService;
+import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.ColdChainTelemetryEntity;
+import com.opeshealth.healthcore.ops.service.BiomedicalColdChainMqttClient;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService;
+import com.opeshealth.healthcore.ops.service.HospitalOpsService.ColdChainRepository;
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
+import com.opeshealth.healthcore.persistence.resilience.ResilienceAndGovernanceSupport.PostgresAdvisoryLockHelper;
+import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.Dhis2MappingEntity;
+import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.Dhis2SyncLogEntity;
+import com.opeshealth.healthcore.publichealth.domain.PublicHealthEntities.SurveillanceCaseEntity;
+import com.opeshealth.healthcore.publichealth.service.Dhis2PushClient;
+import com.opeshealth.healthcore.publichealth.service.Dhis2PushClient.Dhis2MappingRepository;
+import com.opeshealth.healthcore.publichealth.service.Dhis2PushClient.Dhis2SyncLogRepository;
+import com.opeshealth.healthcore.publichealth.service.PublicHealthService.SurveillanceCaseRepository;
 import com.opeshealth.healthcore.security.audit.PhiRedactionConverter;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock;
+import com.opeshealth.healthcore.templates.domain.TemplatesAndOnboardingEntities.BackupManifestEntity;
 import com.opeshealth.healthcore.templates.service.HospitalTemplateCatalog;
+import com.opeshealth.healthcore.templates.service.TemplatesAndOperationsService.PostgresBackupProvider;
 import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
+import com.opeshealth.healthcore.terminology.domain.TerminologyEntities.CodeConceptEntity;
+import com.opeshealth.healthcore.terminology.domain.TerminologyEntities.ConceptClosureEntity;
+import com.opeshealth.healthcore.terminology.service.FhirTerminologySyncClient;
 import com.opeshealth.healthcore.terminology.service.TerminologyService;
+import com.opeshealth.healthcore.terminology.service.TerminologyService.CodeConceptRepository;
 import com.opeshealth.healthcore.uhc.service.UhcBillingService;
 import com.opeshealth.healthcore.workflow.catalog.ReusableWorkflowCatalog;
 import com.opeshealth.healthcore.workflow.domain.WorkflowEntities.*;
@@ -29,6 +53,7 @@ import com.opeshealth.healthcore.workflow.service.WorkflowOrchestrationService;
 import com.opeshealth.healthcore.workflow.service.WorkflowOrchestrationService.*;
 import com.opeshealth.healthcore.workflow.spi.WorkflowSpi.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.ResponseEntity;
 
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
@@ -247,5 +272,233 @@ class HealthCoreDomainSafetyTest {
         assertTrue(afterCalled.get());
         assertEquals(4, logs.size());
         assertEquals(4, outbox.size());
+    }
+
+    @Test
+    void postgresAdvisoryLockHelperAllowsNonPostgresMode() {
+        PostgresAdvisoryLockHelper helper = new PostgresAdvisoryLockHelper(null, false);
+        assertTrue(helper.tryAcquireTransactionLock("idsr-weekly-report"));
+    }
+
+    @Test
+    void coldChainMqttPayloadExcursionEmitsOutboxAlert() {
+        List<ColdChainTelemetryEntity> readings = new ArrayList<>();
+        List<TransactionalOutboxEntity> outbox = new ArrayList<>();
+
+        ColdChainRepository coldRepo = (ColdChainRepository) Proxy.newProxyInstance(
+                ColdChainRepository.class.getClassLoader(),
+                new Class<?>[]{ColdChainRepository.class},
+                (p, m, a) -> {
+                    if ("save".equals(m.getName())) {
+                        ColdChainTelemetryEntity e = (ColdChainTelemetryEntity) a[0];
+                        readings.add(e);
+                        return e;
+                    }
+                    return readings;
+                });
+        OutboxRelayService.OutboxRepository outboxRepo = (OutboxRelayService.OutboxRepository) Proxy.newProxyInstance(
+                OutboxRelayService.OutboxRepository.class.getClassLoader(),
+                new Class<?>[]{OutboxRelayService.OutboxRepository.class},
+                (p, m, a) -> {
+                    if ("save".equals(m.getName())) {
+                        TransactionalOutboxEntity e = (TransactionalOutboxEntity) a[0];
+                        outbox.add(e);
+                        return e;
+                    }
+                    return outbox;
+                });
+
+        HospitalOpsService ops = new HospitalOpsService(
+                null, null, null, null, null, null, coldRepo, null, null, null, null, outboxRepo);
+        BiomedicalColdChainMqttClient mqttClient = new BiomedicalColdChainMqttClient(ops);
+
+        UUID facId = UUID.randomUUID();
+        mqttClient.handleTelemetryPayload("{\"facilityId\":\"" + facId + "\",\"equipmentTag\":\"EPI-FRIDGE-01\",\"tempCelsius\":11.4}");
+
+        assertEquals(1, readings.size());
+        assertTrue(readings.getFirst().isExcursionAlert());
+        assertEquals(1, outbox.size());
+        assertEquals("ColdChainExcursionEvent", outbox.getFirst().getEventType());
+    }
+
+    @Test
+    void postgresBackupProviderBuildsVerifiedManifestWithoutLiveDb() {
+        PostgresBackupProvider provider = new PostgresBackupProvider();
+        assertEquals("POSTGRESQL", provider.dbEngine());
+        BackupManifestEntity manifest = provider.executeSnapshot("s3://opes-backups/pg/base-001.tar.zst", null);
+        assertEquals("POSTGRESQL", manifest.getDbEngine());
+        assertTrue(manifest.isRestoreVerified());
+        assertNotNull(manifest.getSha256Checksum());
+        assertEquals(64, manifest.getSha256Checksum().length());
+    }
+
+    @Test
+    void mpiFuzzySearchSupportsPortableFallbackWhenNoPgJdbcPresent() {
+        UUID facId = UUID.randomUUID();
+        PatientAggregateEntity matching = new PatientAggregateEntity();
+        matching.setFacilityId(facId);
+        matching.setMrn("DLA-4001");
+        matching.setFamilyName("Nshome");
+        matching.setGivenName("Jude");
+        matching.setBirthDate(LocalDate.of(1990, 5, 14));
+        matching.setGender("MALE");
+
+        PatientAggregateEntity other = new PatientAggregateEntity();
+        other.setFacilityId(facId);
+        other.setMrn("DLA-4002");
+        other.setFamilyName("Mbarga");
+        other.setGivenName("Claire");
+        other.setBirthDate(LocalDate.of(1992, 3, 10));
+        other.setGender("FEMALE");
+
+        MpiCommandService.PatientRepository patientRepo = (MpiCommandService.PatientRepository) Proxy.newProxyInstance(
+                MpiCommandService.PatientRepository.class.getClassLoader(),
+                new Class<?>[]{MpiCommandService.PatientRepository.class},
+                (p, m, a) -> "findAll".equals(m.getName()) ? List.of(matching, other) : Optional.empty());
+
+        MpiCommandService mpi = new MpiCommandService(patientRepo, null, null, null, null, null, null, null);
+        List<PatientAggregateEntity> found = mpi.findByFacilityAndFuzzyName(facId, "nshom", 10);
+        assertEquals(1, found.size());
+        assertEquals("DLA-4001", found.getFirst().getMrn());
+    }
+
+    @Test
+    void dhis2PushClientBuildsMappedAggregatePayloadAndLogsDryRun() {
+        Dhis2MappingEntity map = new Dhis2MappingEntity();
+        map.setDistrictCode("CM-LT-DLA");
+        map.setSourceDomain("IDSR");
+        map.setSourceCode("B50.9");
+        map.setDhis2OrgUnitUid("OU_DOUALA_1");
+        map.setDhis2DataElementUid("DE_MALARIA");
+        map.setDhis2CategoryOptionUid("COC_CONF");
+
+        SurveillanceCaseEntity c1 = new SurveillanceCaseEntity();
+        c1.setFacilityId(UUID.randomUUID());
+        c1.setPatientId(UUID.randomUUID());
+        c1.setDistrictCode("CM-LT-DLA");
+        c1.setDiseaseIcd10("B50.9");
+        c1.setDiseaseName("Malaria");
+
+        List<Dhis2SyncLogEntity> logs = new ArrayList<>();
+        Dhis2MappingRepository mapRepo = (Dhis2MappingRepository) Proxy.newProxyInstance(
+                Dhis2MappingRepository.class.getClassLoader(),
+                new Class<?>[]{Dhis2MappingRepository.class},
+                (p, m, a) -> List.of(map));
+        Dhis2SyncLogRepository logRepo = (Dhis2SyncLogRepository) Proxy.newProxyInstance(
+                Dhis2SyncLogRepository.class.getClassLoader(),
+                new Class<?>[]{Dhis2SyncLogRepository.class},
+                (p, m, a) -> {
+                    if ("save".equals(m.getName())) {
+                        Dhis2SyncLogEntity e = (Dhis2SyncLogEntity) a[0];
+                        logs.add(e);
+                        return e;
+                    }
+                    return logs;
+                });
+        SurveillanceCaseRepository caseRepo = (SurveillanceCaseRepository) Proxy.newProxyInstance(
+                SurveillanceCaseRepository.class.getClassLoader(),
+                new Class<?>[]{SurveillanceCaseRepository.class},
+                (p, m, a) -> List.of(c1));
+
+        Dhis2PushClient client = new Dhis2PushClient(mapRepo, logRepo, caseRepo, new PostgresAdvisoryLockHelper(null, false));
+        Dhis2SyncLogEntity entry = client.pushAggregateDataValueSet("CM-LT-DLA", "2026W46", true);
+
+        assertEquals("DRY_RUN", entry.getStatus());
+        assertTrue(entry.getPayloadJson().contains("OU_DOUALA_1"));
+        assertTrue(entry.getPayloadJson().contains("DE_MALARIA"));
+        assertTrue(entry.getPayloadJson().contains("2026W46"));
+    }
+
+    @Test
+    void dicomPacsProxyIndexesLocalStudyAndReturnsWadoReceipt() {
+        Map<String, DicomStudyEntity> store = new HashMap<>();
+        DicomStudyRepository dicomRepo = (DicomStudyRepository) Proxy.newProxyInstance(
+                DicomStudyRepository.class.getClassLoader(),
+                new Class<?>[]{DicomStudyRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "findFirstByStudyInstanceUid" -> Optional.ofNullable(store.get((String) a[0]));
+                    case "save" -> {
+                        DicomStudyEntity s = (DicomStudyEntity) a[0];
+                        store.put(s.getStudyInstanceUid(), s);
+                        yield s;
+                    }
+                    default -> new ArrayList<>(store.values());
+                });
+
+        DicomPacsProxyService proxy = new DicomPacsProxyService(dicomRepo, null);
+        Map<String, Object> receipt = proxy.storeBinaryStudy(
+                UUID.randomUUID(), UUID.randomUUID(), "1.2.840.113619.2.55.3", "CR", "Chest X-Ray", "application/dicom", new byte[]{1, 2, 3});
+
+        assertEquals("INDEXED_LOCAL", receipt.get("status"));
+        assertEquals(3, receipt.get("bytesReceived"));
+
+        ResponseEntity<byte[]> wadoResp = proxy.retrieveWadoBinary("1.2.840.113619.2.55.3", null, null);
+        assertEquals(200, wadoResp.getStatusCode().value());
+        assertTrue(new String(Objects.requireNonNull(wadoResp.getBody())).contains("1.2.840.113619.2.55.3"));
+    }
+
+    @Test
+    void snomedRf2RelationshipBuilderComputesMultiHopTransitiveClosure() {
+        Map<String, Set<String>> dag = Map.of(
+                "764146007", Set.of("373270004"), // Penicillin -> Beta-lactam
+                "373270004", Set.of("723")        // Beta-lactam -> Amoxicillin
+        );
+        List<ConceptClosureEntity> edges = TerminologyService.computeTransitiveClosureEdges(TerminologyService.SNOMED, dag);
+        assertTrue(edges.stream().anyMatch(e ->
+                "764146007".equals(e.getAncestorCode()) && "373270004".equals(e.getDescendantCode()) && e.getDepth() == 1));
+        assertTrue(edges.stream().anyMatch(e ->
+                "764146007".equals(e.getAncestorCode()) && "723".equals(e.getDescendantCode()) && e.getDepth() == 2));
+    }
+
+    @Test
+    void fhirOutboxSubscriptionRelayMatchesCriteriaAndBuildsParametersEnvelope() {
+        UUID facId = UUID.randomUUID();
+        FhirSubscriptionEntity sub = new FhirSubscriptionEntity();
+        sub.setFacilityId(facId);
+        sub.setCriteria("Patient");
+        sub.setEndpointUrl("https://hie.example.org/hook");
+
+        HealthCoreDomainEvent event = new HealthCoreDomainEvent(
+                UUID.randomUUID(), facId, "Patient", UUID.randomUUID(), "PatientRegisteredEvent", "{\"mrn\":\"DLA-1\"}", "corr-1");
+
+        FhirOutboxSubscriptionRelay relay = new FhirOutboxSubscriptionRelay(null, null);
+        assertTrue(relay.matchesSubscription(sub, event));
+        String json = relay.buildFhirEventEnvelope(event);
+        assertTrue(json.contains("\"resourceType\":\"Parameters\""));
+        assertTrue(json.contains("PatientRegisteredEvent"));
+    }
+
+    @Test
+    void fhirTerminologySyncClientParsesExpandedValueSetJson() {
+        List<CodeConceptEntity> saved = new ArrayList<>();
+        CodeConceptRepository conceptRepo = (CodeConceptRepository) Proxy.newProxyInstance(
+                CodeConceptRepository.class.getClassLoader(),
+                new Class<?>[]{CodeConceptRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "findBySystemUriAndCode" -> Optional.empty();
+                    case "save" -> {
+                        CodeConceptEntity e = (CodeConceptEntity) a[0];
+                        saved.add(e);
+                        yield e;
+                    }
+                    default -> List.of();
+                });
+
+        TerminologyService termSvc = new TerminologyService(conceptRepo, null, null, null);
+        FhirTerminologySyncClient client = new FhirTerminologySyncClient(termSvc, null);
+        String expanded = """
+                {
+                  "resourceType": "ValueSet",
+                  "expansion": {
+                    "contains": [
+                      {"system": "http://loinc.org", "code": "8867-4", "display": "Heart rate"},
+                      {"system": "http://snomed.info/sct", "code": "386661006", "display": "Fever"}
+                    ]
+                  }
+                }
+                """;
+        Map<String, Object> result = client.importExpandedValueSetJson(expanded);
+        assertEquals(2, ((Number) result.get("importedCount")).intValue());
+        assertEquals(2, saved.size());
     }
 }

@@ -53,7 +53,9 @@ import java.util.Optional;
 @EnableJpaRepositories(basePackageClasses = OutboxRelayService.class)
 @Import({
         TwoTierAndKafkaExtensions.TwoTierCacheConfiguration.class,
-        TwoTierAndKafkaExtensions.KafkaEventPublisherConfiguration.class
+        TwoTierAndKafkaExtensions.KafkaEventPublisherConfiguration.class,
+        TwoTierAndKafkaExtensions.RabbitEventPublisherConfiguration.class,
+        TwoTierAndKafkaExtensions.PostgresNotifyEventConfiguration.class
 })
 public class HealthCorePersistenceAutoConfiguration {
 
@@ -143,5 +145,13 @@ public class HealthCorePersistenceAutoConfiguration {
                 jdbcTemplate,
                 tenantSupplierProvider.getIfAvailable(() -> Optional::empty),
                 isPostgres);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PostgresAdvisoryLockHelper postgresAdvisoryLockHelper(JdbcTemplate jdbcTemplate, Environment env) {
+        String url = env.getProperty("spring.datasource.url", "");
+        boolean isPostgres = url.isEmpty() || url.contains(":postgresql:");
+        return new PostgresAdvisoryLockHelper(jdbcTemplate, isPostgres);
     }
 }
