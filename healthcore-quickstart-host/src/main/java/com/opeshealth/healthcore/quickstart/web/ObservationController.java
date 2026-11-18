@@ -16,6 +16,11 @@ import com.opeshealth.healthcore.quickstart.service.ObservationService.Observati
 import com.opeshealth.healthcore.security.tenant.FacilityTenantInterceptor;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Observation;
@@ -39,7 +44,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/observations")
-@Tag(name = "FHIR Observation API", description = "Search, retrieve, create, update, and mark entered-in-error HL7 FHIR R4 Observation resources")
+@Tag(name = "FHIR R4 Observation", description = "Search, retrieve, create, update, and mark entered-in-error HL7 FHIR R4 Observation resources")
 public class ObservationController {
 
     private static final MediaType FHIR_JSON = MediaType.parseMediaType("application/fhir+json");
@@ -64,7 +69,22 @@ public class ObservationController {
 
     @GetMapping(produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_lab:result:enter') or hasAuthority('PERM_lab:verify')")
-    @Operation(summary = "Search HL7 FHIR R4 Observation resources by patient, encounter, LOINC code, category, status, and date ranges")
+    @Operation(
+            summary = "Search HL7 FHIR R4 Observation resources by patient, encounter, LOINC code, category, status, and date ranges",
+            description = "Executes a FHIR R4 Observation query returning a Bundle of type 'searchset'."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 searchset Bundle of matching Observation resources",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirBundleResource"))),
+            @ApiResponse(responseCode = "400", description = "Invalid search parameter or date range expression",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "403", description = "Insufficient permission to read clinical observations",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> searchObservations(
             @Parameter(description = "Exact Observation resource UUID (_id)") @RequestParam(name = "_id", required = false) UUID id,
             @Parameter(description = "Observation identifier token (system|value or value)") @RequestParam(required = false) String identifier,
@@ -113,7 +133,19 @@ public class ObservationController {
 
     @GetMapping(value = "/{id}", produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_lab:result:enter') or hasAuthority('PERM_lab:verify')")
-    @Operation(summary = "Retrieve a single HL7 FHIR R4 Observation resource by UUID with ETag")
+    @Operation(
+            summary = "Retrieve a single HL7 FHIR R4 Observation resource by UUID with ETag",
+            description = "Fetches a FHIR R4 Observation resource by UUID and includes weak ETag version metadata."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 Observation resource retrieved",
+                    headers = @Header(name = "ETag", description = "Weak entity tag W/\"<version>\" for optimistic concurrency"),
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirObservationResource"))),
+            @ApiResponse(responseCode = "404", description = "Observation resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> getObservationById(@PathVariable UUID id) {
         Observation fhirObservation = observationService.getFhirObservationById(id);
         String version = fhirObservation.hasMeta() && fhirObservation.getMeta().hasVersionId()
@@ -127,7 +159,24 @@ public class ObservationController {
 
     @PostMapping(consumes = {"application/fhir+json", "application/json"}, produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_vitals:write') or hasAuthority('PERM_lab:result:enter') or hasAuthority('PERM_lab:verify')")
-    @Operation(summary = "Validate and record an HL7 FHIR R4 Observation resource")
+    @Operation(
+            summary = "Validate and record an HL7 FHIR R4 Observation resource",
+            description = "Validates the FHIR R4 Observation (vital signs or laboratory result) via HAPI FHIR Validator and evaluates CDS Hooks 2.0 critical value thresholds."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "FHIR R4 Observation created successfully",
+                    headers = {
+                            @Header(name = "Location", description = "Canonical URI of the newly created Observation resource"),
+                            @Header(name = "ETag", description = "Initial weak entity tag W/\"0\""),
+                            @Header(name = "X-CDS-Hooks-Alert-Count", description = "Number of CDS Hooks 2.0 clinical alert cards triggered"),
+                            @Header(name = "X-CDS-Hooks-Max-Indicator", description = "Highest CDS Hooks 2.0 severity indicator (info | warning | critical)")
+                    },
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirObservationResource"))),
+            @ApiResponse(responseCode = "400", description = "HAPI FHIR R4 Observation validation failure (missing subject, invalid LOINC/UCUM quantity, etc.)",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> createObservation(
             @RequestParam(required = false) UUID facilityId,
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
@@ -155,7 +204,23 @@ public class ObservationController {
 
     @PutMapping(value = "/{id}", consumes = {"application/fhir+json", "application/json"}, produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_vitals:write') or hasAuthority('PERM_lab:result:enter') or hasAuthority('PERM_lab:verify')")
-    @Operation(summary = "Validate and update an HL7 FHIR R4 Observation resource with If-Match ETag check")
+    @Operation(
+            summary = "Validate and update an HL7 FHIR R4 Observation resource with If-Match ETag check",
+            description = "Validates and updates an existing FHIR R4 Observation resource with optimistic locking and CDS Hooks 2.0 re-evaluation."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 Observation updated successfully",
+                    headers = @Header(name = "ETag", description = "Updated weak entity tag W/\"<version>\""),
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirObservationResource"))),
+            @ApiResponse(responseCode = "400", description = "HAPI FHIR R4 Observation validation failure",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "404", description = "Observation resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "412", description = "Precondition Failed — If-Match ETag mismatch",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> updateObservation(
             @PathVariable UUID id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch,
@@ -179,7 +244,17 @@ public class ObservationController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_lab:verify') or hasAuthority('PERM_facility:manage')")
-    @Operation(summary = "Mark an Observation resource as entered-in-error (clinical soft delete)")
+    @Operation(
+            summary = "Mark an Observation resource as entered-in-error (clinical soft delete)",
+            description = "Transitions the Observation status to 'entered-in-error' in compliance with HL7 FHIR clinical immutability rules."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Observation marked as entered-in-error"),
+            @ApiResponse(responseCode = "404", description = "Observation resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<Void> deactivateObservation(@PathVariable UUID id) {
         observationService.markEnteredInError(id);
         return ResponseEntity.noContent().build();

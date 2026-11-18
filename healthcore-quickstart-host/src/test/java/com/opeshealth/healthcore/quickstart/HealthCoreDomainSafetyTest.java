@@ -92,6 +92,10 @@ import com.opeshealth.healthcore.quickstart.service.CdsHooksService.ServiceDisco
 import com.opeshealth.healthcore.quickstart.service.EncounterService;
 import com.opeshealth.healthcore.quickstart.service.ObservationService;
 import com.opeshealth.healthcore.quickstart.service.PractitionerService;
+import com.opeshealth.healthcore.quickstart.config.FhirOpenApiConfiguration;
+import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration;
+import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.DialectMigrationSummary;
+import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.RdbmsDialect;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlExceptionResolver;
 import com.opeshealth.healthcore.quickstart.web.BundleController;
@@ -105,12 +109,18 @@ import com.opeshealth.healthcore.quickstart.web.PractitionerController;
 import com.opeshealth.healthcore.service.PatientService;
 import com.opeshealth.healthcore.workflow.spi.WorkflowSpi.*;
 import ca.uhn.fhir.validation.ValidationResult;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Encounter;
 import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.junit.jupiter.api.Test;
+import org.springdoc.core.customizers.OperationCustomizer;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -2577,6 +2587,120 @@ class HealthCoreDomainSafetyTest {
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    void springDocOpenApiConfigurationAndFhirControllerStatusCodesAreDocumented() throws Exception {
+        FhirOpenApiConfiguration openApiConfig = new FhirOpenApiConfiguration();
+        OpenAPI openApi = openApiConfig.healthCoreFhirOpenApi();
+
+        assertNotNull(openApi.getInfo());
+        assertEquals("Opes HealthCore HL7 FHIR R4 & CDS Hooks 2.0 API", openApi.getInfo().getTitle());
+        assertEquals("1.0.0", openApi.getInfo().getVersion());
+        assertNotNull(openApi.getInfo().getContact());
+        assertEquals("nshome@opesware.com", openApi.getInfo().getContact().getEmail());
+
+        // Verify security schemes (Bearer JWT + X-Facility-Id tenant header)
+        assertTrue(openApi.getComponents().getSecuritySchemes().containsKey(FhirOpenApiConfiguration.SECURITY_SCHEME_BEARER_JWT));
+        assertTrue(openApi.getComponents().getSecuritySchemes().containsKey(FhirOpenApiConfiguration.SECURITY_SCHEME_FACILITY_HEADER));
+
+        // Verify FHIR R4 resource component schemas are registered
+        var schemas = openApi.getComponents().getSchemas();
+        assertTrue(schemas.containsKey("FhirPatientResource"));
+        assertTrue(schemas.containsKey("FhirPractitionerResource"));
+        assertTrue(schemas.containsKey("FhirEncounterResource"));
+        assertTrue(schemas.containsKey("FhirObservationResource"));
+        assertTrue(schemas.containsKey("FhirBundleResource"));
+        assertTrue(schemas.containsKey("FhirOperationOutcome"));
+        assertTrue(schemas.containsKey("ApiErrorResponse"));
+
+        // Verify OperationCustomizer injects 400, 401, 403, 429 status codes and ETag / RateLimit / Correlation headers
+        OperationCustomizer customizer = openApiConfig.fhirStandardResponsesAndHeadersCustomizer();
+        GroupedOpenApi groupedOpenApi = openApiConfig.fhirEndpointsGroupedOpenApi(customizer);
+        assertEquals("fhir-r4-and-cds-hooks", groupedOpenApi.getGroup());
+
+        Operation sampleOp = new Operation();
+        io.swagger.v3.oas.models.responses.ApiResponses opResponses = new io.swagger.v3.oas.models.responses.ApiResponses();
+        opResponses.addApiResponse("200", new io.swagger.v3.oas.models.responses.ApiResponse().description("OK"));
+        sampleOp.setResponses(opResponses);
+        customizer.customize(sampleOp, null);
+
+        assertTrue(sampleOp.getResponses().containsKey("200"));
+        assertTrue(sampleOp.getResponses().containsKey("400"));
+        assertTrue(sampleOp.getResponses().containsKey("401"));
+        assertTrue(sampleOp.getResponses().containsKey("403"));
+        assertTrue(sampleOp.getResponses().containsKey("429"));
+        assertTrue(sampleOp.getResponses().get("200").getHeaders().containsKey("ETag"));
+        assertTrue(sampleOp.getResponses().get("200").getHeaders().containsKey("X-Correlation-Id"));
+        assertTrue(sampleOp.getResponses().get("429").getHeaders().containsKey("Retry-After"));
+        assertTrue(sampleOp.getResponses().get("429").getHeaders().containsKey("X-RateLimit-Limit"));
+        assertTrue(sampleOp.getResponses().get("429").getHeaders().containsKey("X-RateLimit-Remaining"));
+
+        // Verify all FHIR & CDS Hooks controllers declare explicit @ApiResponses status codes on every endpoint method
+        List<Class<?>> fhirControllers = List.of(
+                PatientController.class,
+                PractitionerController.class,
+                ObservationController.class,
+                EncounterController.class,
+                BundleController.class,
+                CdsHooksV2Controller.class
+        );
+        for (Class<?> controllerClass : fhirControllers) {
+            assertTrue(controllerClass.isAnnotationPresent(io.swagger.v3.oas.annotations.tags.Tag.class),
+                    "Missing @Tag on " + controllerClass.getSimpleName());
+            for (var method : controllerClass.getDeclaredMethods()) {
+                if (method.isAnnotationPresent(io.swagger.v3.oas.annotations.Operation.class)) {
+                    ApiResponses apiResponses = method.getAnnotation(ApiResponses.class);
+                    assertNotNull(apiResponses, "Missing @ApiResponses on " + controllerClass.getSimpleName() + "#" + method.getName());
+                    assertTrue(apiResponses.value().length >= 2,
+                            "Expected documented status codes on " + controllerClass.getSimpleName() + "#" + method.getName());
+                }
+            }
+        }
+    }
+
+    @Test
+    void flywayMultiDbMigrationConfigurationAndSqlScriptsMaintainParityAcrossPostgresMysqlAndSqlServer() {
+        // 1. Dialect detection from JDBC URLs and product names
+        assertEquals(RdbmsDialect.POSTGRESQL,
+                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:postgresql://localhost:5432/healthcore"));
+        assertEquals(RdbmsDialect.MYSQL,
+                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:mysql://localhost:3306/healthcore?serverTimezone=UTC"));
+        assertEquals(RdbmsDialect.SQLSERVER,
+                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:sqlserver://localhost:1433;databaseName=healthcore"));
+        assertThrows(IllegalArgumentException.class,
+                () -> FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:oracle:thin:@localhost:1521:xe"));
+
+        // 2. Flyway FluentConfiguration assembly for each RDBMS target
+        for (RdbmsDialect dialect : RdbmsDialect.values()) {
+            FluentConfiguration fluentConfig = FlywayMultiDbMigrationConfiguration.buildFluentConfiguration(
+                    null,
+                    dialect,
+                    true,
+                    true,
+                    FlywayMultiDbMigrationConfiguration.HISTORY_TABLE_NAME
+            );
+            assertEquals(FlywayMultiDbMigrationConfiguration.HISTORY_TABLE_NAME, fluentConfig.getTable());
+            assertTrue(fluentConfig.isBaselineOnMigrate());
+            assertTrue(fluentConfig.isValidateOnMigrate());
+            assertEquals(1, fluentConfig.getLocations().length);
+            assertTrue(fluentConfig.getLocations()[0].getDescriptor().contains(dialect.classpathFolder()));
+            assertEquals(dialect.placeholders(), fluentConfig.getPlaceholders());
+        }
+
+        // 3. Cross-dialect schema parity across PostgreSQL, MySQL, and SQL Server V1 & V2 SQL scripts
+        Map<RdbmsDialect, DialectMigrationSummary> summaries =
+                FlywayMultiDbMigrationConfiguration.verifyCrossDialectSchemaParity();
+        assertEquals(3, summaries.size());
+
+        DialectMigrationSummary pgSummary = summaries.get(RdbmsDialect.POSTGRESQL);
+        DialectMigrationSummary mysqlSummary = summaries.get(RdbmsDialect.MYSQL);
+        DialectMigrationSummary mssqlSummary = summaries.get(RdbmsDialect.SQLSERVER);
+
+        assertEquals(pgSummary.discoveredTables(), mysqlSummary.discoveredTables());
+        assertEquals(pgSummary.discoveredTables(), mssqlSummary.discoveredTables());
+        assertEquals(pgSummary.discoveredIndexes(), mysqlSummary.discoveredIndexes());
+        assertEquals(pgSummary.discoveredIndexes(), mssqlSummary.discoveredIndexes());
     }
 
     @SuppressWarnings("unused")

@@ -35,7 +35,17 @@ spring:
         order_inserts: true
         order_updates: true
   liquibase:
+    enabled: ${HEALTHCORE_LIQUIBASE_ENABLED:true}
     change-log: classpath:db/changelog/db.changelog-master.xml
+  flyway:
+    enabled: ${HEALTHCORE_FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-version: 0
+    baseline-description: "Opes HealthCore multi-RDBMS baseline"
+    validate-on-migrate: true
+    out-of-order: false
+    table: flyway_schema_history
+    locations: classpath:db/migration/{vendor}
   graphql:
     http:
       path: /graphql
@@ -99,9 +109,18 @@ healthcore:
       port: 2575
 
 springdoc:
+  default-produces-media-type: application/fhir+json
+  default-consumes-media-type: application/fhir+json
+  show-actuator: true
   swagger-ui:
+    enabled: ${HEALTHCORE_SWAGGER_ENABLED:true}
     path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
   api-docs:
+    enabled: ${HEALTHCORE_OPENAPI_ENABLED:true}
     path: /v3/api-docs
 
 resilience4j:
@@ -158,6 +177,8 @@ spring:
     username: ${HEALTHCORE_DB_USER:healthcore_app}
     password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
     driver-class-name: org.postgresql.Driver
+  flyway:
+    locations: classpath:db/migration/postgresql
 
 ---
 spring:
@@ -169,6 +190,8 @@ spring:
     username: ${HEALTHCORE_DB_USER:sa}
     password: ${HEALTHCORE_DB_PASSWORD:OpesHealth!2026Strong}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  flyway:
+    locations: classpath:db/migration/sqlserver
 
 ---
 # Windows Server Active Directory Integrated Authentication (Kerberos / NTLM)
@@ -179,6 +202,8 @@ spring:
   datasource:
     url: ${HEALTHCORE_DB_URL:jdbc:sqlserver://localhost:1433;databaseName=healthcore;integratedSecurity=true;encrypt=true;trustServerCertificate=true}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  flyway:
+    locations: classpath:db/migration/sqlserver
 
 ---
 spring:
@@ -190,6 +215,8 @@ spring:
     username: ${HEALTHCORE_DB_USER:healthcore_app}
     password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    locations: classpath:db/migration/mysql
 
 ---
 spring:

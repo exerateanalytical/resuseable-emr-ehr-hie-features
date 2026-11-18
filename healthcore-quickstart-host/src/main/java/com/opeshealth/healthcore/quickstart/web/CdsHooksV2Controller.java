@@ -17,6 +17,8 @@ import com.opeshealth.healthcore.quickstart.service.CdsHooksService.CdsHookRespo
 import com.opeshealth.healthcore.quickstart.service.CdsHooksService.ServiceDiscoveryResponse;
 import com.opeshealth.healthcore.security.tenant.FacilityTenantInterceptor;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,7 +32,7 @@ import java.util.UUID;
  * legacy terminology {@code /cds-services} endpoints.
  */
 @RestController
-@Tag(name = "CDS Hooks 2.0 Specification API", description = "HL7 CDS Hooks 2.0 discovery, hook execution, and clinician feedback endpoints")
+@Tag(name = "CDS Hooks 2.0 Clinical Decision Support", description = "HL7 CDS Hooks 2.0 discovery, hook execution, and clinician feedback endpoints")
 public class CdsHooksV2Controller {
 
     private final CdsHooksService cdsHooksService;
@@ -40,14 +42,32 @@ public class CdsHooksV2Controller {
     }
 
     @GetMapping("/api/v1/cds-services")
-    @Operation(summary = "CDS Hooks 2.0 Service Discovery")
+    @Operation(
+            summary = "CDS Hooks 2.0 Service Discovery",
+            description = "Returns the catalog of registered CDS Hooks 2.0 services, hook triggers, and FHIR prefetch templates."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "CDS Hooks 2.0 Service Discovery catalog returned"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<ServiceDiscoveryResponse> discoverServices() {
         return ResponseEntity.ok(cdsHooksService.discoverServices());
     }
 
     @PostMapping("/api/v1/cds-services/{serviceId}")
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:draft') or hasAuthority('PERM_order:draft') or hasAuthority('PERM_order:sign')")
-    @Operation(summary = "Invoke an HL7 CDS Hooks 2.0 clinical decision support service")
+    @Operation(
+            summary = "Invoke an HL7 CDS Hooks 2.0 clinical decision support service",
+            description = "Evaluates a CDS Hooks 2.0 request (patient-view, encounter-start, encounter-discharge, observation-review) and returns actionable decision cards and systemActions."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "CDS Hooks 2.0 cards and systemActions returned"),
+            @ApiResponse(responseCode = "400", description = "Invalid CDS Hooks 2.0 request context or hookInstance"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permission to invoke CDS Hooks service"),
+            @ApiResponse(responseCode = "404", description = "Requested CDS Hooks serviceId is not registered"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<CdsHookResponse> invokeService(
             @PathVariable String serviceId,
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
@@ -59,6 +79,11 @@ public class CdsHooksV2Controller {
     @PostMapping("/cds-services/opes-patient-care-gaps")
     @PreAuthorize("hasAuthority('PERM_patient:read')")
     @Operation(summary = "Invoke CDS Hooks 2.0 patient-view care gaps service")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Patient care-gap CDS cards returned"),
+            @ApiResponse(responseCode = "400", description = "Invalid CDS Hooks 2.0 patient-view payload"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<CdsHookResponse> invokePatientCareGaps(
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
             @RequestBody CdsHookRequest request) {
@@ -69,6 +94,11 @@ public class CdsHooksV2Controller {
     @PostMapping("/cds-services/opes-observation-alerts")
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_vitals:write') or hasAuthority('PERM_lab:result:enter')")
     @Operation(summary = "Invoke CDS Hooks 2.0 observation clinical alerts service")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Observation critical value CDS cards returned"),
+            @ApiResponse(responseCode = "400", description = "Invalid CDS Hooks 2.0 observation payload"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<CdsHookResponse> invokeObservationAlerts(
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
             @RequestBody CdsHookRequest request) {
@@ -79,6 +109,11 @@ public class CdsHooksV2Controller {
     @PostMapping("/cds-services/opes-encounter-triage")
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:draft') or hasAuthority('PERM_encounter:sign')")
     @Operation(summary = "Invoke CDS Hooks 2.0 encounter-start triage service")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Encounter triage CDS cards returned"),
+            @ApiResponse(responseCode = "400", description = "Invalid CDS Hooks 2.0 encounter-start payload"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<CdsHookResponse> invokeEncounterTriage(
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
             @RequestBody CdsHookRequest request) {
@@ -89,6 +124,12 @@ public class CdsHooksV2Controller {
     @PostMapping({"/api/v1/cds-services/{serviceId}/feedback", "/cds-services/{serviceId}/feedback"})
     @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:draft') or hasAuthority('PERM_order:sign')")
     @Operation(summary = "Record CDS Hooks 2.0 card acceptance or override feedback")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Clinician card acceptance or override reason recorded"),
+            @ApiResponse(responseCode = "400", description = "Invalid CDS Hooks 2.0 feedback payload"),
+            @ApiResponse(responseCode = "404", description = "Unknown CDS Hooks 2.0 serviceId"),
+            @ApiResponse(responseCode = "429", description = "Bucket4j rate limit exceeded")
+    })
     public ResponseEntity<CdsFeedbackReceipt> submitFeedback(
             @PathVariable String serviceId,
             @RequestBody CdsFeedbackRequest feedbackRequest) {

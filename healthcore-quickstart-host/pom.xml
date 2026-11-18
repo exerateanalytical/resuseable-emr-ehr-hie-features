@@ -43,7 +43,14 @@
 
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-graphql</artifactId></dependency>
+        <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId></dependency>
         <dependency><groupId>com.bucket4j</groupId><artifactId>bucket4j_jdk17-core</artifactId></dependency>
+
+        <!-- Flyway Multi-RDBMS Schema Versioning: PostgreSQL, MySQL, SQL Server -->
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-mysql</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-sqlserver</artifactId></dependency>
 
         <!-- Multi-DB Runtime Drivers: PostgreSQL, Windows SQL Server, MySQL -->
         <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>

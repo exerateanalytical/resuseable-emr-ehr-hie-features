@@ -1,0 +1,190 @@
+-- =============================================================================
+-- Opes HealthCore SDK — Flyway V2 FHIR R4 Clinical Resources Schema (MySQL 8.4+)
+-- Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
+-- Website            : https://www.opeshealthsystems.com | Douala, Cameroon
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS hc_patients (
+    id BINARY(16) NOT NULL,
+    facility_id BINARY(16) NOT NULL,
+    mrn VARCHAR(64) NOT NULL,
+    name_prefix VARCHAR(24),
+    family_name VARCHAR(120) NOT NULL,
+    given_name VARCHAR(120) NOT NULL,
+    middle_name VARCHAR(120),
+    birth_date DATE NOT NULL,
+    gender VARCHAR(16) NOT NULL,
+    blood_group VARCHAR(8),
+    primary_phone VARCHAR(64),
+    secondary_phone VARCHAR(64),
+    email VARCHAR(160),
+    marital_status_code VARCHAR(16),
+    preferred_language VARCHAR(16) DEFAULT 'en',
+    golden_record TINYINT(1) NOT NULL DEFAULT 1,
+    surviving_patient_id BINARY(16),
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    deceased TINYINT(1) NOT NULL DEFAULT 0,
+    deceased_at DATETIME(6),
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    CONSTRAINT pk_hc_patients PRIMARY KEY (id),
+    UNIQUE INDEX idx_hc_patient_fac_mrn (facility_id, mrn),
+    INDEX idx_hc_patient_dob_gender (birth_date, gender),
+    INDEX idx_hc_patient_fac_email (facility_id, email),
+    INDEX idx_hc_patient_fac_active (facility_id, active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_patient_identifiers (
+    id BINARY(16) NOT NULL,
+    patient_id BINARY(16) NOT NULL,
+    identifier_system VARCHAR(120) NOT NULL,
+    identifier_use VARCHAR(24) DEFAULT 'OFFICIAL',
+    type_code VARCHAR(32),
+    assigner_name VARCHAR(120),
+    encrypted_value VARCHAR(512) NOT NULL,
+    blind_index VARCHAR(88) NOT NULL,
+    biometric_template_hash VARCHAR(128),
+    CONSTRAINT pk_hc_patient_identifiers PRIMARY KEY (id),
+    INDEX idx_hc_pat_ident_blind (identifier_system, blind_index)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_patient_demographics (
+    id BINARY(16) NOT NULL,
+    patient_id BINARY(16) NOT NULL,
+    address_use VARCHAR(24) DEFAULT 'HOME',
+    address_line VARCHAR(250),
+    city_or_village VARCHAR(120),
+    district VARCHAR(120),
+    region_or_state VARCHAR(120),
+    postal_code VARCHAR(32),
+    country VARCHAR(64),
+    emergency_contact_name VARCHAR(160),
+    emergency_contact_phone VARCHAR(64),
+    emergency_contact_email VARCHAR(160),
+    emergency_relationship VARCHAR(40),
+    communication_preferred TINYINT(1) NOT NULL DEFAULT 1,
+    CONSTRAINT pk_hc_patient_demographics PRIMARY KEY (id),
+    INDEX idx_hc_pat_demog_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_patient_phonetics (
+    patient_id BINARY(16) NOT NULL,
+    family_metaphone VARCHAR(16) NOT NULL,
+    given_metaphone VARCHAR(16) NOT NULL,
+    birth_year INT NOT NULL,
+    CONSTRAINT pk_hc_patient_phonetics PRIMARY KEY (patient_id),
+    INDEX idx_hc_phonetic_block (family_metaphone, birth_year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_patient_merges (
+    id BINARY(16) NOT NULL,
+    facility_id BINARY(16) NOT NULL,
+    source_patient_id BINARY(16) NOT NULL,
+    surviving_patient_id BINARY(16) NOT NULL,
+    merged_by VARCHAR(120) NOT NULL,
+    reason VARCHAR(300),
+    reversed TINYINT(1) NOT NULL DEFAULT 0,
+    merged_at DATETIME(6) NOT NULL,
+    CONSTRAINT pk_hc_patient_merges PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_practitioners (
+    id BINARY(16) NOT NULL,
+    facility_id BINARY(16) NOT NULL,
+    identifier_system VARCHAR(120),
+    identifier_value VARCHAR(120),
+    identifier_use VARCHAR(24) DEFAULT 'OFFICIAL',
+    assigner_display VARCHAR(160),
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    name_prefix VARCHAR(32),
+    family_name VARCHAR(120) NOT NULL,
+    given_name VARCHAR(120) NOT NULL,
+    name_suffix VARCHAR(32),
+    gender VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',
+    birth_date DATE,
+    phone VARCHAR(64),
+    email VARCHAR(160),
+    address_use VARCHAR(24) DEFAULT 'WORK',
+    address_line VARCHAR(250),
+    city VARCHAR(120),
+    district VARCHAR(120),
+    state VARCHAR(120),
+    postal_code VARCHAR(32),
+    country VARCHAR(64),
+    qualification_code VARCHAR(64),
+    qualification_display VARCHAR(160),
+    qualification_issuer VARCHAR(160),
+    communication_code VARCHAR(24) DEFAULT 'en',
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    CONSTRAINT pk_hc_practitioners PRIMARY KEY (id),
+    INDEX idx_hc_practitioners_fac_active (facility_id, active),
+    INDEX idx_hc_practitioners_fac_ident (facility_id, identifier_system, identifier_value),
+    INDEX idx_hc_practitioners_name (family_name, given_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_encounters (
+    id BINARY(16) NOT NULL,
+    facility_id BINARY(16) NOT NULL,
+    patient_id BINARY(16) NOT NULL,
+    encounter_class VARCHAR(24) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    attending_id VARCHAR(120),
+    department_code VARCHAR(64),
+    primary_icd10 VARCHAR(32),
+    started_at DATETIME(6) NOT NULL,
+    ended_at DATETIME(6),
+    CONSTRAINT pk_hc_encounters PRIMARY KEY (id),
+    INDEX idx_hc_encounters_patient_start (patient_id, started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hc_observations (
+    id BINARY(16) NOT NULL,
+    facility_id BINARY(16) NOT NULL,
+    patient_id BINARY(16),
+    encounter_id BINARY(16),
+    practitioner_id BINARY(16),
+    identifier_system VARCHAR(120),
+    identifier_value VARCHAR(120),
+    status VARCHAR(32) NOT NULL DEFAULT 'final',
+    category_system VARCHAR(160),
+    category_code VARCHAR(64),
+    category_display VARCHAR(160),
+    code_system VARCHAR(160),
+    code VARCHAR(64) NOT NULL,
+    code_display VARCHAR(200),
+    code_text VARCHAR(250),
+    subject_reference VARCHAR(160) NOT NULL,
+    encounter_reference VARCHAR(160),
+    performer_reference VARCHAR(160),
+    performer_display VARCHAR(160),
+    effective_at DATETIME(6),
+    issued_at DATETIME(6),
+    value_type VARCHAR(32),
+    value_quantity DECIMAL(18,4),
+    value_unit VARCHAR(48),
+    value_unit_system VARCHAR(120),
+    value_unit_code VARCHAR(48),
+    value_string LONGTEXT,
+    value_boolean TINYINT(1),
+    value_code_system VARCHAR(160),
+    value_code VARCHAR(64),
+    value_code_display VARCHAR(200),
+    interpretation_code VARCHAR(32),
+    interpretation_display VARCHAR(120),
+    ref_range_low DECIMAL(18,4),
+    ref_range_high DECIMAL(18,4),
+    ref_range_text VARCHAR(160),
+    note_text LONGTEXT,
+    components_json LONGTEXT,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    CONSTRAINT pk_hc_observations PRIMARY KEY (id),
+    INDEX idx_hc_observations_fac_pat_eff (facility_id, patient_id, effective_at),
+    INDEX idx_hc_observations_fac_code_st (facility_id, code, status),
+    INDEX idx_hc_observations_fac_enc (facility_id, encounter_id),
+    INDEX idx_hc_observations_fac_ident (facility_id, identifier_system, identifier_value)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

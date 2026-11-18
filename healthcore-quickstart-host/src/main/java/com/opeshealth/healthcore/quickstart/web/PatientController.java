@@ -17,6 +17,11 @@ import com.opeshealth.healthcore.service.PatientService.PatientSearchCriteria;
 import com.opeshealth.healthcore.service.PatientService.StringSearchFilter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Patient;
@@ -40,7 +45,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/patients")
-@Tag(name = "FHIR Patient API", description = "Search, retrieve, create, update, and deactivate HL7 FHIR R4 Patient resources")
+@Tag(name = "FHIR R4 Patient", description = "Search, retrieve, create, update, and deactivate HL7 FHIR R4 Patient resources")
 public class PatientController {
 
     private static final MediaType FHIR_JSON = MediaType.parseMediaType("application/fhir+json");
@@ -65,7 +70,22 @@ public class PatientController {
 
     @GetMapping(produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:read')")
-    @Operation(summary = "Search HL7 FHIR R4 Patient resources supporting :contains, :exact modifiers and birthdate ranges")
+    @Operation(
+            summary = "Search HL7 FHIR R4 Patient resources supporting :contains, :exact modifiers and birthdate ranges",
+            description = "Executes a multi-criteria FHIR R4 Patient search returning a Bundle of type 'searchset'."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 searchset Bundle of matching Patient resources",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirBundleResource"))),
+            @ApiResponse(responseCode = "400", description = "Invalid FHIR search filter or date prefix expression",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "403", description = "Insufficient permission (requires PERM_patient:read)",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> searchPatients(
             @Parameter(description = "Exact Patient resource UUID (_id)") @RequestParam(name = "_id", required = false) UUID id,
             @Parameter(description = "Identifier token (system|value or value)") @RequestParam(required = false) String identifier,
@@ -132,7 +152,27 @@ public class PatientController {
 
     @GetMapping(value = "/{id}", produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:read')")
-    @Operation(summary = "Retrieve a single HL7 FHIR R4 Patient resource by UUID with ETag")
+    @Operation(
+            summary = "Retrieve a single HL7 FHIR R4 Patient resource by UUID with ETag",
+            description = "Fetches a single FHIR R4 Patient resource, evaluates CDS Hooks 2.0 patient-view care gaps, and returns weak ETag version header."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 Patient resource retrieved",
+                    headers = {
+                            @Header(name = "ETag", description = "Weak entity tag W/\"<version>\" for optimistic concurrency"),
+                            @Header(name = "X-CDS-Hooks-Alert-Count", description = "Number of CDS Hooks 2.0 clinical care-gap cards triggered"),
+                            @Header(name = "X-CDS-Hooks-Max-Indicator", description = "Highest CDS Hooks 2.0 severity indicator (info | warning | critical)")
+                    },
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirPatientResource"))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "403", description = "Insufficient permission or patient consent policy denial",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "Patient resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> getPatientById(@PathVariable UUID id) {
         Patient fhirPatient = patientService.getFhirPatientById(id);
         String version = fhirPatient.hasMeta() && fhirPatient.getMeta().hasVersionId()
@@ -153,7 +193,28 @@ public class PatientController {
 
     @PostMapping(consumes = {"application/fhir+json", "application/json"}, produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:write')")
-    @Operation(summary = "Validate and create an HL7 FHIR R4 Patient resource")
+    @Operation(
+            summary = "Validate and create an HL7 FHIR R4 Patient resource",
+            description = "Validates the incoming FHIR R4 Patient JSON via HAPI FHIR Validator, persists MPI demographics and phonetic keys, and evaluates CDS Hooks 2.0."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "FHIR R4 Patient created successfully",
+                    headers = {
+                            @Header(name = "Location", description = "Canonical URI of the newly created Patient resource"),
+                            @Header(name = "ETag", description = "Initial weak entity tag W/\"0\"")
+                    },
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirPatientResource"))),
+            @ApiResponse(responseCode = "400", description = "HAPI FHIR R4 validation failure (missing name, invalid gender, future birthDate, etc.)",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "403", description = "Insufficient permission (requires PERM_patient:write)",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "Duplicate patient identifier conflict",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> createPatient(
             @RequestParam(required = false) UUID facilityId,
             @RequestHeader(value = "X-Facility-Id", required = false) UUID headerFacilityId,
@@ -181,7 +242,25 @@ public class PatientController {
 
     @PutMapping(value = "/{id}", consumes = {"application/fhir+json", "application/json"}, produces = {"application/fhir+json", "application/json"})
     @PreAuthorize("hasAuthority('PERM_patient:write')")
-    @Operation(summary = "Validate and update an HL7 FHIR R4 Patient resource with If-Match ETag check")
+    @Operation(
+            summary = "Validate and update an HL7 FHIR R4 Patient resource with If-Match ETag check",
+            description = "Validates and updates an existing FHIR R4 Patient resource, enforcing optimistic concurrency when If-Match header is provided."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "FHIR R4 Patient updated successfully",
+                    headers = @Header(name = "ETag", description = "Updated weak entity tag W/\"<version>\""),
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirPatientResource"))),
+            @ApiResponse(responseCode = "400", description = "HAPI FHIR R4 structural validation failure",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome"))),
+            @ApiResponse(responseCode = "404", description = "Target Patient resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "Optimistic lock / concurrent modification conflict",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "412", description = "Precondition Failed — If-Match ETag does not match current resource version",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<String> updatePatient(
             @PathVariable UUID id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch,
@@ -198,7 +277,17 @@ public class PatientController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_facility:manage')")
-    @Operation(summary = "Deactivate (soft-delete) a Patient resource")
+    @Operation(
+            summary = "Deactivate (soft-delete) a Patient resource",
+            description = "Marks the Patient record as inactive while preserving clinical history and audit chain integrity."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Patient resource deactivated"),
+            @ApiResponse(responseCode = "404", description = "Patient resource not found",
+                    content = @Content(mediaType = "application/json", schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "429", description = "Bucket4j FHIR API rate limit exceeded",
+                    content = @Content(mediaType = "application/fhir+json", schema = @Schema(ref = "#/components/schemas/FhirOperationOutcome")))
+    })
     public ResponseEntity<Void> deactivatePatient(@PathVariable UUID id) {
         patientService.deactivatePatient(id);
         return ResponseEntity.noContent().build();
