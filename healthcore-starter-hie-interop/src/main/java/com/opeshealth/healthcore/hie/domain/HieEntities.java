@@ -96,4 +96,32 @@ public final class HieEntities {
         public void setReplayed(boolean replayed) { this.replayed = replayed; }
         public Instant getFailedAt() { return failedAt; }
     }
+
+    @Entity @Table(name = "hc_ihe_documents")
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class IheDocumentEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "document_type_loinc", nullable = false, length = 32) private String documentTypeLoinc;
+        @Column(name = "title", nullable = false, length = 240) private String title;
+        @Column(name = "content_type", nullable = false, length = 80) private String contentType;
+        @Lob @Column(name = "content_url_or_base64", nullable = false) private String contentUrlOrBase64;
+        @Column(name = "indexed_at", nullable = false) private Instant indexedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getDocumentTypeLoinc() { return documentTypeLoinc; }
+        public void setDocumentTypeLoinc(String documentTypeLoinc) { this.documentTypeLoinc = documentTypeLoinc; }
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public String getContentType() { return contentType; }
+        public void setContentType(String contentType) { this.contentType = contentType; }
+        public String getContentUrlOrBase64() { return contentUrlOrBase64; }
+        public void setContentUrlOrBase64(String contentUrlOrBase64) { this.contentUrlOrBase64 = contentUrlOrBase64; }
+        public Instant getIndexedAt() { return indexedAt; }
+    }
 }

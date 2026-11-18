@@ -16,10 +16,12 @@ import com.opeshealth.healthcore.sync.clock.HybridLogicalClock.Ed25519QrHealthCa
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,6 +39,7 @@ public class OfflineSyncService {
     );
 
     @Entity @Table(name = "hc_sync_deltas")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class SyncDeltaRecordEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -70,6 +73,7 @@ public class OfflineSyncService {
     }
 
     @Entity @Table(name = "hc_sync_tombstones")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class SyncTombstoneEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -91,6 +95,7 @@ public class OfflineSyncService {
     }
 
     @Entity @Table(name = "hc_sync_conflicts")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class SyncConflictEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -252,6 +257,7 @@ public class OfflineSyncService {
         }
 
         @GetMapping("/pull")
+        @PreAuthorize("isAuthenticated()")
         @Operation(summary = "Pull monotonic delta batch since last syncSeq cursor")
         public Map<String, Object> pull(
                 @RequestParam UUID facilityId,
@@ -261,6 +267,7 @@ public class OfflineSyncService {
         }
 
         @PostMapping("/push")
+        @PreAuthorize("isAuthenticated()")
         @Operation(summary = "Push offline Mobile/iPad/Edge mutations with clinical conflict safety")
         public Map<String, Object> push(
                 @RequestParam UUID facilityId,
@@ -269,12 +276,14 @@ public class OfflineSyncService {
         }
 
         @GetMapping("/conflicts")
+        @PreAuthorize("hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_audit:read') or hasAuthority('PERM_facility:manage')")
         @Operation(summary = "List unresolved clinical sync conflicts awaiting clinician review")
         public List<SyncConflictEntity> conflicts(@RequestParam UUID facilityId) {
             return conflictRepo.findByFacilityIdAndStatus(facilityId, "OPEN");
         }
 
         @PostMapping("/qr-card/sign")
+        @PreAuthorize("isAuthenticated()")
         @Operation(summary = "Issue Ed25519 cryptographically signed offline QR IPS Health Card")
         public Map<String, String> signQrCard(@RequestBody String compactIpsJson) {
             return Map.of(
@@ -283,6 +292,7 @@ public class OfflineSyncService {
         }
 
         @PostMapping("/qr-card/verify")
+        @PreAuthorize("isAuthenticated()")
         @Operation(summary = "Verify offline QR IPS Health Card signature")
         public Map<String, Boolean> verifyQrCard(@RequestBody String qrToken) {
             return Map.of("valid", qrSigner.verifyCardToken(qrToken));

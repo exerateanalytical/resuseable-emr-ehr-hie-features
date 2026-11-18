@@ -18,6 +18,7 @@ import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -167,21 +168,23 @@ public class PharmacyLisService {
 
     @RestController
     @RequestMapping("/api/v1/pharmacy-lis")
-    @Tag(name = "Standalone PIS & LIS", description = "Pharmacy FEFO inventory/dispensing and Laboratory accession/Westgard/panic APIs")
-    public static class PharmacyLisController {
+    @Tag(name = "Standalone Pharmacy (PIS)", description = "Pharmacy FEFO inventory/dispensing, expiry quarantine & controlled dual-witness APIs")
+    public static class PharmacyController {
         private final PharmacyLisService service;
 
-        public PharmacyLisController(PharmacyLisService service) {
+        public PharmacyController(PharmacyLisService service) {
             this.service = service;
         }
 
         @PostMapping("/pharmacy/batches")
+        @PreAuthorize("hasAuthority('PERM_pharmacy:stock:adjust')")
         @Operation(summary = "Receive medication stock lot with expiry and reorder threshold")
         public MedicationBatchEntity receiveBatch(@RequestBody MedicationBatchEntity batch) {
             return service.receiveStockBatch(batch);
         }
 
         @PostMapping("/pharmacy/dispense")
+        @PreAuthorize("hasAuthority('PERM_rx:dispense') or hasAuthority('PERM_rx:controlled:dispense')")
         @Operation(summary = "Dispense medication using First-Expired-First-Out (FEFO) lot picking")
         public PharmacyDispenseEntity dispense(
                 @RequestParam UUID facilityId, @RequestParam UUID patientId,
@@ -192,14 +195,27 @@ public class PharmacyLisService {
             return service.dispenseFefo(facilityId, patientId, rxOrderId, prescribedCode, dispensedCode,
                     qty, allowPartial, pharmacistId, witnessId);
         }
+    }
+
+    @RestController
+    @RequestMapping("/api/v1/pharmacy-lis")
+    @Tag(name = "Standalone Lab Diagnostics (LIS)", description = "Laboratory barcode accession, Westgard QC gate & critical panic escalation APIs")
+    public static class LisController {
+        private final PharmacyLisService service;
+
+        public LisController(PharmacyLisService service) {
+            this.service = service;
+        }
 
         @PostMapping("/lis/specimens")
+        @PreAuthorize("hasAuthority('PERM_lab:accession')")
         @Operation(summary = "Accession barcoded diagnostic laboratory specimen")
         public LabSpecimenEntity accession(@RequestBody LabSpecimenEntity specimen) {
             return service.accessionSpecimen(specimen);
         }
 
         @PostMapping("/lis/reports/verify")
+        @PreAuthorize("hasAuthority('PERM_lab:verify')")
         @Operation(summary = "Verify & release LOINC lab result gated by Westgard QC and panic escalation")
         public Map<String, Object> verify(@RequestBody DiagnosticReportEntity report) {
             return service.verifyLabResult(report);

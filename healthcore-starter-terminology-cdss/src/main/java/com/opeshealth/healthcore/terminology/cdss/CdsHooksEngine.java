@@ -13,6 +13,7 @@ import com.opeshealth.healthcore.terminology.domain.TerminologyEntities.DdiRuleE
 import com.opeshealth.healthcore.terminology.service.TerminologyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -129,6 +130,20 @@ public class CdsHooksEngine {
                     false));
         }
 
+        // Renal impairment dose adjustment alerting across eGFR < 60 and eGFR < 30 thresholds
+        if (req.eGfr() != null && req.eGfr().compareTo(new BigDecimal("60")) < 0) {
+            boolean severe = req.eGfr().compareTo(new BigDecimal("30")) < 0;
+            cards.add(new CdsCard(UUID.randomUUID().toString(),
+                    severe ? "Severe Renal Impairment Dose Reduction Required (eGFR=" + req.eGfr() + ")"
+                           : "Moderate Renal Impairment Dosing Caution (eGFR=" + req.eGfr() + ")",
+                    "Verify renal dose adjustment or extended interval for drug code " + req.proposedDrugCode() + ".",
+                    severe ? "critical" : "warning",
+                    "Opes HealthCore Renal Dosing CDSS",
+                    List.of(severe ? "Reduce dose by 50% or switch to non-renally cleared agent"
+                                   : "Confirm CrCl / eGFR adjusted regimen"),
+                    severe));
+        }
+
         // Pediatric / weight-based paracetamol max 15 mg/kg/dose check
         if ("161".equals(req.proposedDrugCode()) && req.weightKg() != null && req.proposedSingleDoseMg() != null) {
             BigDecimal maxDose = req.weightKg().multiply(new BigDecimal("15")).setScale(1, RoundingMode.HALF_UP);
@@ -141,6 +156,30 @@ public class CdsHooksEngine {
                         List.of("Adjust single dose to <= " + maxDose + " mg"),
                         true));
             }
+        }
+        return cards;
+    }
+
+    /** Evaluates encounter-start preventive care gaps and active screening reminders. */
+    public List<CdsCard> evaluateEncounterStart(UUID patientId, List<String> activeConditions, Integer ageYears) {
+        List<CdsCard> cards = new ArrayList<>();
+        if (activeConditions != null && activeConditions.contains("I10")) {
+            cards.add(new CdsCard(UUID.randomUUID().toString(),
+                    "Hypertension Annual Renal & Retinopathy Panel Due",
+                    "Check serum creatinine/eGFR, urine albumin-creatinine ratio, and BP target (<130/80 mmHg).",
+                    "info",
+                    "Opes HealthCore Chronic Care CDSS",
+                    List.of("Order Renal Function Panel (LOINC 24362-6)"),
+                    false));
+        }
+        if (ageYears != null && ageYears >= 40) {
+            cards.add(new CdsCard(UUID.randomUUID().toString(),
+                    "Preventive Cardiovascular & Glycemic Screening",
+                    "Screen fasting blood glucose / HbA1c and lipid profile if > 12 months since last test.",
+                    "info",
+                    "Opes HealthCore Preventive CDSS",
+                    List.of("Order Fasting Glucose (LOINC 2339-0)"),
+                    false));
         }
         return cards;
     }
@@ -198,6 +237,12 @@ public class CdsHooksEngine {
                     Map.of("id", "opes-order-safety", "hook", "order-sign",
                             "title", "Opes HealthCore Medication & Allergy CDSS",
                             "description", "DDI, Drug-Allergy class, Renal contraindication, and Pediatric dosing checks"),
+                    Map.of("id", "opes-order-select", "hook", "order-select",
+                            "title", "Opes HealthCore Interactive Order Selection CDSS",
+                            "description", "Real-time renal dosing & duplicate therapy preview prior to signature"),
+                    Map.of("id", "opes-encounter-start", "hook", "encounter-start",
+                            "title", "Opes HealthCore Encounter Preventive Care & Screening CDSS",
+                            "description", "Preventive screening and chronic disease care-gap prompts at check-in"),
                     Map.of("id", "opes-vitals-panic", "hook", "patient-view",
                             "title", "Opes HealthCore NEWS2 & Lab Panic CDSS",
                             "description", "Early warning score and critical lab panic detection")
@@ -208,6 +253,21 @@ public class CdsHooksEngine {
         @Operation(summary = "Invoke order-sign CDSS safety evaluation")
         public Map<String, Object> invokeOrderSafety(@RequestBody OrderSafetyRequest request) {
             return Map.of("cards", cdssEngine.evaluateOrderSafety(request));
+        }
+
+        @PostMapping("/cds-services/opes-order-select")
+        @Operation(summary = "Invoke order-select interactive CDSS safety preview")
+        public Map<String, Object> invokeOrderSelect(@RequestBody OrderSafetyRequest request) {
+            return Map.of("cards", cdssEngine.evaluateOrderSafety(request));
+        }
+
+        public record EncounterStartRequest(UUID patientId, List<String> activeConditions, Integer ageYears) {}
+
+        @PostMapping("/cds-services/opes-encounter-start")
+        @Operation(summary = "Invoke encounter-start preventive care gap CDSS")
+        public Map<String, Object> invokeEncounterStart(@RequestBody EncounterStartRequest request) {
+            return Map.of("cards", cdssEngine.evaluateEncounterStart(
+                    request.patientId(), request.activeConditions(), request.ageYears()));
         }
 
         @PostMapping("/cds-services/opes-vitals-panic")
@@ -223,6 +283,15 @@ public class CdsHooksEngine {
                 @RequestParam String q,
                 @RequestParam(defaultValue = "20") int limit) {
             return terminologyService.search(systemUri, q, limit);
+        }
+
+        @PostMapping("/api/v1/terminology/import")
+        @PreAuthorize("hasAuthority('PERM_system:admin') or hasAuthority('PERM_template:publish')")
+        @Operation(summary = "Bulk import concepts from CSV, SNOMED RF2, or FHIR R4 CodeSystem JSON")
+        public Map<String, Object> importConcepts(
+                @RequestParam(defaultValue = "CSV") String format,
+                @RequestBody String content) {
+            return terminologyService.bulkImportConcepts(format, content);
         }
     }
 }

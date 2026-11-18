@@ -11,6 +11,7 @@ package com.opeshealth.healthcore.emr.domain;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -27,6 +28,7 @@ public final class EmrEntities {
     private EmrEntities() {}
 
     @Entity @Table(name = "hc_appointments")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AppointmentEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -58,6 +60,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_encounters")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class EncounterEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -207,6 +210,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_clinical_orders")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class ClinicalOrderEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -252,6 +256,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_ward_beds")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class WardBedEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -274,6 +279,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_admissions")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AdmissionEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -337,6 +343,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_care_plans")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class CarePlanEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -365,6 +372,7 @@ public final class EmrEntities {
     }
 
     @Entity @Table(name = "hc_specialty_records")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class SpecialtyRecordEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -389,5 +397,145 @@ public final class EmrEntities {
         public String getRecordedBy() { return recordedBy; }
         public void setRecordedBy(String recordedBy) { this.recordedBy = recordedBy; }
         public Instant getRecordedAt() { return recordedAt; }
+    }
+
+    /** Ward Nursing Intake & Output (I&O) Fluid Balance Chart. */
+    @Entity @Table(name = "hc_fluid_balance")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class FluidBalanceEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "admission_id", nullable = false) private UUID admissionId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "direction", nullable = false, length = 16) private String direction; // INTAKE, OUTPUT
+        @Column(name = "route", nullable = false, length = 32) private String route; // ORAL, IV, URINE, DRAIN
+        @Column(name = "volume_ml", nullable = false) private int volumeMl;
+        @Column(name = "recorded_by", nullable = false, length = 120) private String recordedBy;
+        @Column(name = "recorded_at", nullable = false) private Instant recordedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getAdmissionId() { return admissionId; }
+        public void setAdmissionId(UUID admissionId) { this.admissionId = admissionId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getDirection() { return direction; }
+        public void setDirection(String direction) { this.direction = direction; }
+        public String getRoute() { return route; }
+        public void setRoute(String route) { this.route = route; }
+        public int getVolumeMl() { return volumeMl; }
+        public void setVolumeMl(int volumeMl) { this.volumeMl = volumeMl; }
+        public String getRecordedBy() { return recordedBy; }
+        public void setRecordedBy(String recordedBy) { this.recordedBy = recordedBy; }
+        public Instant getRecordedAt() { return recordedAt; }
+    }
+
+    /** Ward Nursing & Physician SBAR Shift Handover Log. */
+    @Entity @Table(name = "hc_shift_handovers")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class ShiftHandoverEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "admission_id", nullable = false) private UUID admissionId;
+        @Column(name = "shift_name", nullable = false, length = 32) private String shiftName;
+        @Lob @Column(name = "situation", nullable = false) private String situation;
+        @Lob @Column(name = "background") private String background;
+        @Lob @Column(name = "assessment") private String assessment;
+        @Lob @Column(name = "recommendation") private String recommendation;
+        @Column(name = "handed_by", nullable = false, length = 120) private String handedBy;
+        @Column(name = "received_by", nullable = false, length = 120) private String receivedBy;
+        @Column(name = "recorded_at", nullable = false) private Instant recordedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getAdmissionId() { return admissionId; }
+        public void setAdmissionId(UUID admissionId) { this.admissionId = admissionId; }
+        public String getShiftName() { return shiftName; }
+        public void setShiftName(String shiftName) { this.shiftName = shiftName; }
+        public String getSituation() { return situation; }
+        public void setSituation(String situation) { this.situation = situation; }
+        public String getBackground() { return background; }
+        public void setBackground(String background) { this.background = background; }
+        public String getAssessment() { return assessment; }
+        public void setAssessment(String assessment) { this.assessment = assessment; }
+        public String getRecommendation() { return recommendation; }
+        public void setRecommendation(String recommendation) { this.recommendation = recommendation; }
+        public String getHandedBy() { return handedBy; }
+        public void setHandedBy(String handedBy) { this.handedBy = handedBy; }
+        public String getReceivedBy() { return receivedBy; }
+        public void setReceivedBy(String receivedBy) { this.receivedBy = receivedBy; }
+        public Instant getRecordedAt() { return recordedAt; }
+    }
+
+    /** Inpatient-to-Home Discharge Medication Reconciliation Record. */
+    @Entity @Table(name = "hc_med_reconciliations")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class MedReconciliationEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "admission_id", nullable = false) private UUID admissionId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "medication_code", nullable = false, length = 64) private String medicationCode;
+        @Column(name = "medication_display", nullable = false, length = 240) private String medicationDisplay;
+        @Column(name = "reconciliation_action", nullable = false, length = 24) private String reconciliationAction; // CONTINUE, MODIFY, STOP, NEW
+        @Column(name = "reconciled_by", nullable = false, length = 120) private String reconciledBy;
+        @Column(name = "reconciled_at", nullable = false) private Instant reconciledAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getAdmissionId() { return admissionId; }
+        public void setAdmissionId(UUID admissionId) { this.admissionId = admissionId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getMedicationCode() { return medicationCode; }
+        public void setMedicationCode(String medicationCode) { this.medicationCode = medicationCode; }
+        public String getMedicationDisplay() { return medicationDisplay; }
+        public void setMedicationDisplay(String medicationDisplay) { this.medicationDisplay = medicationDisplay; }
+        public String getReconciliationAction() { return reconciliationAction; }
+        public void setReconciliationAction(String reconciliationAction) { this.reconciliationAction = reconciliationAction; }
+        public String getReconciledBy() { return reconciledBy; }
+        public void setReconciledBy(String reconciledBy) { this.reconciledBy = reconciledBy; }
+        public Instant getReconciledAt() { return reconciledAt; }
+    }
+
+    /** Closed-loop FHIR ServiceRequest Referral tracking outbound/inbound outcomes. */
+    @Entity @Table(name = "hc_clinical_referrals")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class ClinicalReferralEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "encounter_id", nullable = false) private UUID encounterId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "target_facility", nullable = false, length = 200) private String targetFacility;
+        @Column(name = "specialty", nullable = false, length = 80) private String specialty;
+        @Column(name = "reason", nullable = false, length = 500) private String reason;
+        @Column(name = "status", nullable = false, length = 24) private String status = "SENT"; // SENT, ACCEPTED, COMPLETED
+        @Lob @Column(name = "outcome_notes") private String outcomeNotes;
+        @Column(name = "created_at", nullable = false) private Instant createdAt = Instant.now();
+        @Column(name = "completed_at") private Instant completedAt;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getEncounterId() { return encounterId; }
+        public void setEncounterId(UUID encounterId) { this.encounterId = encounterId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getTargetFacility() { return targetFacility; }
+        public void setTargetFacility(String targetFacility) { this.targetFacility = targetFacility; }
+        public String getSpecialty() { return specialty; }
+        public void setSpecialty(String specialty) { this.specialty = specialty; }
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public String getOutcomeNotes() { return outcomeNotes; }
+        public void setOutcomeNotes(String outcomeNotes) { this.outcomeNotes = outcomeNotes; }
+        public Instant getCreatedAt() { return createdAt; }
+        public Instant getCompletedAt() { return completedAt; }
+        public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
     }
 }

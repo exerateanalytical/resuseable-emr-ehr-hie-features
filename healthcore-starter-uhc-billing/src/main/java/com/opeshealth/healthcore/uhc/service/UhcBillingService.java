@@ -1,6 +1,6 @@
 /*
  * =============================================================================
- * Opes HealthCore SDK — Double-Entry Ledger, UHC Claims & Mobile Money Adapters
+ * Opes HealthCore SDK — Double-Entry Ledger, UHC/OpenIMIS, Vouchers & Mobile Money
  * Author / Architect : Jude Nshome — Opes Health Systems
  * Email              : nshome@opesware.com
  * Website            : https://www.opeshealthsystems.com
@@ -17,6 +17,7 @@ import com.opeshealth.healthcore.uhc.domain.UhcBillingEntities.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,9 +37,13 @@ public class UhcBillingService {
     public interface LedgerEntryRepository extends JpaRepository<LedgerEntryEntity, UUID> {}
     public interface CbhiPolicyRepository extends JpaRepository<CbhiPolicyEntity, UUID> {
         Optional<CbhiPolicyEntity> findByPolicyNumberAndActiveTrue(String policyNumber);
+        List<CbhiPolicyEntity> findByPatientIdAndActiveTrue(UUID patientId);
     }
     public interface InsuranceClaimRepository extends JpaRepository<InsuranceClaimEntity, UUID> {}
     public interface PaymentTransactionRepository extends JpaRepository<PaymentTransactionEntity, UUID> {}
+    public interface UhcVoucherRepository extends JpaRepository<UhcVoucherEntity, UUID> {
+        Optional<UhcVoucherEntity> findByVoucherCode(String voucherCode);
+    }
 
     /** Pluggable Mobile Money / Payer Gateway SPI (MTN MoMo, Orange Money, Stripe, Bank). */
     public interface PaymentGatewaySpi {
@@ -60,11 +65,14 @@ public class UhcBillingService {
         }
     }
 
+    private static final String OFFLINE_QR_SIGNING_SECRET = "opes-uhc-offline-qr-key-v1";
+
     private final PatientAccountRepository accountRepo;
     private final LedgerEntryRepository ledgerRepo;
     private final CbhiPolicyRepository cbhiRepo;
     private final InsuranceClaimRepository claimRepo;
     private final PaymentTransactionRepository txRepo;
+    private final UhcVoucherRepository voucherRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
     private final Map<String, PaymentGatewaySpi> paymentAdapters = new HashMap<>();
 
@@ -74,6 +82,7 @@ public class UhcBillingService {
             CbhiPolicyRepository cbhiRepo,
             InsuranceClaimRepository claimRepo,
             PaymentTransactionRepository txRepo,
+            UhcVoucherRepository voucherRepo,
             OutboxRelayService.OutboxRepository outboxRepo,
             List<PaymentGatewaySpi> adapters) {
         this.accountRepo = accountRepo;
@@ -81,6 +90,7 @@ public class UhcBillingService {
         this.cbhiRepo = cbhiRepo;
         this.claimRepo = claimRepo;
         this.txRepo = txRepo;
+        this.voucherRepo = voucherRepo;
         this.outboxRepo = outboxRepo;
         adapters.forEach(a -> paymentAdapters.put(a.providerCode(), a));
     }
@@ -145,6 +155,67 @@ public class UhcBillingService {
         return claim;
     }
 
+    /** Redeems a Maternity/Child UHC health voucher against a facility charge. */
+    @Transactional
+    @ClinicalAudit(action = "UHC_REDEEM_VOUCHER", resourceType = "UhcVoucher")
+    public UhcVoucherEntity redeemVoucher(String voucherCode, long requestedAmountMinor) {
+        UhcVoucherEntity voucher = voucherRepo.findByVoucherCode(voucherCode)
+                .orElseThrow(() -> new NoSuchElementException("UHC Voucher not found: " + voucherCode));
+        if (!"ACTIVE".equals(voucher.getStatus()) || voucher.getExpiresOn().isBefore(LocalDate.now())) {
+            throw new IllegalStateException("Voucher is inactive or expired: " + voucherCode);
+        }
+        if (requestedAmountMinor <= 0 || requestedAmountMinor > voucher.getRemainingMinor()) {
+            throw new IllegalArgumentException("Insufficient voucher remaining balance: " + voucher.getRemainingMinor());
+        }
+        voucher.setRemainingMinor(voucher.getRemainingMinor() - requestedAmountMinor);
+        if (voucher.getRemainingMinor() == 0) {
+            voucher.setStatus("REDEEMED");
+        }
+        return voucherRepo.save(voucher);
+    }
+
+    /** Issues an HMAC-SHA256 signed offline UHC eligibility QR token verifiable without internet. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> issueOfflineEligibilityQr(String policyNumber) {
+        CbhiPolicyEntity policy = cbhiRepo.findByPolicyNumberAndActiveTrue(policyNumber)
+                .orElseThrow(() -> new NoSuchElementException("Active policy not found: " + policyNumber));
+        String claimsPayload = policy.getPolicyNumber() + "|" + policy.getPatientId() + "|"
+                + policy.getCoveragePercent() + "|" + policy.getValidUntil();
+        String sig = computeHmacSha256(claimsPayload, OFFLINE_QR_SIGNING_SECRET);
+        String qrToken = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString((claimsPayload + "|" + sig).getBytes(StandardCharsets.UTF_8));
+        return Map.of(
+                "policyNumber", policy.getPolicyNumber(),
+                "schemeName", policy.getSchemeName(),
+                "coveragePercent", policy.getCoveragePercent(),
+                "validUntil", policy.getValidUntil().toString(),
+                "signedQrToken", qrToken
+        );
+    }
+
+    /** Verifies a scanned offline UHC eligibility QR token deterministically. */
+    public Map<String, Object> verifyOfflineEligibilityQr(String qrToken) {
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(qrToken), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|");
+            if (parts.length != 5) {
+                return Map.of("valid", false, "reason", "Malformed UHC offline QR token");
+            }
+            String claimsPayload = parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[3];
+            boolean sigValid = verifyHmacSha256(claimsPayload, parts[4], OFFLINE_QR_SIGNING_SECRET);
+            boolean unexpired = !LocalDate.parse(parts[3]).isBefore(LocalDate.now());
+            return Map.of(
+                    "valid", sigValid && unexpired,
+                    "policyNumber", parts[0],
+                    "patientId", parts[1],
+                    "coveragePercent", Integer.parseInt(parts[2]),
+                    "validUntil", parts[3]
+            );
+        } catch (Exception ex) {
+            return Map.of("valid", false, "reason", ex.getMessage());
+        }
+    }
+
     /** Credits patient account after verifying Mobile Money HMAC webhook signature. */
     @Transactional
     @RetryableOnTransientSqlFailure
@@ -179,12 +250,20 @@ public class UhcBillingService {
         return txRepo.save(tx);
     }
 
-    private static boolean verifyHmacSha256(String payload, String signatureHex, String secret) {
-        if (signatureHex == null || secret == null) return false;
+    private static String computeHmacSha256(String payload, String secret) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            String expected = HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private static boolean verifyHmacSha256(String payload, String signatureHex, String secret) {
+        if (signatureHex == null || secret == null) return false;
+        try {
+            String expected = computeHmacSha256(payload, secret);
             return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
                     signatureHex.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
         } catch (Exception ex) {
@@ -203,24 +282,57 @@ public class UhcBillingService {
     }
 
     @RestController
-    @RequestMapping("/api/v1/uhc")
-    @Tag(name = "UHC / CBHI & Billing", description = "Double-entry ledger, CBHI Mutuelles de Santé claims, and MTN/Orange MoMo webhooks")
+    @Tag(name = "UHC / CBHI, OpenIMIS & Billing", description = "Double-entry ledger, CBHI Mutuelles de Santé, OpenIMIS FHIR Coverage/Claim, Vouchers, Offline QR & MoMo")
     public static class UhcBillingController {
         private final UhcBillingService service;
         private final CbhiPolicyRepository cbhiRepo;
+        private final UhcVoucherRepository voucherRepo;
 
-        public UhcBillingController(UhcBillingService service, CbhiPolicyRepository cbhiRepo) {
+        public UhcBillingController(
+                UhcBillingService service,
+                CbhiPolicyRepository cbhiRepo,
+                UhcVoucherRepository voucherRepo) {
             this.service = service;
             this.cbhiRepo = cbhiRepo;
+            this.voucherRepo = voucherRepo;
         }
 
-        @PostMapping("/policies")
+        @PostMapping("/api/v1/uhc/policies")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_billing:invoice')")
         @Operation(summary = "Enroll patient or household into CBHI / UHC insurance scheme")
         public CbhiPolicyEntity enrollPolicy(@RequestBody CbhiPolicyEntity policy) {
             return cbhiRepo.save(policy);
         }
 
-        @PostMapping("/charges")
+        @GetMapping("/api/v1/uhc/policies/{policyNumber}/offline-qr")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_billing:invoice')")
+        @Operation(summary = "Generate HMAC-signed offline UHC eligibility verification QR token")
+        public Map<String, Object> offlineQr(@PathVariable String policyNumber) {
+            return service.issueOfflineEligibilityQr(policyNumber);
+        }
+
+        @PostMapping("/api/v1/uhc/policies/verify-offline-qr")
+        @Operation(summary = "Verify offline UHC eligibility QR token without central internet")
+        public Map<String, Object> verifyOfflineQr(@RequestParam String token) {
+            return service.verifyOfflineEligibilityQr(token);
+        }
+
+        @PostMapping("/api/v1/uhc/vouchers")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_billing:invoice')")
+        @Operation(summary = "Issue UHC Maternity / Child subsidy voucher")
+        public UhcVoucherEntity issueVoucher(@RequestBody UhcVoucherEntity voucher) {
+            return voucherRepo.save(voucher);
+        }
+
+        @PostMapping("/api/v1/uhc/vouchers/{voucherCode}/redeem")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_billing:collect')")
+        @Operation(summary = "Redeem UHC health voucher balance")
+        public UhcVoucherEntity redeemVoucher(@PathVariable String voucherCode, @RequestParam long amountMinor) {
+            return service.redeemVoucher(voucherCode, amountMinor);
+        }
+
+        @PostMapping("/api/v1/uhc/charges")
+        @PreAuthorize("hasAuthority('PERM_billing:invoice')")
         @Operation(summary = "Post immutable DEBIT charge to patient double-entry account")
         public LedgerEntryEntity postCharge(
                 @RequestParam UUID facilityId, @RequestParam UUID patientId,
@@ -229,7 +341,8 @@ public class UhcBillingService {
             return service.postCharge(facilityId, patientId, amountMinor, currency, ref, description);
         }
 
-        @PostMapping("/claims/adjudicate")
+        @PostMapping("/api/v1/uhc/claims/adjudicate")
+        @PreAuthorize("hasAuthority('PERM_claim:submit') or hasAuthority('PERM_uhc:verify')")
         @Operation(summary = "Adjudicate UHC/CBHI claim splitting insurer share and patient co-pay")
         public InsuranceClaimEntity adjudicate(
                 @RequestParam String policyNumber,
@@ -238,7 +351,46 @@ public class UhcBillingService {
             return service.adjudicateCbhiClaim(policyNumber, totalBilledMinor, model);
         }
 
-        @PostMapping("/webhooks/{providerCode}")
+        /** OpenIMIS FHIR R4 Coverage Search Endpoint. */
+        @GetMapping(value = "/fhir/r4/Coverage", produces = "application/fhir+json")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_patient:read')")
+        @Operation(summary = "OpenIMIS-compatible FHIR R4 Coverage eligibility lookup")
+        public Map<String, Object> fhirCoverage(@RequestParam UUID beneficiary) {
+            List<Map<String, Object>> entries = cbhiRepo.findByPatientIdAndActiveTrue(beneficiary).stream()
+                    .map(p -> Map.<String, Object>of("resource", Map.of(
+                            "resourceType", "Coverage",
+                            "id", p.getId().toString(),
+                            "status", "active",
+                            "subscriberId", p.getPolicyNumber(),
+                            "beneficiary", Map.of("reference", "Patient/" + p.getPatientId()),
+                            "payor", List.of(Map.of("display", p.getSchemeName())),
+                            "period", Map.of("start", p.getValidFrom().toString(), "end", p.getValidUntil().toString()))))
+                    .toList();
+            return Map.of("resourceType", "Bundle", "type", "searchset", "total", entries.size(), "entry", entries);
+        }
+
+        /** OpenIMIS FHIR R4 Claim -> ClaimResponse Submission Endpoint. */
+        @PostMapping(value = "/fhir/r4/Claim", produces = "application/fhir+json")
+        @PreAuthorize("hasAuthority('PERM_claim:submit')")
+        @Operation(summary = "Submit OpenIMIS-compatible FHIR R4 Claim and return ClaimResponse")
+        public Map<String, Object> fhirClaim(
+                @RequestParam String policyNumber,
+                @RequestParam long totalBilledMinor) {
+            InsuranceClaimEntity claim = service.adjudicateCbhiClaim(policyNumber, totalBilledMinor, "CASE_DRG");
+            return Map.of(
+                    "resourceType", "ClaimResponse",
+                    "id", claim.getId().toString(),
+                    "status", "active",
+                    "outcome", "complete",
+                    "disposition", "Adjudicated by Opes HealthCore OpenIMIS Adapter",
+                    "total", List.of(
+                            Map.of("category", Map.of("text", "submitted"), "amount", Map.of("value", claim.getTotalBilledMinor(), "currency", "XAF")),
+                            Map.of("category", Map.of("text", "benefit"), "amount", Map.of("value", claim.getInsurerShareMinor(), "currency", "XAF"))
+                    )
+            );
+        }
+
+        @PostMapping("/api/v1/uhc/webhooks/{providerCode}")
         @Operation(summary = "HMAC-verified Mobile Money payment callback (MTN_MOMO / ORANGE_MONEY)")
         public PaymentTransactionEntity webhook(
                 @PathVariable String providerCode,

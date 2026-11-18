@@ -37,14 +37,18 @@ public class UhcBillingAutoConfiguration {
             CbhiPolicyRepository cbhiRepo,
             InsuranceClaimRepository claimRepo,
             PaymentTransactionRepository txRepo,
+            UhcVoucherRepository voucherRepo,
             OutboxRelayService.OutboxRepository outboxRepo,
             List<PaymentGatewaySpi> adapters) {
-        return new UhcBillingService(accountRepo, ledgerRepo, cbhiRepo, claimRepo, txRepo, outboxRepo, adapters);
+        return new UhcBillingService(accountRepo, ledgerRepo, cbhiRepo, claimRepo, txRepo, voucherRepo, outboxRepo, adapters);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public UhcBillingController uhcBillingController(UhcBillingService service, CbhiPolicyRepository cbhiRepo) {
-        return new UhcBillingController(service, cbhiRepo);
+    public UhcBillingController uhcBillingController(
+            UhcBillingService service,
+            CbhiPolicyRepository cbhiRepo,
+            UhcVoucherRepository voucherRepo) {
+        return new UhcBillingController(service, cbhiRepo, voucherRepo);
     }
 }

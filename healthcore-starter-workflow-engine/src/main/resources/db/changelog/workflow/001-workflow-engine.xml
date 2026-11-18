@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Composable Clinical/EHR/HIE Workflow Engine Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Portable multi-database schema (PostgreSQL 16+, MSSQL 2019/2022, MySQL 8.4+)
+  with dedicated PostgreSQL partial & JSONB GIN indexes for fast SLA scans and
+  real-time active clinical queue filtering.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- 1. Facility-customizable Workflow State Machine Definitions -->
+    <changeSet id="workflow-001-definitions" author="jude.nshome">
+        <createTable tableName="hc_workflow_definitions">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="workflow_code" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="domain_category" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="version_number" type="INT" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="initial_stage" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="allowed_transitions_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="terminal_stages_csv" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="sla_minutes" type="INT" defaultValueNumeric="240"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_workflow_definitions"
+                             columnNames="facility_id,workflow_code,version_number"
+                             constraintName="uk_hc_wf_def_facility_code_ver"/>
+        <createIndex tableName="hc_workflow_definitions" indexName="idx_hc_wf_def_lookup">
+            <column name="facility_id"/>
+            <column name="workflow_code"/>
+            <column name="active"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- 2. Live Runtime Workflow Instances with Optimistic Locking & SLA Deadlines -->
+    <changeSet id="workflow-002-instances" author="jude.nshome">
+        <createTable tableName="hc_workflow_instances">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="workflow_code" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="definition_version" type="INT" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="subject_patient_id" type="${uuid_type}"/>
+            <column name="external_correlation_id" type="VARCHAR(120)"/>
+            <column name="current_stage" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="priority" type="VARCHAR(16)" defaultValue="ROUTINE"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)" defaultValue="ACTIVE"><constraints nullable="false"/></column>
+            <column name="context_json" type="${clob_type}" defaultValue="{}"><constraints nullable="false"/></column>
+            <column name="sla_deadline_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="started_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="completed_at" type="${ts_type}"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_workflow_instances" indexName="idx_hc_wf_inst_patient">
+            <column name="facility_id"/>
+            <column name="subject_patient_id"/>
+            <column name="status"/>
+        </createIndex>
+        <createIndex tableName="hc_workflow_instances" indexName="idx_hc_wf_inst_corr">
+            <column name="facility_id"/>
+            <column name="external_correlation_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- 3. Immutable Append-Only Workflow Transition & Attribution Audit Trail -->
+    <changeSet id="workflow-003-step-logs" author="jude.nshome">
+        <createTable tableName="hc_workflow_step_logs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="instance_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="from_stage" type="VARCHAR(64)"/>
+            <column name="to_stage" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="actor_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="actor_role" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="notes" type="${clob_type}"/>
+            <column name="transition_metadata_json" type="${clob_type}"/>
+            <column name="transitioned_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_workflow_step_logs" indexName="idx_hc_wf_steps_inst">
+            <column name="instance_id"/>
+            <column name="transitioned_at"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- 4. PostgreSQL 16+ Partial & JSONB GIN Indexes (ignored cleanly on MSSQL/MySQL) -->
+    <changeSet id="workflow-004-postgres-partial-gin-indexes" author="jude.nshome" dbms="postgresql">
+        <sql>
+            CREATE INDEX IF NOT EXISTS idx_hc_wf_active_sla
+                ON hc_workflow_instances (sla_deadline_at, facility_id)
+                WHERE completed_at IS NULL AND status IN ('ACTIVE', 'ESCALATED');
+
+            CREATE INDEX IF NOT EXISTS idx_hc_wf_patient_active
+                ON hc_workflow_instances (subject_patient_id, started_at DESC)
+                WHERE completed_at IS NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_hc_wf_context_gin
+                ON hc_workflow_instances
+                USING GIN ((context_json::jsonb));
+        </sql>
+    </changeSet>
+</databaseChangeLog>

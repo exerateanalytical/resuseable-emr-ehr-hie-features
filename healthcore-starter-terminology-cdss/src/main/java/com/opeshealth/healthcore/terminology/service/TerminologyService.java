@@ -179,6 +179,104 @@ public class TerminologyService implements ApplicationRunner {
                 "Hold Metformin and evaluate insulin or DPP-4 inhibitor.");
     }
 
+    /**
+     * Bulk-imports standardized clinical concepts from CSV, SNOMED CT RF2 tab-delimited text,
+     * or HL7 FHIR R4 {@code CodeSystem} JSON payloads into {@code hc_terminology_concepts}.
+     *
+     * <p>Supported formats:</p>
+     * <ul>
+     *   <li>{@code CSV}: {@code systemUri,code,displayEn,displayFr,clinicalDomain,ucumUnit}</li>
+     *   <li>{@code SNOMED_RF2}: tab-delimited {@code id\teffectiveTime\tactive\tmoduleId\tconceptId\tlanguageCode\ttypeId\tterm\tcaseSignificanceId}</li>
+     *   <li>{@code FHIR_CODESYSTEM}: FHIR R4 JSON {@code {"url":"...", "concept":[{"code":"...", "display":"..."}]}}</li>
+     * </ul>
+     */
+    @Transactional
+    public Map<String, Object> bulkImportConcepts(String format, String content) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("Import content cannot be blank");
+        }
+        String fmt = format == null ? "CSV" : format.trim().toUpperCase(Locale.ROOT);
+        int imported = 0;
+        int skipped = 0;
+
+        switch (fmt) {
+            case "CSV" -> {
+                String[] lines = content.split("\\r?\\n");
+                for (String rawLine : lines) {
+                    String line = rawLine.trim();
+                    if (line.isEmpty() || line.startsWith("#") || line.toLowerCase(Locale.ROOT).startsWith("systemuri,")) {
+                        continue;
+                    }
+                    String[] cols = line.split(",", -1);
+                    if (cols.length < 3) {
+                        skipped++;
+                        continue;
+                    }
+                    String sys = cols[0].trim();
+                    String code = cols[1].trim();
+                    String en = cols[2].trim();
+                    String fr = cols.length > 3 && !cols[3].isBlank() ? cols[3].trim() : en;
+                    String dom = cols.length > 4 && !cols[4].isBlank() ? cols[4].trim() : "GENERAL";
+                    String ucum = cols.length > 5 && !cols[5].isBlank() ? cols[5].trim() : null;
+                    if (conceptRepo.findBySystemUriAndCode(sys, code).isEmpty()) {
+                        seedConcept(sys, code, en, fr, dom, ucum);
+                        imported++;
+                    } else {
+                        skipped++;
+                    }
+                }
+            }
+            case "SNOMED_RF2" -> {
+                String[] lines = content.split("\\r?\\n");
+                for (String rawLine : lines) {
+                    String line = rawLine.trim();
+                    if (line.isEmpty() || line.startsWith("id\t")) {
+                        continue;
+                    }
+                    String[] cols = line.split("\\t", -1);
+                    // RF2 Description snapshot: active=1 at index 2, conceptId at 4, term at 7
+                    if (cols.length < 8 || !"1".equals(cols[2].trim())) {
+                        skipped++;
+                        continue;
+                    }
+                    String conceptId = cols[4].trim();
+                    String term = cols[7].trim();
+                    if (conceptRepo.findBySystemUriAndCode(SNOMED, conceptId).isEmpty()) {
+                        seedConcept(SNOMED, conceptId, term, term, "SNOMED_RF2", null);
+                        imported++;
+                    } else {
+                        skipped++;
+                    }
+                }
+            }
+            case "FHIR_CODESYSTEM" -> {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(content);
+                    String sys = root.path("url").asText(SNOMED);
+                    com.fasterxml.jackson.databind.JsonNode concepts = root.path("concept");
+                    if (concepts.isArray()) {
+                        for (com.fasterxml.jackson.databind.JsonNode item : concepts) {
+                            String code = item.path("code").asText("");
+                            String display = item.path("display").asText(code);
+                            if (!code.isBlank() && conceptRepo.findBySystemUriAndCode(sys, code).isEmpty()) {
+                                seedConcept(sys, code, display, display, "FHIR_IMPORT", null);
+                                imported++;
+                            } else {
+                                skipped++;
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    throw new IllegalArgumentException("Invalid FHIR CodeSystem JSON payload: " + ex.getMessage(), ex);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported terminology import format: " + fmt);
+        }
+
+        return Map.of("format", fmt, "importedCount", imported, "skippedCount", skipped);
+    }
+
     private void seedConcept(String sys, String code, String en, String fr, String domain, String ucum) {
         CodeConceptEntity c = new CodeConceptEntity();
         c.setSystemUri(sys);

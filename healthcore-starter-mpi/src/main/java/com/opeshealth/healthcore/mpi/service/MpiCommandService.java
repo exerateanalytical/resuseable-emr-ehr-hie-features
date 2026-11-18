@@ -16,6 +16,7 @@ import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,12 +68,19 @@ public class MpiCommandService {
             String emergencyContactPhone
     ) {}
 
+    public record PatientMergedApplicationEvent(
+            UUID facilityId, UUID sourcePatientId, UUID survivingPatientId, UUID mergeHistoryId) {}
+
+    public record PatientUnmergedApplicationEvent(
+            UUID facilityId, UUID sourcePatientId, UUID survivingPatientId, UUID mergeHistoryId) {}
+
     private final PatientRepository patientRepo;
     private final PatientIdentifierRepository identifierRepo;
     private final PatientDemographicsRepository demographicsRepo;
     private final PatientPhoneticRepository phoneticRepo;
     private final PatientMergeRepository mergeRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MpiCommandService(
             PatientRepository patientRepo,
@@ -80,13 +88,15 @@ public class MpiCommandService {
             PatientDemographicsRepository demographicsRepo,
             PatientPhoneticRepository phoneticRepo,
             PatientMergeRepository mergeRepo,
-            OutboxRelayService.OutboxRepository outboxRepo) {
+            OutboxRelayService.OutboxRepository outboxRepo,
+            ApplicationEventPublisher eventPublisher) {
         this.patientRepo = patientRepo;
         this.identifierRepo = identifierRepo;
         this.demographicsRepo = demographicsRepo;
         this.phoneticRepo = phoneticRepo;
         this.mergeRepo = mergeRepo;
         this.outboxRepo = outboxRepo;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -193,6 +203,41 @@ public class MpiCommandService {
 
         emitOutboxEvent("Patient", survivingId, "PatientMergedEvent",
                 "{\"sourceId\":\"" + sourceId + "\",\"survivingId\":\"" + survivingId + "\"}");
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new PatientMergedApplicationEvent(
+                    facilityId, sourceId, survivingId, history.getId()));
+        }
+        return history;
+    }
+
+    /** Reverses a prior patient merge and publishes {@code PatientUnmergedApplicationEvent}. */
+    @Transactional
+    @ClinicalAudit(action = "MPI_UNMERGE_PATIENT", resourceType = "Patient")
+    public PatientMergeHistoryEntity unmergePatients(UUID mergeHistoryId, String reversedBy, String reason) {
+        PatientMergeHistoryEntity history = mergeRepo.findById(mergeHistoryId)
+                .orElseThrow(() -> new NoSuchElementException("Merge history not found: " + mergeHistoryId));
+        if (history.isReversed()) {
+            throw new IllegalStateException("Merge " + mergeHistoryId + " was already reversed");
+        }
+        PatientAggregateEntity source = patientRepo.findById(history.getSourcePatientId())
+                .orElseThrow(() -> new NoSuchElementException("Merged source patient not found"));
+        source.setGoldenRecord(true);
+        source.setActive(true);
+        source.setSurvivingPatientId(null);
+        source.setUpdatedAt(Instant.now());
+        patientRepo.save(source);
+
+        history.setReversed(true);
+        history.setReason((history.getReason() != null ? history.getReason() + " | REVERSED by " : "REVERSED by ")
+                + reversedBy + ": " + reason);
+        history = mergeRepo.save(history);
+
+        emitOutboxEvent("Patient", source.getId(), "PatientUnmergedEvent",
+                "{\"mergeHistoryId\":\"" + history.getId() + "\",\"restoredId\":\"" + source.getId() + "\"}");
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new PatientUnmergedApplicationEvent(
+                    history.getFacilityId(), source.getId(), history.getSurvivingPatientId(), history.getId()));
+        }
         return history;
     }
 

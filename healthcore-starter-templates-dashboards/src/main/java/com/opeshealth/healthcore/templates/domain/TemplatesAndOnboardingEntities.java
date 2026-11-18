@@ -127,4 +127,54 @@ public final class TemplatesAndOnboardingEntities {
         public void setRestoreVerified(boolean restoreVerified) { this.restoreVerified = restoreVerified; }
         public Instant getCreatedAt() { return createdAt; }
     }
+
+    @Entity @Table(name = "hc_questionnaire_responses")
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class QuestionnaireResponseEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "template_code", nullable = false, length = 80) private String templateCode;
+        @Column(name = "patient_id") private UUID patientId;
+        @Column(name = "encounter_id") private UUID encounterId;
+        @Lob @Column(name = "answers_json", nullable = false) private String answersJson;
+        @Column(name = "submitted_by", nullable = false, length = 120) private String submittedBy;
+        @Column(name = "submitted_at", nullable = false) private Instant submittedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getTemplateCode() { return templateCode; }
+        public void setTemplateCode(String templateCode) { this.templateCode = templateCode; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public UUID getEncounterId() { return encounterId; }
+        public void setEncounterId(UUID encounterId) { this.encounterId = encounterId; }
+        public String getAnswersJson() { return answersJson; }
+        public void setAnswersJson(String answersJson) { this.answersJson = answersJson; }
+        public String getSubmittedBy() { return submittedBy; }
+        public void setSubmittedBy(String submittedBy) { this.submittedBy = submittedBy; }
+        public Instant getSubmittedAt() { return submittedAt; }
+    }
+
+    @Entity @Table(name = "hc_edge_dr_state")
+    public static class EdgeDrStateEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false, unique = true) private UUID facilityId;
+        @Column(name = "failover_mode", nullable = false, length = 32) private String failoverMode = "CONNECTED_NORMAL"; // CONNECTED_NORMAL, EDGE_ISOLATED, DR_RESTORING
+        @Column(name = "reason", length = 300) private String reason;
+        @Column(name = "updated_by", nullable = false, length = 120) private String updatedBy;
+        @Column(name = "updated_at", nullable = false) private Instant updatedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getFailoverMode() { return failoverMode; }
+        public void setFailoverMode(String failoverMode) { this.failoverMode = failoverMode; }
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+        public String getUpdatedBy() { return updatedBy; }
+        public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
+        public Instant getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    }
 }

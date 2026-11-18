@@ -12,6 +12,7 @@ package com.opeshealth.healthcore.mpi.domain;
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,6 +28,7 @@ public final class MpiEntities {
 
     @Entity
     @Table(name = "hc_patients")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class PatientAggregateEntity {
         @Id
         @Column(name = "id", nullable = false, updatable = false)
@@ -233,6 +235,7 @@ public final class MpiEntities {
 
     @Entity
     @Table(name = "hc_patient_merges")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class PatientMergeHistoryEntity {
         @Id
         @Column(name = "id", nullable = false, updatable = false)

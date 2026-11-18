@@ -27,6 +27,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.opeshealth.healthcore.mobile.sync.OfflineClinicalSafetyEngine
+import com.opeshealth.healthcore.mobile.sync.OfflineVaultSyncRepository
+import kotlin.math.roundToInt
 
 data class PatientQueueItem(
     val id: String,
@@ -39,6 +41,87 @@ data class PatientQueueItem(
 )
 
 /**
+ * Top-level SQLDelight-backed adaptive application host switching cleanly between
+ * Clinician, Patient QR Companion, and CHW Field Worker apps using encrypted local SQLite.
+ */
+@Composable
+fun HealthCoreSuiteHost(
+    vault: OfflineVaultSyncRepository,
+    facilityId: String,
+    wallClockMs: () -> Long,
+    onRequestBarcodeScan: ((String) -> Unit) -> Unit = {}
+) {
+    vault.seedSamplePatientsIfEmpty(facilityId, wallClockMs())
+    var activePersona by remember { mutableStateOf("CLINICIAN") }
+    var pendingCount by remember { mutableStateOf(vault.pendingOutboxCount()) }
+    var lastStatusMessage by remember { mutableStateOf("Encrypted Offline SQLite Vault Ready") }
+
+    val cachedPatients = remember(pendingCount) {
+        vault.listCachedPatients().mapIndexed { idx, row ->
+            PatientQueueItem(
+                id = row.id,
+                mrn = row.mrn,
+                fullName = "${row.given_name} ${row.family_name}",
+                esiLevel = (idx % 3) + 2,
+                bloodGroup = row.blood_group ?: "Unknown",
+                allergies = row.allergies_csv ?: "",
+                pendingSyncCount = pendingCount
+            )
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().background(Color(0xFF0A3642)).padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("CLINICIAN", "PATIENT", "CHW").forEach { mode ->
+                FilterChip(
+                    selected = activePersona == mode,
+                    onClick = { activePersona = mode },
+                    label = { Text(mode, color = if (activePersona == mode) Color(0xFF0F4C5C) else Color.White) }
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = {
+                onRequestBarcodeScan { scanned -> lastStatusMessage = "Scanned: $scanned" }
+            }) {
+                Text("Scan QR", color = Color(0xFFBAE6FD))
+            }
+        }
+
+        when (activePersona) {
+            "CLINICIAN" -> HealthCoreClinicianApp(
+                patients = cachedPatients,
+                offlineMode = true,
+                pendingSyncCount = pendingCount,
+                statusMessage = lastStatusMessage,
+                onSignSoapNote = { patientId, soapText, strokesJson ->
+                    vault.enqueueClinicalNoteOffline(patientId, soapText, strokesJson, wallClockMs())
+                    pendingCount = vault.pendingOutboxCount()
+                    lastStatusMessage = "SOAP + Stylus sketch saved offline ($pendingCount queued)"
+                }
+            )
+            "PATIENT" -> HealthCorePatientApp(
+                patientName = cachedPatients.firstOrNull()?.fullName ?: "Patient",
+                qrHealthCardToken = "OPES-ED25519-IPS-V1.${facilityId.take(8)}",
+                cbhiPolicyNo = "CM-MUTUELLE-2026-8841"
+            )
+            else -> HealthCoreChwFieldApp(
+                chwName = "CHW Douala Sector 4",
+                householdsCount = cachedPatients.size * 12,
+                onRecordMuacVisit = { muac ->
+                    val targetId = cachedPatients.firstOrNull()?.id ?: "01950001-0000-7000-8000-000000000001"
+                    vault.enqueueChwMuacVisitOffline(targetId, muac, wallClockMs())
+                    pendingCount = vault.pendingOutboxCount()
+                    lastStatusMessage = if (muac < 115) "SAM Referral QR generated ($pendingCount queued)" else "CHW Visit queued"
+                }
+            )
+        }
+    }
+}
+
+/**
  * Adaptive clinician shell automatically rendering a 3-column iPad/Tablet Cockpit
  * when width >= 840.dp and a single-hand thumb-zone layout on smartphones.
  */
@@ -47,10 +130,12 @@ fun HealthCoreClinicianApp(
     patients: List<PatientQueueItem>,
     offlineMode: Boolean,
     pendingSyncCount: Int,
-    onSignSoapNote: (patientId: String, soapText: String) -> Unit
+    statusMessage: String = "",
+    onSignSoapNote: (patientId: String, soapText: String, stylusStrokesJson: String) -> Unit
 ) {
     var selectedPatient by remember { mutableStateOf(patients.firstOrNull()) }
     var soapDraft by remember { mutableStateOf("") }
+    val stylusStrokes = remember { mutableStateListOf<Pair<Offset, Offset>>() }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF0F4C5C), secondary = Color(0xFF0E7C7B))) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFFF6F9FA))) {
@@ -79,15 +164,22 @@ fun HealthCoreClinicianApp(
                     }
                 }
 
+                if (statusMessage.isNotBlank()) {
+                    Text(
+                        text = statusMessage,
+                        modifier = Modifier.fillMaxWidth().background(Color(0xFFE0F2FE)).padding(horizontal = 16.dp, vertical = 6.dp),
+                        color = Color(0xFF0C4A6E),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
                 if (isTabletOrIpad) {
                     // iPad / Android Tablet 3-Column Clinical Cockpit
                     Row(modifier = Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Column 1: Triage / Ward Queue
                         Card(modifier = Modifier.weight(0.26f).fillMaxHeight()) {
                             PatientQueueList(patients) { selectedPatient = it }
                         }
 
-                        // Column 2: Active Consultation SOAP + Stylus / Apple Pencil Specialty Sketch Pad
                         Card(modifier = Modifier.weight(0.46f).fillMaxHeight()) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("Consultation & Stylus Exam Canvas", style = MaterialTheme.typography.titleMedium)
@@ -98,9 +190,19 @@ fun HealthCoreClinicianApp(
                                     modifier = Modifier.fillMaxWidth().height(160.dp)
                                 )
                                 Text("Dental Odontogram / Eye Fundus / Derm Stylus Annotation", style = MaterialTheme.typography.labelLarge)
-                                StylusAnnotationCanvas(modifier = Modifier.fillMaxWidth().height(180.dp))
+                                StylusAnnotationCanvas(
+                                    strokes = stylusStrokes,
+                                    modifier = Modifier.fillMaxWidth().height(180.dp)
+                                )
                                 Button(
-                                    onClick = { selectedPatient?.let { onSignSoapNote(it.id, soapDraft) } },
+                                    onClick = {
+                                        selectedPatient?.let {
+                                            val jsonStrokes = "[" + stylusStrokes.joinToString(",") { (a, b) ->
+                                                """{"x1":${a.x.roundToInt()},"y1":${a.y.roundToInt()},"x2":${b.x.roundToInt()},"y2":${b.y.roundToInt()}}"""
+                                            } + "]"
+                                            onSignSoapNote(it.id, soapDraft, jsonStrokes)
+                                        }
+                                    },
                                     modifier = Modifier.height(48.dp)
                                 ) {
                                     Text("Sign & Enqueue Offline Sync")
@@ -108,7 +210,6 @@ fun HealthCoreClinicianApp(
                             }
                         }
 
-                        // Column 3: Live Offline CDSS & NEWS2 Safety Rail
                         Card(modifier = Modifier.weight(0.28f).fillMaxHeight()) {
                             CdssSafetyRail(selectedPatient)
                         }
@@ -124,7 +225,9 @@ fun HealthCoreClinicianApp(
                             modifier = Modifier.fillMaxWidth().height(120.dp)
                         )
                         Button(
-                            onClick = { selectedPatient?.let { onSignSoapNote(it.id, soapDraft) } },
+                            onClick = {
+                                selectedPatient?.let { onSignSoapNote(it.id, soapDraft, "[]") }
+                            },
                             modifier = Modifier.fillMaxWidth().height(52.dp)
                         ) {
                             Text("Save Offline & Sync")
@@ -151,8 +254,10 @@ private fun PatientQueueList(patients: List<PatientQueueItem>, onSelect: (Patien
 }
 
 @Composable
-private fun StylusAnnotationCanvas(modifier: Modifier = Modifier) {
-    val strokes = remember { mutableStateListOf<Pair<Offset, Offset>>() }
+private fun StylusAnnotationCanvas(
+    strokes: MutableList<Pair<Offset, Offset>>,
+    modifier: Modifier = Modifier
+) {
     Canvas(
         modifier = modifier
             .background(Color(0xFFF1F5F9))
@@ -177,7 +282,8 @@ private fun CdssSafetyRail(patient: PatientQueueItem?) {
     val alerts = OfflineClinicalSafetyEngine.evaluateOfflinePrescriptionSafety(
         proposedDrugCode = "723",
         patientAllergiesCsv = patient?.allergies ?: "",
-        activeMedCodesCsv = "11289"
+        activeMedCodesCsv = "11289",
+        egfr = 42.0
     )
     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Offline CDSS Safety Rail", style = MaterialTheme.typography.titleMedium)

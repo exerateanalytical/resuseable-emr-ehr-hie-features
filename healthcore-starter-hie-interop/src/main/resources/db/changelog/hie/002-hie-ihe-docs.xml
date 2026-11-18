@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — IHE MHD DocumentReference Registry Table
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="002-hie-ihe-docs" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_ihe_documents">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="document_type_loinc" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="title" type="VARCHAR(240)"><constraints nullable="false"/></column>
+            <column name="content_type" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="content_url_or_base64" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="indexed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

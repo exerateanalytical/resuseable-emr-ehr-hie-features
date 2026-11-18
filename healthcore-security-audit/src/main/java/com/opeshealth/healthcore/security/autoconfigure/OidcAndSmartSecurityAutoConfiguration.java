@@ -9,6 +9,7 @@
  */
 package com.opeshealth.healthcore.security.autoconfigure;
 
+import com.opeshealth.healthcore.persistence.resilience.ResilienceAndGovernanceSupport.ActiveTenantIdSupplier;
 import com.opeshealth.healthcore.security.audit.AuditChainHeadEntity;
 import com.opeshealth.healthcore.security.audit.AuditLogEntity;
 import com.opeshealth.healthcore.security.audit.AuditRepositories;
@@ -16,12 +17,14 @@ import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 import com.opeshealth.healthcore.security.consent.ConsentAndAbacService;
 import com.opeshealth.healthcore.security.consent.ConsentPolicyEntity;
 import com.opeshealth.healthcore.security.rbac.HealthcareRole;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.security.tenant.FacilityTenantInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -46,6 +49,7 @@ import java.util.*;
 @AutoConfiguration
 @EnableMethodSecurity
 @EnableAspectJAutoProxy
+@Import(SmartOnFhirDiscoveryController.class)
 @EntityScan(basePackageClasses = {AuditChainHeadEntity.class, AuditLogEntity.class, ConsentPolicyEntity.class})
 @EnableJpaRepositories(basePackageClasses = {AuditRepositories.class, ConsentAndAbacService.class})
 public class OidcAndSmartSecurityAutoConfiguration {
@@ -70,6 +74,12 @@ public class OidcAndSmartSecurityAutoConfiguration {
     @ConditionalOnMissingBean
     public FacilityTenantInterceptor facilityTenantInterceptor() {
         return new FacilityTenantInterceptor();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ActiveTenantIdSupplier activeTenantIdSupplier() {
+        return FacilityContext::getFacilityId;
     }
 
     @Bean

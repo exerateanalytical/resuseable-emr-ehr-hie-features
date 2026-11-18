@@ -14,12 +14,14 @@ import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -30,6 +32,13 @@ import java.util.concurrent.ThreadLocalRandom;
  * can override {@link EventPublisherSpi} to bridge directly into Apache Kafka or RabbitMQ.</p>
  */
 public class OutboxRelayService {
+
+    /**
+     * Spring Data JPA repository shared by all bounded-context starters to enqueue
+     * domain events atomically inside the same ACID clinical/billing transaction.
+     */
+    public interface OutboxRepository extends JpaRepository<TransactionalOutboxEntity, UUID> {
+    }
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelayService.class);
     private static final int MAX_ATTEMPTS = 6;

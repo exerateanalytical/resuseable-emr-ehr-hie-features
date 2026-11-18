@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — UHC Health Vouchers Table (Maternity / Child / Subsidy)
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="002-uhc-vouchers" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_uhc_vouchers">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="voucher_code" type="VARCHAR(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="program_code" type="VARCHAR(48)"><constraints nullable="false"/></column>
+            <column name="max_coverage_minor" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="remaining_minor" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="expires_on" type="DATE"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="issued_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

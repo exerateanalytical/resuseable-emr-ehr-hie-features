@@ -1,19 +1,24 @@
 /*
  * =============================================================================
- * Opes HealthCore Mobile SDK — Offline-First Sync, HLC & Local CDSS Engine
+ * Opes HealthCore Mobile SDK — Offline-First Sync, HLC, OIDC PKCE & SQLDelight Vault
  * Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
  * Website            : https://www.opeshealthsystems.com | Douala, Cameroon
  * =============================================================================
  */
 package com.opeshealth.healthcore.mobile.sync
 
+import com.opeshealth.healthcore.mobile.db.HealthCoreOfflineDatabase
+import com.opeshealth.healthcore.mobile.platform.PlatformSqlDriverFactory
 import io.ktor.client.*
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.math.max
 import kotlin.random.Random
 
@@ -32,6 +37,12 @@ data class LocalCdssAlert(
     val severity: String, // INFO, WARNING, CRITICAL
     val title: String,
     val guidance: String
+)
+
+@Serializable
+data class SmartDiscoveryMetadata(
+    val authorization_endpoint: String,
+    val token_endpoint: String
 )
 
 /**
@@ -68,7 +79,7 @@ class MobileHybridLogicalClock(private val nodeId: String) {
 }
 
 /**
- * Evaluates NEWS2 vitals alerts and Penicillin/Warfarin CDSS safety locally in <1 ms
+ * Evaluates NEWS2 vitals alerts and Penicillin/Warfarin/eGFR CDSS safety locally in <1 ms
  * when the phone or iPad has zero cellular or Wi-Fi connectivity.
  */
 object OfflineClinicalSafetyEngine {
@@ -92,7 +103,8 @@ object OfflineClinicalSafetyEngine {
     fun evaluateOfflinePrescriptionSafety(
         proposedDrugCode: String,
         patientAllergiesCsv: String,
-        activeMedCodesCsv: String
+        activeMedCodesCsv: String,
+        egfr: Double? = null
     ): List<LocalCdssAlert> {
         val alerts = mutableListOf<LocalCdssAlert>()
         if (proposedDrugCode == "723" && patientAllergiesCsv.contains("764146007")) {
@@ -109,39 +121,159 @@ object OfflineClinicalSafetyEngine {
                 guidance = "Ibuprofen + Warfarin carries major GI hemorrhage risk."
             )
         }
+        if (egfr != null && egfr < 60.0) {
+            alerts += LocalCdssAlert(
+                severity = if (egfr < 30.0) "CRITICAL" else "WARNING",
+                title = "Offline Renal Impairment Dose Guard (eGFR $egfr)",
+                guidance = "Reduce renal-cleared medication dosage or select non-nephrotoxic alternative."
+            )
+        }
         return alerts
     }
 }
 
 /**
- * Bidirectional Ktor delta sync coordinator pushing local SQLite outbox rows and pulling
- * facility deltas since the stored `sync_seq` checkpoint.
+ * SMART on FHIR v2 OAuth 2.1 + PKCE client discovering backend OIDC endpoints
+ * via `GET /.well-known/smart-configuration`.
  */
-class MobileDeltaSyncCoordinator(
+class SmartOidcPkceClient(
     private val baseUrl: String,
     private val httpClient: HttpClient
 ) {
-    suspend fun pushPendingMutations(
-        facilityId: String,
-        bearerToken: String,
-        pending: List<OfflineMutationPayload>
-    ): Boolean {
-        if (pending.isEmpty()) return true
-        val response: HttpResponse = httpClient.post("$baseUrl/api/v1/sync/push?facilityId=$facilityId") {
-            header(HttpHeaders.Authorization, "Bearer $bearerToken")
-            contentType(ContentType.Application.Json)
-            setBody(Json.encodeToString(pending))
-        }
-        return response.status.isSuccess()
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun discoverEndpoints(): SmartDiscoveryMetadata {
+        val raw = httpClient.get("$baseUrl/.well-known/smart-configuration").bodyAsText()
+        return json.decodeFromString(raw)
     }
 
-    suspend fun pullLatestDeltas(
-        facilityId: String,
-        sinceSyncSeq: Long,
-        bearerToken: String
+    suspend fun exchangeAuthorizationCode(
+        tokenEndpoint: String,
+        clientId: String,
+        code: String,
+        codeVerifier: String,
+        redirectUri: String
     ): String {
-        return httpClient.get("$baseUrl/api/v1/sync/pull?facilityId=$facilityId&sinceSeq=$sinceSyncSeq") {
-            header(HttpHeaders.Authorization, "Bearer $bearerToken")
-        }.bodyAsText()
+        val raw = httpClient.submitForm(
+            url = tokenEndpoint,
+            formParameters = parameters {
+                append("grant_type", "authorization_code")
+                append("client_id", clientId)
+                append("code", code)
+                append("code_verifier", codeVerifier)
+                append("redirect_uri", redirectUri)
+            }
+        ).bodyAsText()
+        return json.parseToJsonElement(raw).jsonObject["access_token"]?.jsonPrimitive?.content ?: ""
+    }
+}
+
+/**
+ * Persistent SQLDelight offline clinical vault + bidirectional Ktor delta sync engine.
+ * Reads patients directly from `HealthCoreOfflineDatabase`, enqueues signed SOAP/CHW
+ * mutations into `local_sync_outbox`, and drains pending mutations when connectivity returns.
+ */
+class OfflineVaultSyncRepository(
+    driverFactory: PlatformSqlDriverFactory,
+    private val baseUrl: String,
+    private val httpClient: HttpClient,
+    private val nodeId: String = "mobile-edge-1"
+) {
+    val db: HealthCoreOfflineDatabase = HealthCoreOfflineDatabase(driverFactory.createDriver())
+    private val queries = db.healthCoreOfflineQueries
+    private val hlc = MobileHybridLogicalClock(nodeId)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun seedSamplePatientsIfEmpty(facilityId: String, wallClockMs: Long) {
+        if (queries.selectAllPatients().executeAsList().isEmpty()) {
+            queries.insertOrReplacePatient(
+                id = "01950001-0000-7000-8000-000000000001",
+                facility_id = facilityId,
+                mrn = "OPES-DLA-001",
+                family_name = "Mbarga",
+                given_name = "Clarisse",
+                birth_date = "1988-03-19",
+                gender = "female",
+                blood_group = "O+",
+                allergies_csv = "764146007",
+                hlc_timestamp = hlc.nextStamp(wallClockMs)
+            )
+            queries.insertOrReplacePatient(
+                id = "01950001-0000-7000-8000-000000000002",
+                facility_id = facilityId,
+                mrn = "OPES-DLA-002",
+                family_name = "Kamdem",
+                given_name = "Emmanuel",
+                birth_date = "1974-11-02",
+                gender = "male",
+                blood_group = "A+",
+                allergies_csv = "",
+                hlc_timestamp = hlc.nextStamp(wallClockMs)
+            )
+        }
+    }
+
+    fun listCachedPatients() = queries.selectAllPatients().executeAsList()
+
+    fun pendingOutboxCount(): Int = queries.selectPendingOutbox().executeAsList().size
+
+    fun enqueueClinicalNoteOffline(patientId: String, soapText: String, stylusJson: String, wallClockMs: Long): String {
+        val noteId = hlc.nextUuidV7(wallClockMs)
+        val stamp = hlc.nextStamp(wallClockMs)
+        val payload = """{"patientId":"$patientId","noteText":${json.encodeToString(soapText)},"stylus":$stylusJson}"""
+        queries.enqueueOutboxMutation(
+            id = noteId,
+            entity_type = "ClinicalNote",
+            entity_id = noteId,
+            operation = "UPSERT",
+            hlc_timestamp = stamp,
+            payload_json = payload
+        )
+        return noteId
+    }
+
+    fun enqueueChwMuacVisitOffline(patientId: String, muacMm: Int, wallClockMs: Long): String {
+        val visitId = hlc.nextUuidV7(wallClockMs)
+        val stamp = hlc.nextStamp(wallClockMs)
+        val samFlag = muacMm < 115
+        queries.enqueueOutboxMutation(
+            id = visitId,
+            entity_type = "ChwVisit",
+            entity_id = visitId,
+            operation = "UPSERT",
+            hlc_timestamp = stamp,
+            payload_json = """{"patientId":"$patientId","muacMm":$muacMm,"severeAcuteMalnutrition":$samFlag}"""
+        )
+        return visitId
+    }
+
+    suspend fun syncWithServer(facilityId: String, bearerToken: String, sinceSyncSeq: Long = 0L): Result<Int> {
+        return runCatching {
+            val pending = queries.selectPendingOutbox().executeAsList()
+            if (pending.isNotEmpty()) {
+                val payloads = pending.map { row ->
+                    OfflineMutationPayload(
+                        originNodeId = nodeId,
+                        entityType = row.entity_type,
+                        entityId = row.entity_id,
+                        operation = row.operation,
+                        hlcTimestamp = row.hlc_timestamp,
+                        payloadJson = row.payload_json
+                    )
+                }
+                val pushResp = httpClient.post("$baseUrl/api/v1/sync/push?facilityId=$facilityId") {
+                    header(HttpHeaders.Authorization, "Bearer $bearerToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(payloads))
+                }
+                if (pushResp.status.isSuccess()) {
+                    pending.forEach { queries.markOutboxSynced(it.id) }
+                }
+            }
+            httpClient.get("$baseUrl/api/v1/sync/pull?facilityId=$facilityId&sinceSeq=$sinceSyncSeq") {
+                header(HttpHeaders.Authorization, "Bearer $bearerToken")
+            }
+            pending.size
+        }
     }
 }

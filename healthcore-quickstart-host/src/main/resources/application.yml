@@ -5,6 +5,15 @@
 # =============================================================================
 server:
   port: 3000
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types:
+      - application/json
+      - application/fhir+json
+      - application/fhir+ndjson
+      - application/xml
+      - text/csv
 
 spring:
   application:
@@ -22,10 +31,22 @@ spring:
       hibernate:
         jdbc:
           batch_size: 100
+        default_batch_fetch_size: 32
         order_inserts: true
         order_updates: true
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
+
+healthcore:
+  postgres:
+    rls:
+      enabled: false # Set true after applying postgres/enable-rls-policies.sql with non-superuser DB role
+  workflow:
+    sla-scan-interval-ms: 60000 # Scans overdue ACTIVE workflow instances via PostgreSQL partial index
+  hie:
+    mllp:
+      enabled: false # Enable via -Dhealthcore.hie.mllp.enabled=true to bind HL7v2 TCP listener
+      port: 2575
 
 springdoc:
   swagger-ui:
@@ -40,6 +61,14 @@ resilience4j:
         sliding-window-size: 20
         failure-rate-threshold: 50
         wait-duration-in-open-state: 15s
+      hieWebhook:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+  timelimiter:
+    instances:
+      hieWebhook:
+        timeout-duration: 8s
   retry:
     instances:
       sqlTransient:
@@ -75,6 +104,16 @@ spring:
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
 
 ---
+# Windows Server Active Directory Integrated Authentication (Kerberos / NTLM)
+spring:
+  config:
+    activate:
+      on-profile: mssql-integrated
+  datasource:
+    url: ${HEALTHCORE_DB_URL:jdbc:sqlserver://localhost:1433;databaseName=healthcore;integratedSecurity=true;encrypt=true;trustServerCertificate=true}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+---
 spring:
   config:
     activate:
@@ -107,3 +146,20 @@ spring:
         jwt:
           issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.us.auth0.com/}
           audiences: ${AUTH0_AUDIENCE:https://api.opeshealthsystems.com}
+
+---
+# Mutual TLS (X.509 Client Auth) profile for National HIE / Inter-Facility Gateways
+spring:
+  config:
+    activate:
+      on-profile: mtls
+server:
+  ssl:
+    enabled: true
+    client-auth: need
+    key-store: ${HEALTHCORE_SSL_KEYSTORE:classpath:certs/healthcore-server.p12}
+    key-store-password: ${HEALTHCORE_SSL_KEYSTORE_PASSWORD:changeit}
+    key-store-type: PKCS12
+    trust-store: ${HEALTHCORE_SSL_TRUSTSTORE:classpath:certs/healthcore-truststore.p12}
+    trust-store-password: ${HEALTHCORE_SSL_TRUSTSTORE_PASSWORD:changeit}
+    trust-store-type: PKCS12

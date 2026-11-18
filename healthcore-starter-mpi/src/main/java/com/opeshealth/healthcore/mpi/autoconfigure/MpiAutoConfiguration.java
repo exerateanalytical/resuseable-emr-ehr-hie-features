@@ -16,6 +16,7 @@ import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
@@ -32,9 +33,10 @@ public class MpiAutoConfiguration {
             MpiCommandService.PatientDemographicsRepository demographicsRepo,
             MpiCommandService.PatientPhoneticRepository phoneticRepo,
             MpiCommandService.PatientMergeRepository mergeRepo,
-            OutboxRelayService.OutboxRepository outboxRepo) {
+            OutboxRelayService.OutboxRepository outboxRepo,
+            ApplicationEventPublisher eventPublisher) {
         return new MpiCommandService(
-                patientRepo, identifierRepo, demographicsRepo, phoneticRepo, mergeRepo, outboxRepo);
+                patientRepo, identifierRepo, demographicsRepo, phoneticRepo, mergeRepo, outboxRepo, eventPublisher);
     }
 
     @Bean

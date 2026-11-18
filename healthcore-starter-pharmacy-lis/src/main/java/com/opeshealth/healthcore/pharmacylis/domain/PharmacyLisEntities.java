@@ -11,6 +11,7 @@ package com.opeshealth.healthcore.pharmacylis.domain;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -23,6 +24,7 @@ public final class PharmacyLisEntities {
 
     /** Lot-level medication inventory supporting FEFO picking, expiry quarantine, and controlled schedules. */
     @Entity @Table(name = "hc_medication_batches")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class MedicationBatchEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -59,6 +61,7 @@ public final class PharmacyLisEntities {
     }
 
     @Entity @Table(name = "hc_pharmacy_dispenses")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class PharmacyDispenseEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -98,6 +101,7 @@ public final class PharmacyLisEntities {
     }
 
     @Entity @Table(name = "hc_lab_specimens")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class LabSpecimenEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
@@ -128,6 +132,7 @@ public final class PharmacyLisEntities {
     }
 
     @Entity @Table(name = "hc_diagnostic_reports")
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class DiagnosticReportEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
         @Column(name = "facility_id", nullable = false) private UUID facilityId;

@@ -11,6 +11,9 @@ package com.opeshealth.healthcore.persistence.outbox;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.FilterDef;
+import org.hibernate.annotations.ParamDef;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,6 +26,8 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "hc_outbox_events")
+@FilterDef(name = "facilityFilter", parameters = @ParamDef(name = "facilityId", type = UUID.class))
+@Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
 public class TransactionalOutboxEntity {
 
     @Id

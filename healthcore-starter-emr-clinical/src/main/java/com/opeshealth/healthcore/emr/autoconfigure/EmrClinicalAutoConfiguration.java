@@ -14,7 +14,9 @@ import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService;
 import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService.*;
 import com.opeshealth.healthcore.emr.specialty.SpecialtyPackSpi;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.security.rbac.WorkforceCredentialSpi;
 import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -48,13 +50,19 @@ public class EmrClinicalAutoConfiguration {
             EmarRepository emarRepo,
             CarePlanRepository carePlanRepo,
             SpecialtyRecordRepository specialtyRepo,
+            FluidBalanceRepository fluidRepo,
+            ShiftHandoverRepository handoverRepo,
+            MedReconciliationRepository medRecRepo,
+            ClinicalReferralRepository referralRepo,
             CdsHooksEngine cdsHooksEngine,
             OutboxRelayService.OutboxRepository outboxRepo,
+            ObjectProvider<WorkforceCredentialSpi> workforceCredentialProvider,
             List<SpecialtyPackSpi> specialtyPacks) {
         return new EmrClinicalWorkflowService(
                 appointmentRepo, encounterRepo, triageRepo, vitalsRepo, noteRepo,
                 orderRepo, bedRepo, admissionRepo, emarRepo, carePlanRepo,
-                specialtyRepo, cdsHooksEngine, outboxRepo, specialtyPacks);
+                specialtyRepo, fluidRepo, handoverRepo, medRecRepo, referralRepo,
+                cdsHooksEngine, outboxRepo, workforceCredentialProvider, specialtyPacks);
     }
 
     @Bean

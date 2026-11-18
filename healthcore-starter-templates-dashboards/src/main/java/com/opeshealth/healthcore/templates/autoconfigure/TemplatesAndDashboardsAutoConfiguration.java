@@ -19,26 +19,38 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.List;
+
 @AutoConfiguration
 @EntityScan(basePackageClasses = TemplatesAndOnboardingEntities.class)
 @EnableJpaRepositories(basePackageClasses = TemplatesAndOperationsService.class)
 public class TemplatesAndDashboardsAutoConfiguration {
+
+    @Bean @ConditionalOnMissingBean public PostgresBackupProvider postgresBackupProvider() { return new PostgresBackupProvider(); }
+    @Bean @ConditionalOnMissingBean public MssqlBackupProvider mssqlBackupProvider() { return new MssqlBackupProvider(); }
+    @Bean @ConditionalOnMissingBean public MysqlBackupProvider mysqlBackupProvider() { return new MysqlBackupProvider(); }
 
     @Bean
     @ConditionalOnMissingBean
     public TemplatesAndOperationsService templatesAndOperationsService(
             FacilityNodeRepository facilityRepo,
             DocumentTemplateRepository templateRepo,
+            QuestionnaireResponseRepository responseRepo,
             BackupManifestRepository backupRepo,
-            JdbcTemplate jdbcTemplate) {
-        return new TemplatesAndOperationsService(facilityRepo, templateRepo, backupRepo, jdbcTemplate);
+            EdgeDrStateRepository edgeDrRepo,
+            JdbcTemplate jdbcTemplate,
+            List<BackupProviderSpi> backupProviders) {
+        return new TemplatesAndOperationsService(
+                facilityRepo, templateRepo, responseRepo, backupRepo, edgeDrRepo, jdbcTemplate, backupProviders);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public TemplatesAndOpsController templatesAndOpsController(
             TemplatesAndOperationsService service,
-            DocumentTemplateRepository templateRepo) {
-        return new TemplatesAndOpsController(service, templateRepo);
+            DocumentTemplateRepository templateRepo,
+            QuestionnaireResponseRepository responseRepo,
+            JdbcTemplate jdbcTemplate) {
+        return new TemplatesAndOpsController(service, templateRepo, responseRepo, jdbcTemplate);
     }
 }

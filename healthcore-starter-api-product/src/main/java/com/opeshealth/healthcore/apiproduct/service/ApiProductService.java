@@ -19,6 +19,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -170,6 +171,7 @@ public class ApiProductService {
         }
 
         @PostMapping("/apps")
+        @PreAuthorize("hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:manage')")
         @Operation(summary = "Provision sandbox or production API consumer app and key")
         public Map<String, Object> registerApp(
                 @RequestParam String partnerName,
@@ -180,6 +182,7 @@ public class ApiProductService {
         }
 
         @GetMapping("/apps")
+        @PreAuthorize("hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:manage')")
         @Operation(summary = "List registered developer portal apps & quota usage")
         public List<DeveloperAppEntity> listApps() {
             return appRepo.findAll();

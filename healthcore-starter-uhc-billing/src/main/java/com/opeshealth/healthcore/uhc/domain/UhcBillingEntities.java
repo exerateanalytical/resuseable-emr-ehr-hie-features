@@ -191,4 +191,39 @@ public final class UhcBillingEntities {
         public void setStatus(String status) { this.status = status; }
         public Instant getCreatedAt() { return createdAt; }
     }
+
+    /** UHC Maternity / Child / Community Health Subsidy Voucher redeemable across networked facilities. */
+    @Entity @Table(name = "hc_uhc_vouchers")
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class UhcVoucherEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "voucher_code", nullable = false, unique = true, length = 64) private String voucherCode;
+        @Column(name = "program_code", nullable = false, length = 48) private String programCode; // MATERNITY_CHK, CHILD_U5, TB_NUTRITION
+        @Column(name = "max_coverage_minor", nullable = false) private long maxCoverageMinor;
+        @Column(name = "remaining_minor", nullable = false) private long remainingMinor;
+        @Column(name = "expires_on", nullable = false) private LocalDate expiresOn;
+        @Column(name = "status", nullable = false, length = 24) private String status = "ACTIVE";
+        @Column(name = "issued_at", nullable = false) private Instant issuedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getVoucherCode() { return voucherCode; }
+        public void setVoucherCode(String voucherCode) { this.voucherCode = voucherCode; }
+        public String getProgramCode() { return programCode; }
+        public void setProgramCode(String programCode) { this.programCode = programCode; }
+        public long getMaxCoverageMinor() { return maxCoverageMinor; }
+        public void setMaxCoverageMinor(long maxCoverageMinor) { this.maxCoverageMinor = maxCoverageMinor; }
+        public long getRemainingMinor() { return remainingMinor; }
+        public void setRemainingMinor(long remainingMinor) { this.remainingMinor = remainingMinor; }
+        public LocalDate getExpiresOn() { return expiresOn; }
+        public void setExpiresOn(LocalDate expiresOn) { this.expiresOn = expiresOn; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public Instant getIssuedAt() { return issuedAt; }
+    }
 }

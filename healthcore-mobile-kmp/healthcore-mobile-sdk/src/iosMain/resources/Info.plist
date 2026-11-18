@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  =============================================================================
+  Opes HealthCore Mobile SDK — iPhone & iPadOS Info.plist
+  Author / Architect : Jude Nshome — Opes Health Systems (nshome@opesware.com)
+  Website            : https://www.opeshealthsystems.com | Douala, Cameroon
+  =============================================================================
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Opes HealthCore</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Scan patient wristbands, laboratory specimen barcodes, and offline UHC/IPS QR Health Cards.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Unlock offline encrypted patient clinical records using biometric authentication.</string>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.opeshealth.healthcore.mobile.sync</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIFileSharingEnabled</key>
+    <false/>
+</dict>
+</plist>

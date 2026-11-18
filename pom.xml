@@ -69,6 +69,22 @@
         <module>healthcore-starter-offline-sync</module>
         <module>healthcore-starter-templates-dashboards</module>
         <module>healthcore-starter-api-product</module>
+        <module>healthcore-starter-pharmacy-inventory</module>
+        <module>healthcore-starter-lis-diagnostics</module>
+        <module>healthcore-starter-blood-bank</module>
+        <module>healthcore-starter-surgery-ot</module>
+        <module>healthcore-starter-telemedicine</module>
+        <module>healthcore-starter-biomedical-coldchain</module>
+        <module>healthcore-starter-crvs-mortuary</module>
+        <module>healthcore-starter-workforce-roster</module>
+        <module>healthcore-starter-deidentification-research</module>
+        <module>healthcore-starter-chw-homecare</module>
+        <module>healthcore-starter-programs-immunization</module>
+        <module>healthcore-starter-disease-surveillance</module>
+        <module>healthcore-starter-fhir-hie</module>
+        <module>healthcore-starter-hl7-astm-dicom</module>
+        <module>healthcore-starter-interoperability-ihe</module>
+        <module>healthcore-starter-workflow-engine</module>
         <module>healthcore-quickstart-host</module>
     </modules>
 

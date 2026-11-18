@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — PostgreSQL 16+ Deep Performance & Indexing Pack
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+  Strictly scoped to dbms="postgresql" so Windows SQL Server (MSSQL) and MySQL
+  Testcontainers parity runs remain 100% portable and unaffected.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- 1. Enable pg_trgm extension for sub-5ms fuzzy MPI & Terminology search -->
+    <changeSet id="pg-opt-001-trigram-extension" author="jude.nshome" dbms="postgresql" runInTransaction="false">
+        <sql>
+            CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        </sql>
+    </changeSet>
+
+    <!-- 2. GIN Trigram Indexes on MPI Patient Names & Bilingual Terminology Dictionaries -->
+    <changeSet id="pg-opt-002-trigram-gin-indexes" author="jude.nshome" dbms="postgresql">
+        <sql>
+            CREATE INDEX IF NOT EXISTS idx_pg_mpi_family_trgm
+                ON hc_patients USING GIN (family_name gin_trgm_ops);
+
+            CREATE INDEX IF NOT EXISTS idx_pg_mpi_given_trgm
+                ON hc_patients USING GIN (given_name gin_trgm_ops);
+
+            CREATE INDEX IF NOT EXISTS idx_pg_code_display_en_trgm
+                ON hc_code_systems USING GIN (display_en gin_trgm_ops);
+
+            CREATE INDEX IF NOT EXISTS idx_pg_code_display_fr_trgm
+                ON hc_code_systems USING GIN (display_fr gin_trgm_ops);
+        </sql>
+    </changeSet>
+
+    <!-- 3. Hot-Queue PostgreSQL Partial Indexes (Tiny B-Trees Ignoring Historical Archive Rows) -->
+    <changeSet id="pg-opt-003-partial-hot-queues" author="jude.nshome" dbms="postgresql">
+        <sql>
+            CREATE INDEX IF NOT EXISTS idx_pg_outbox_pending_queue
+                ON hc_outbox_events (next_attempt_at, created_at)
+                WHERE status IN ('PENDING', 'FAILED');
+
+            CREATE INDEX IF NOT EXISTS idx_pg_ward_beds_available
+                ON hc_ward_beds (facility_id, ward_code)
+                WHERE occupied = FALSE;
+
+            CREATE INDEX IF NOT EXISTS idx_pg_clinical_orders_open
+                ON hc_clinical_orders (facility_id, ordered_at)
+                WHERE status = 'ORDERED';
+
+            CREATE INDEX IF NOT EXISTS idx_pg_pharmacy_fefo_stock
+                ON hc_medication_batches (facility_id, drug_code, expiry_date ASC)
+                WHERE quarantined = FALSE AND quantity_on_hand &gt; 0;
+
+            CREATE INDEX IF NOT EXISTS idx_pg_lab_unack_panic
+                ON hc_diagnostic_reports (facility_id, verified_at)
+                WHERE panic_acknowledged_by IS NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_pg_sync_conflicts_unresolved
+                ON hc_sync_conflicts (facility_id, created_at)
+                WHERE resolved_by IS NULL;
+        </sql>
+    </changeSet>
+</databaseChangeLog>

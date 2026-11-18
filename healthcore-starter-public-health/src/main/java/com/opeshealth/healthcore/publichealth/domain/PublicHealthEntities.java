@@ -188,4 +188,78 @@ public final class PublicHealthEntities {
         public String getFollowUpStatus() { return followUpStatus; }
         public void setFollowUpStatus(String followUpStatus) { this.followUpStatus = followUpStatus; }
     }
+
+    /** WHO IDSR Case Investigation Form (CIF) capturing epidemiological onset, travel & lab specimen tracking. */
+    @Entity @Table(name = "hc_idsr_cif_forms")
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class CaseInvestigationFormEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "surveillance_case_id", nullable = false) private UUID surveillanceCaseId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "disease_icd10", nullable = false, length = 32) private String diseaseIcd10;
+        @Column(name = "symptom_onset_date", nullable = false) private LocalDate symptomOnsetDate;
+        @Column(name = "travel_history", length = 300) private String travelHistory;
+        @Column(name = "lab_specimen_taken", nullable = false) private boolean labSpecimenTaken = false;
+        @Column(name = "lab_result", length = 120) private String labResult;
+        @Column(name = "investigator_id", nullable = false, length = 120) private String investigatorId;
+        @Column(name = "completed_at", nullable = false) private Instant completedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getSurveillanceCaseId() { return surveillanceCaseId; }
+        public void setSurveillanceCaseId(UUID surveillanceCaseId) { this.surveillanceCaseId = surveillanceCaseId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getDiseaseIcd10() { return diseaseIcd10; }
+        public void setDiseaseIcd10(String diseaseIcd10) { this.diseaseIcd10 = diseaseIcd10; }
+        public LocalDate getSymptomOnsetDate() { return symptomOnsetDate; }
+        public void setSymptomOnsetDate(LocalDate symptomOnsetDate) { this.symptomOnsetDate = symptomOnsetDate; }
+        public String getTravelHistory() { return travelHistory; }
+        public void setTravelHistory(String travelHistory) { this.travelHistory = travelHistory; }
+        public boolean isLabSpecimenTaken() { return labSpecimenTaken; }
+        public void setLabSpecimenTaken(boolean labSpecimenTaken) { this.labSpecimenTaken = labSpecimenTaken; }
+        public String getLabResult() { return labResult; }
+        public void setLabResult(String labResult) { this.labResult = labResult; }
+        public String getInvestigatorId() { return investigatorId; }
+        public void setInvestigatorId(String investigatorId) { this.investigatorId = investigatorId; }
+        public Instant getCompletedAt() { return completedAt; }
+    }
+
+    /** Longitudinal HIV ART (Viral Load), TB DOT, and Hepatitis B chronic disease care cascade. */
+    @Entity @Table(name = "hc_chronic_cascades")
+    @org.hibernate.annotations.Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class ChronicCascadeEntity {
+        @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "facility_id", nullable = false) private UUID facilityId;
+        @Column(name = "patient_id", nullable = false) private UUID patientId;
+        @Column(name = "program_code", nullable = false, length = 32) private String programCode; // HIV_ART, TB_DOT, HEPATITIS_B
+        @Column(name = "regimen", nullable = false, length = 160) private String regimen;
+        @Column(name = "enrolled_on", nullable = false) private LocalDate enrolledOn;
+        @Column(name = "viral_load_copies_ml") private Integer viralLoadCopiesMl;
+        @Column(name = "adherence_percent", nullable = false) private int adherencePercent = 100;
+        @Column(name = "outcome_status", nullable = false, length = 32) private String outcomeStatus = "ACTIVE"; // ACTIVE, SUPPRESSED, LTFU, CURED
+        @Column(name = "updated_at", nullable = false) private Instant updatedAt = Instant.now();
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getPatientId() { return patientId; }
+        public void setPatientId(UUID patientId) { this.patientId = patientId; }
+        public String getProgramCode() { return programCode; }
+        public void setProgramCode(String programCode) { this.programCode = programCode; }
+        public String getRegimen() { return regimen; }
+        public void setRegimen(String regimen) { this.regimen = regimen; }
+        public LocalDate getEnrolledOn() { return enrolledOn; }
+        public void setEnrolledOn(LocalDate enrolledOn) { this.enrolledOn = enrolledOn; }
+        public Integer getViralLoadCopiesMl() { return viralLoadCopiesMl; }
+        public void setViralLoadCopiesMl(Integer viralLoadCopiesMl) { this.viralLoadCopiesMl = viralLoadCopiesMl; }
+        public int getAdherencePercent() { return adherencePercent; }
+        public void setAdherencePercent(int adherencePercent) { this.adherencePercent = adherencePercent; }
+        public String getOutcomeStatus() { return outcomeStatus; }
+        public void setOutcomeStatus(String outcomeStatus) { this.outcomeStatus = outcomeStatus; }
+        public Instant getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    }
 }

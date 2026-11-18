@@ -38,12 +38,20 @@
     <include file="classpath:db/changelog/terminology/001-terminology-cdss.xml"/>
     <include file="classpath:db/changelog/mpi/001-mpi.xml"/>
     <include file="classpath:db/changelog/emr/001-emr-clinical.xml"/>
+    <include file="classpath:db/changelog/emr/002-emr-ward-workflows.xml"/>
     <include file="classpath:db/changelog/pharmacy_lis/001-pharmacy-lis.xml"/>
     <include file="classpath:db/changelog/hie/001-hie-interop.xml"/>
+    <include file="classpath:db/changelog/hie/002-hie-ihe-docs.xml"/>
     <include file="classpath:db/changelog/uhc_billing/001-uhc-billing.xml"/>
+    <include file="classpath:db/changelog/uhc_billing/002-uhc-vouchers.xml"/>
     <include file="classpath:db/changelog/public_health/001-public-health.xml"/>
+    <include file="classpath:db/changelog/public_health/002-public-health-cascades.xml"/>
     <include file="classpath:db/changelog/hospital_ops/001-hospital-ops.xml"/>
+    <include file="classpath:db/changelog/hospital_ops/002-hospital-ops-expanded.xml"/>
     <include file="classpath:db/changelog/offline_sync/001-offline-sync.xml"/>
     <include file="classpath:db/changelog/templates_dashboards/001-templates-dashboards.xml"/>
+    <include file="classpath:db/changelog/templates_dashboards/002-templates-responses.xml"/>
     <include file="classpath:db/changelog/api_product/001-api-product.xml"/>
+    <include file="classpath:db/changelog/workflow/001-workflow-engine.xml"/>
+    <include file="classpath:db/changelog/core/003-postgresql-optimizations.xml"/>
 </databaseChangeLog>
