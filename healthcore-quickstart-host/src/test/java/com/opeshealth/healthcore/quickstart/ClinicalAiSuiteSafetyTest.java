@@ -12,6 +12,11 @@ package com.opeshealth.healthcore.quickstart;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AuditChainVerificationReport;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AuditEventType;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.HipaaComplianceAuditReport;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.TamperProofAuditEntry;
 import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine;
 import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine.DeterministicClinicalAlert;
 import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine.FhirCdsTriggerRequest;
@@ -97,8 +102,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -1394,5 +1401,245 @@ class ClinicalAiSuiteSafetyTest {
             assertEquals(503, ex.getHttpStatus());
             assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
         }
+    }
+
+    @Test
+    void consentServiceAiAssistedProcessingFlagsAndFhirValidationIntegration() {
+        var auditService = new com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService();
+        var consentService = new com.opeshealth.healthcore.quickstart.service.ConsentService(auditService);
+        var consentController = new com.opeshealth.healthcore.quickstart.web.ConsentController(consentService);
+
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+
+        // 1. Configure granular AI-Assisted Processing flags: opt-in to SUMMARIZATION & CDS, opt-out of PREDICTIVE_ANALYTICS
+        var initialConsent = consentController.upsertAiProcessingConsent(
+                new com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingConsentRequest(
+                        facilityId,
+                        patientId,
+                        true,
+                        Map.of(
+                                com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_SUMMARIZATION, true,
+                                com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_DECISION_SUPPORT, true,
+                                com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.PREDICTIVE_ANALYTICS, false
+                        ),
+                        "PATIENT-PORTAL-01",
+                        "MOBILE_APP",
+                        null,
+                        null,
+                        "Patient opted into clinical summaries and CDS alerts, opted out of predictive risk analytics"
+                )).getBody();
+
+        assertNotNull(initialConsent);
+        assertEquals("active", initialConsent.status());
+        assertTrue(initialConsent.fhirConsentJson().contains("AI-ASSISTED-PROCESSING"));
+        assertTrue(consentService.isAiProcessingPermitted(
+                patientId, com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_SUMMARIZATION));
+        assertFalse(consentService.isAiProcessingPermitted(
+                patientId, com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.PREDICTIVE_ANALYTICS));
+
+        // 2. Validate FHIR Observation tagged with permitted AI_SUMMARIZE scope -> ALLOWED
+        org.hl7.fhir.r4.model.Observation permittedObs = new org.hl7.fhir.r4.model.Observation();
+        permittedObs.setId("obs-ai-permitted");
+        permittedObs.setStatus(org.hl7.fhir.r4.model.Observation.ObservationStatus.FINAL);
+        permittedObs.getCode().setText("Hemoglobin A1c");
+        permittedObs.setSubject(new org.hl7.fhir.r4.model.Reference("Patient/" + patientId));
+        permittedObs.getMeta().addTag(new org.hl7.fhir.r4.model.Coding()
+                .setSystem(com.opeshealth.healthcore.quickstart.service.ConsentService.AI_CONSENT_TAG_SYSTEM)
+                .setCode(com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_SUMMARIZATION.code()));
+
+        var permittedOutcome = consentService.validateFhirResourceAiConsent(permittedObs, Set.of());
+        assertTrue(permittedOutcome.allowed());
+        assertEquals("AI_CONSENT_PERMITTED", permittedOutcome.reasonCode());
+
+        // 3. Validate FHIR Observation tagged with opted-out AI_PREDICT scope -> DENIED (throws IllegalStateException)
+        org.hl7.fhir.r4.model.Observation optedOutObs = permittedObs.copy();
+        optedOutObs.getMeta().getTag().clear();
+        optedOutObs.getMeta().addTag(new org.hl7.fhir.r4.model.Coding()
+                .setSystem(com.opeshealth.healthcore.quickstart.service.ConsentService.AI_CONSENT_TAG_SYSTEM)
+                .setCode(com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.PREDICTIVE_ANALYTICS.code()));
+
+        var deniedOutcome = consentService.validateFhirResourceAiConsent(optedOutObs, Set.of());
+        assertFalse(deniedOutcome.allowed());
+        assertEquals("AI_CONSENT_OPTED_OUT", deniedOutcome.reasonCode());
+        assertTrue(deniedOutcome.deniedScopes().contains(
+                com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.PREDICTIVE_ANALYTICS));
+        assertThrows(IllegalStateException.class, () -> consentService.assertFhirResourceAiConsentValid(optedOutObs));
+
+        // 4. Validate EncounterService.validateFhirEncounter integration enforces AI consent automatically
+        var encounterRepoProxy = (com.opeshealth.healthcore.quickstart.repository.EncounterRepository)
+                java.lang.reflect.Proxy.newProxyInstance(
+                        getClass().getClassLoader(),
+                        new Class<?>[]{com.opeshealth.healthcore.quickstart.repository.EncounterRepository.class},
+                        (proxy, method, args) -> null
+                );
+        var encounterService = new com.opeshealth.healthcore.quickstart.service.EncounterService(
+                encounterRepoProxy, null, consentService);
+
+        org.hl7.fhir.r4.model.Encounter standardEncounter = new org.hl7.fhir.r4.model.Encounter();
+        standardEncounter.setStatus(org.hl7.fhir.r4.model.Encounter.EncounterStatus.FINISHED);
+        standardEncounter.setClass_(new org.hl7.fhir.r4.model.Coding().setCode("AMB"));
+        standardEncounter.setSubject(new org.hl7.fhir.r4.model.Reference("Patient/" + patientId));
+        // Standard FHIR Encounter without AI tags passes cleanly
+        assertDoesNotThrow(() -> encounterService.validateFhirEncounter(standardEncounter));
+
+        // Encounter tagged with NOAI security label rejects AI_CDS processing
+        org.hl7.fhir.r4.model.Encounter noAiEncounter = standardEncounter.copy();
+        noAiEncounter.getMeta().addSecurity(new org.hl7.fhir.r4.model.Coding()
+                .setSystem(com.opeshealth.healthcore.quickstart.service.ConsentService.AI_CONSENT_TAG_SYSTEM)
+                .setCode(com.opeshealth.healthcore.quickstart.service.ConsentService.AI_OPT_OUT_SECURITY_CODE));
+        noAiEncounter.getMeta().addTag(new org.hl7.fhir.r4.model.Coding()
+                .setSystem(com.opeshealth.healthcore.quickstart.service.ConsentService.AI_CONSENT_TAG_SYSTEM)
+                .setCode(com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_DECISION_SUPPORT.code()));
+        assertThrows(IllegalStateException.class, () -> encounterService.validateFhirEncounter(noAiEncounter));
+
+        // 5. Toggle single scope flag to opt-in PREDICTIVE_ANALYTICS, then revoke all AI consent
+        consentController.setAiProcessingScopeFlag(patientId, "AI_PREDICT", true, facilityId, "PATIENT-PORTAL-01", "Patient opted in");
+        assertTrue(consentService.isAiProcessingPermitted(
+                patientId, com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.PREDICTIVE_ANALYTICS));
+        assertTrue(consentService.validateFhirResourceAiConsent(optedOutObs, Set.of()).allowed());
+
+        consentController.revokeAllAiProcessingConsent(patientId, facilityId, "PATIENT-PORTAL-01", "Patient withdrew all AI consent");
+        assertFalse(consentService.isAiProcessingPermitted(
+                patientId, com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope.CLINICAL_SUMMARIZATION));
+        var revokedOutcome = consentService.validateFhirResourceAiConsent(permittedObs, Set.of());
+        assertFalse(revokedOutcome.allowed());
+        assertEquals("AI_CONSENT_INACTIVE_OR_EXPIRED", revokedOutcome.reasonCode());
+
+        // 6. Validate raw FHIR JSON via ConsentController endpoint (unknown AI scope tag fails with INVALID_AI_SCOPE_TAG)
+        String invalidScopeObsJson = """
+                {
+                  "resourceType": "Observation",
+                  "id": "obs-bad-tag",
+                  "meta": {
+                    "tag": [
+                      {"system": "https://opeshealthsystems.com/fhir/CodeSystem/ai-processing-scope", "code": "UNKNOWN_AI_MODE"}
+                    ]
+                  },
+                  "status": "final",
+                  "code": {"text": "Glucose"},
+                  "subject": {"reference": "Patient/%s"}
+                }
+                """.formatted(patientId);
+        var invalidOutcome = consentController.validateFhirResourceAiConsent(
+                new com.opeshealth.healthcore.quickstart.web.ConsentController.FhirAiConsentValidationRequest(
+                        invalidScopeObsJson, Set.of())).getBody();
+        assertNotNull(invalidOutcome);
+        assertFalse(invalidOutcome.allowed());
+        assertEquals("INVALID_AI_SCOPE_TAG", invalidOutcome.reasonCode());
+    }
+
+    @Test
+    void clinicalAuditLoggerMaintainsTamperProofHashChainAndGeneratesHipaaReports() {
+        ClinicalAuditLogger auditLogger = new ClinicalAuditLogger();
+        PhiRedactionGateway redactor = new PhiRedactionGateway(auditLogger);
+        ClinicalAiGovernanceService governance = new ClinicalAiGovernanceService(null, auditLogger);
+        var controller = new com.opeshealth.healthcore.quickstart.web.ClinicalAiGovernanceController(
+                redactor, governance, auditLogger);
+
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+
+        // 1. Trigger a Safe-Harbor PHI redaction event for the facility
+        RedactedClinicalPayload redacted = redactor.redactForFacility(
+                facilityId,
+                patientId,
+                "CLINICAL_SUMMARIZER",
+                "Patient: Alain Fotso, MRN CM-DLA-99104, SSN 123-45-6789, email alain.fotso@example.cm presents with HbA1c 8.9%.",
+                new RedactionContext(List.of("Alain Fotso"), List.of("CM-DLA-99104"), "1974-03-11")
+        );
+        assertTrue(redacted.totalRedactions() >= 4);
+
+        // 2. Register an AI draft and perform clinician attestation (including accidental PHI in attestation note)
+        ClinicalAiDraftRecord draft = governance.registerDraft(
+                facilityId,
+                patientId,
+                AiCapabilityType.CHART_AND_IPS_SUMMARIZER,
+                ClinicalAiProperties.DEFAULT_TEXT_MODEL,
+                redacted.redactedSha256Hex(),
+                redacted.redactionCountsByCategory(),
+                "{\"summary\":\"Controlled T2DM with elevated HbA1c 8.9%\"}",
+                new TokenUsage(180, 95, 275),
+                420L,
+                "DR-ESSOMBA"
+        );
+        governance.attestDraft(
+                draft.draftId(),
+                new AttestationCommand(
+                        "DR-ESSOMBA",
+                        DraftAttestationStatus.APPROVED,
+                        null,
+                        "Verified for Patient: Alain Fotso email alain.fotso@example.cm — summary accurate"
+                )
+        );
+
+        // 3. Verify tamper-proof SHA-256 hash chain integrity across all recorded entries
+        List<TamperProofAuditEntry> entries = controller.queryAuditEntries(facilityId, null, null, null, null).getBody();
+        assertNotNull(entries);
+        // Expected sequence: 1) redactForFacility PHI_REDACTION, 2) registerDraft PHI_REDACTION,
+        // 3) registerDraft AI_MODEL_INTERACTION, 4) attestDraft CLINICIAN_ATTESTATION
+        assertEquals(4, entries.size());
+        assertEquals(ClinicalAuditLogger.GENESIS_HASH, entries.get(0).previousEntryHash());
+        assertEquals(entries.get(0).entrySha256Hash(), entries.get(1).previousEntryHash());
+        assertEquals(entries.get(1).entrySha256Hash(), entries.get(2).previousEntryHash());
+        assertEquals(entries.get(2).entrySha256Hash(), entries.get(3).previousEntryHash());
+
+        // Zero raw PHI leakage in sanitized audit details even when caller passed PHI into attestation reason
+        TamperProofAuditEntry attestationEntry = entries.get(3);
+        assertEquals(AuditEventType.CLINICIAN_ATTESTATION, attestationEntry.eventType());
+        assertEquals("APPROVED", attestationEntry.attestationStatus());
+        assertFalse(attestationEntry.sanitizedDetail().contains("Alain Fotso"));
+        assertFalse(attestationEntry.sanitizedDetail().contains("alain.fotso@example.cm"));
+
+        AuditChainVerificationReport intactReport = controller.verifyAuditChain(facilityId).getBody();
+        assertNotNull(intactReport);
+        assertTrue(intactReport.intact());
+        assertEquals(4L, intactReport.verifiedEntries());
+        assertEquals(entries.get(3).entrySha256Hash(), intactReport.headHash());
+
+        // 4. Tamper detection: alter a single field on entry #2 (sequence 2) and verify cryptographic failure
+        TamperProofAuditEntry original = entries.get(1);
+        TamperProofAuditEntry tampered = new TamperProofAuditEntry(
+                original.entryId(),
+                original.sequenceNumber(),
+                original.facilityId(),
+                original.patientId(),
+                original.draftId(),
+                original.eventType(),
+                original.capability(),
+                original.modelId(),
+                original.actorId(),
+                original.attestationStatus(),
+                original.outcome(),
+                original.redactedInputSha256(),
+                original.outputSha256(),
+                0, // Tampered PHI redaction count
+                original.redactionCountsByCategory(),
+                original.promptTokens(),
+                original.outputTokens(),
+                original.latencyMs(),
+                original.sanitizedDetail(),
+                original.recordedAt(),
+                original.previousEntryHash(),
+                original.entrySha256Hash()
+        );
+        List<TamperProofAuditEntry> forgedChain = List.of(entries.get(0), tampered, entries.get(2), entries.get(3));
+        AuditChainVerificationReport tamperReport = auditLogger.verifyExternalAuditChain(facilityId, forgedChain);
+        assertFalse(tamperReport.intact());
+        assertEquals(2L, tamperReport.firstBrokenSequence());
+
+        // 5. Generate HIPAA compliance audit report via REST controller and verify summary metrics
+        HipaaComplianceAuditReport hipaaReport = controller.generateHipaaComplianceReport(facilityId, null, null).getBody();
+        assertNotNull(hipaaReport);
+        assertTrue(hipaaReport.chainVerification().intact());
+        assertEquals(4L, hipaaReport.totalAuditEvents());
+        assertEquals(1L, hipaaReport.aiModelInteractionsCount());
+        assertEquals(2L, hipaaReport.phiRedactionEventsCount());
+        assertTrue(hipaaReport.totalPhiIdentifiersRedacted() >= 8L);
+        assertEquals(1L, hipaaReport.clinicianAttestationsTotal());
+        assertEquals(1L, hipaaReport.attestationsByStatus().get("APPROVED"));
+        assertEquals(275L, hipaaReport.totalTokensConsumed());
+        assertTrue(hipaaReport.zeroRawPhiGuardActive());
+        assertEquals(64, hipaaReport.reportSha256Digest().length());
     }
 }

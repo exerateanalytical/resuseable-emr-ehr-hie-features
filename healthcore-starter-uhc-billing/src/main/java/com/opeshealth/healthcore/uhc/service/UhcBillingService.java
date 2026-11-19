@@ -11,19 +11,23 @@ package com.opeshealth.healthcore.uhc.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
 import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
 import com.opeshealth.healthcore.persistence.sql.RetryableOnTransientSqlFailure;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.uhc.domain.UhcBillingEntities.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +41,10 @@ import java.util.*;
 
 public class UhcBillingService {
 
+    public static final String GL_PATIENT_AR = "1200_PATIENT_AR";
+    public static final String GL_CLINICAL_REVENUE = "4000_CLINICAL_REVENUE";
+    public static final String GL_MOBILE_MONEY_CLEARING = "1010_MOBILE_MONEY_CLEARING";
+
     public interface TariffRepository extends JpaRepository<TariffScheduleEntity, UUID> {}
     public interface PatientAccountRepository extends JpaRepository<PatientAccountEntity, UUID> {
         Optional<PatientAccountEntity> findByFacilityIdAndPatientId(UUID facilityId, UUID patientId);
@@ -44,10 +52,13 @@ public class UhcBillingService {
         @Query("UPDATE PatientAccountEntity a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
-    public interface LedgerEntryRepository extends JpaRepository<LedgerEntryEntity, UUID> {}
+    public interface LedgerEntryRepository extends JpaRepository<LedgerEntryEntity, UUID> {
+        List<LedgerEntryEntity> findByJournalBatchId(UUID journalBatchId);
+    }
     public interface CbhiPolicyRepository extends JpaRepository<CbhiPolicyEntity, UUID> {
         Optional<CbhiPolicyEntity> findByPolicyNumberAndActiveTrue(String policyNumber);
         List<CbhiPolicyEntity> findByPatientIdAndActiveTrue(UUID patientId);
+        List<CbhiPolicyEntity> findByFacilityIdAndPatientIdAndActiveTrue(UUID facilityId, UUID patientId);
         @Modifying
         @Query("UPDATE CbhiPolicyEntity p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
@@ -57,7 +68,9 @@ public class UhcBillingService {
         @Query("UPDATE InsuranceClaimEntity c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
-    public interface PaymentTransactionRepository extends JpaRepository<PaymentTransactionEntity, UUID> {}
+    public interface PaymentTransactionRepository extends JpaRepository<PaymentTransactionEntity, UUID> {
+        Optional<PaymentTransactionEntity> findByProviderCodeAndExternalTxRef(String providerCode, String externalTxRef);
+    }
     public interface UhcVoucherRepository extends JpaRepository<UhcVoucherEntity, UUID> {
         Optional<UhcVoucherEntity> findByVoucherCode(String voucherCode);
         @Modifying
@@ -85,7 +98,15 @@ public class UhcBillingService {
         }
     }
 
-    private static final String OFFLINE_QR_SIGNING_SECRET = "opes-uhc-offline-qr-key-v1";
+    public record JournalPostingLine(
+            UUID accountId,
+            String accountCode,
+            String entryType,
+            long amountMinor,
+            String currency,
+            String referenceCode,
+            String description
+    ) {}
 
     private final PatientAccountRepository accountRepo;
     private final LedgerEntryRepository ledgerRepo;
@@ -95,6 +116,12 @@ public class UhcBillingService {
     private final UhcVoucherRepository voucherRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
     private final Map<String, PaymentGatewaySpi> paymentAdapters = new HashMap<>();
+
+    @Value("${healthcore.uhc.offline-qr.signing-secret:}")
+    private String offlineQrSigningSecret = "";
+
+    @Value("${healthcore.uhc.momo.webhook-secret:}")
+    private String mobileMoneyWebhookSecret = "";
 
     public UhcBillingService(
             PatientAccountRepository accountRepo,
@@ -115,9 +142,33 @@ public class UhcBillingService {
         adapters.forEach(a -> paymentAdapters.put(a.providerCode(), a));
     }
 
+    public void setOfflineQrSigningSecret(String secret) {
+        this.offlineQrSigningSecret = secret != null ? secret : "";
+    }
+
+    public void setMobileMoneyWebhookSecret(String secret) {
+        this.mobileMoneyWebhookSecret = secret != null ? secret : "";
+    }
+
+    public String requireConfiguredMobileMoneyWebhookSecret() {
+        if (mobileMoneyWebhookSecret == null || mobileMoneyWebhookSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "Mobile Money webhook secret is not configured. Set healthcore.uhc.momo.webhook-secret (or HEALTHCORE_UHC_MOMO_WEBHOOK_SECRET).");
+        }
+        return mobileMoneyWebhookSecret;
+    }
+
+    private String requireOfflineQrSigningSecret() {
+        if (offlineQrSigningSecret == null || offlineQrSigningSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "Offline UHC QR signing secret is not configured. Set healthcore.uhc.offline-qr.signing-secret (or HEALTHCORE_UHC_QR_SIGNING_SECRET).");
+        }
+        return offlineQrSigningSecret;
+    }
+
     private static final ObjectMapper MERGE_MAPPER = new ObjectMapper();
 
-    /** Cascades MPI Golden Record merges emitted via Outbox into billing accounts, CBHI policies, claims & vouchers. */
+    /** Cascades MPI Golden Record merges emitted via Outbox into billing accounts, CBHI policies, claims &amp; vouchers. */
     @EventListener
     @Transactional
     public void onOutboxDomainEvent(HealthCoreDomainEvent event) {
@@ -136,41 +187,178 @@ public class UhcBillingService {
                 claimRepo.relinkPatient(sourceId, survivorId);
                 voucherRepo.relinkPatient(sourceId, survivorId);
             }
-        } catch (Exception ignored) {
-            // Malformed payload does not break other event consumers
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to cascade PatientMergedEvent into UHC billing repositories", ex);
         }
     }
 
-    /** Posts an immutable DEBIT charge and updates account balance under optimistic version control. */
+    /**
+     * Posts a balanced double-entry journal batch, enforcing positive integer minor amounts,
+     * uniform currency across lines, and the fundamental accounting invariant
+     * {@code sum(DEBIT) == sum(CREDIT)}.
+     */
+    @Transactional
+    @RetryableOnTransientSqlFailure
+    public List<LedgerEntryEntity> postBalancedJournal(List<JournalPostingLine> lines) {
+        if (lines == null || lines.size() < 2) {
+            throw new IllegalArgumentException("Double-entry journal requires at least 2 balanced lines (DEBIT and CREDIT)");
+        }
+        long totalDebits = 0L;
+        long totalCredits = 0L;
+        String batchCurrency = null;
+
+        for (JournalPostingLine line : lines) {
+            if (line == null || line.accountId() == null) {
+                throw new IllegalArgumentException("Journal line and accountId are required");
+            }
+            if (line.amountMinor() <= 0) {
+                throw new IllegalArgumentException("Ledger entry amountMinor must be strictly positive: " + line.amountMinor());
+            }
+            if (line.currency() == null || line.currency().isBlank()) {
+                throw new IllegalArgumentException("Ledger entry currency is required");
+            }
+            String normCurrency = line.currency().trim().toUpperCase(Locale.ROOT);
+            if (batchCurrency == null) {
+                batchCurrency = normCurrency;
+            } else if (!batchCurrency.equals(normCurrency)) {
+                throw new IllegalArgumentException(
+                        "Multi-currency mismatch in single journal batch: " + batchCurrency + " vs " + normCurrency);
+            }
+            if (line.referenceCode() == null || line.referenceCode().isBlank()) {
+                throw new IllegalArgumentException("Ledger entry referenceCode is required");
+            }
+            if ("DEBIT".equalsIgnoreCase(line.entryType())) {
+                totalDebits = Math.addExact(totalDebits, line.amountMinor());
+            } else if ("CREDIT".equalsIgnoreCase(line.entryType())) {
+                totalCredits = Math.addExact(totalCredits, line.amountMinor());
+            } else {
+                throw new IllegalArgumentException("Unsupported ledger entryType: " + line.entryType());
+            }
+        }
+        if (totalDebits != totalCredits) {
+            throw new IllegalStateException(
+                    "Unbalanced double-entry journal rejected: debits=" + totalDebits + " != credits=" + totalCredits);
+        }
+
+        UUID batchId = UuidV7Generator.nextUuid();
+        List<LedgerEntryEntity> persisted = new ArrayList<>(lines.size());
+        for (JournalPostingLine line : lines) {
+            LedgerEntryEntity entry = new LedgerEntryEntity();
+            entry.setJournalBatchId(batchId);
+            entry.setAccountId(line.accountId());
+            entry.setAccountCode(line.accountCode() != null && !line.accountCode().isBlank()
+                    ? line.accountCode().trim()
+                    : GL_PATIENT_AR);
+            entry.setEntryType(line.entryType().trim().toUpperCase(Locale.ROOT));
+            entry.setAmountMinor(line.amountMinor());
+            entry.setCurrency(batchCurrency);
+            entry.setReferenceCode(line.referenceCode().trim());
+            entry.setDescription(line.description());
+            persisted.add(ledgerRepo.save(entry));
+        }
+        return List.copyOf(persisted);
+    }
+
+    /**
+     * Posts a balanced double-entry patient charge:
+     * <ul>
+     *   <li>DEBIT {@code 1200_PATIENT_AR} (increases patient receivable)</li>
+     *   <li>CREDIT {@code 4000_CLINICAL_REVENUE} (recognizes earned clinical revenue)</li>
+     * </ul>
+     * Updates patient account balance under optimistic {@code @Version} control and returns
+     * the patient receivable {@code DEBIT} entry.
+     */
     @Transactional
     @RetryableOnTransientSqlFailure
     @ClinicalAudit(action = "BILLING_POST_CHARGE", resourceType = "PatientAccount")
     public LedgerEntryEntity postCharge(UUID facilityId, UUID patientId, long amountMinor, String currency, String ref, String desc) {
+        if (amountMinor <= 0) {
+            throw new IllegalArgumentException("Charge amountMinor must be strictly positive: " + amountMinor);
+        }
+        if (currency == null || currency.isBlank()) {
+            throw new IllegalArgumentException("Charge currency is required");
+        }
+        String normCurrency = currency.trim().toUpperCase(Locale.ROOT);
+        UUID activeFacility = FacilityContext.getFacilityId().orElse(null);
+        if (activeFacility != null && !activeFacility.equals(facilityId)) {
+            throw new AccessDeniedException("Cross-tenant charge posting denied for facility " + facilityId);
+        }
+
         PatientAccountEntity acct = accountRepo.findByFacilityIdAndPatientId(facilityId, patientId)
                 .orElseGet(() -> {
                     PatientAccountEntity created = new PatientAccountEntity();
                     created.setFacilityId(facilityId);
                     created.setPatientId(patientId);
-                    created.setCurrency(currency);
+                    created.setCurrency(normCurrency);
                     return accountRepo.save(created);
                 });
-        acct.setBalanceMinor(acct.getBalanceMinor() + amountMinor);
+        if (!normCurrency.equalsIgnoreCase(acct.getCurrency())) {
+            throw new IllegalArgumentException(
+                    "Currency mismatch: account currency is " + acct.getCurrency() + " but charge is " + normCurrency);
+        }
+        acct.setBalanceMinor(Math.addExact(acct.getBalanceMinor(), amountMinor));
         accountRepo.save(acct);
 
-        LedgerEntryEntity entry = new LedgerEntryEntity();
-        entry.setAccountId(acct.getId());
-        entry.setEntryType("DEBIT");
-        entry.setAmountMinor(amountMinor);
-        entry.setCurrency(currency);
-        entry.setReferenceCode(ref);
-        entry.setDescription(desc);
-        return ledgerRepo.save(entry);
+        List<LedgerEntryEntity> entries = postBalancedJournal(List.of(
+                new JournalPostingLine(acct.getId(), GL_PATIENT_AR, "DEBIT", amountMinor, normCurrency, ref, desc),
+                new JournalPostingLine(acct.getId(), GL_CLINICAL_REVENUE, "CREDIT", amountMinor, normCurrency, ref,
+                        "Offset clinical revenue: " + Objects.toString(desc, ref))
+        ));
+        return entries.getFirst();
+    }
+
+    /**
+     * Reverses an entire previously posted double-entry journal batch by emitting balanced
+     * counter-entries linked via {@code reversesEntryId} and adjusting the patient AR balance.
+     */
+    @Transactional
+    @RetryableOnTransientSqlFailure
+    @ClinicalAudit(action = "BILLING_REVERSE_JOURNAL", resourceType = "LedgerEntry")
+    public List<LedgerEntryEntity> reverseJournalBatch(UUID originalBatchId, String reason) {
+        List<LedgerEntryEntity> originals = ledgerRepo.findByJournalBatchId(originalBatchId);
+        if (originals.isEmpty()) {
+            throw new NoSuchElementException("Journal batch not found: " + originalBatchId);
+        }
+        UUID reversalBatchId = UuidV7Generator.nextUuid();
+        List<LedgerEntryEntity> reversals = new ArrayList<>(originals.size());
+        long arDelta = 0L;
+        UUID arAccountId = null;
+
+        for (LedgerEntryEntity orig : originals) {
+            String oppositeType = "DEBIT".equalsIgnoreCase(orig.getEntryType()) ? "CREDIT" : "DEBIT";
+            LedgerEntryEntity rev = new LedgerEntryEntity();
+            rev.setJournalBatchId(reversalBatchId);
+            rev.setAccountId(orig.getAccountId());
+            rev.setAccountCode(orig.getAccountCode());
+            rev.setEntryType(oppositeType);
+            rev.setAmountMinor(orig.getAmountMinor());
+            rev.setCurrency(orig.getCurrency());
+            rev.setReferenceCode("REV:" + orig.getReferenceCode());
+            rev.setDescription("Reversal (" + Objects.toString(reason, "correction") + ") of " + orig.getId());
+            rev.setReversesEntryId(orig.getId());
+            reversals.add(ledgerRepo.save(rev));
+
+            if (GL_PATIENT_AR.equals(orig.getAccountCode())) {
+                arAccountId = orig.getAccountId();
+                arDelta += "DEBIT".equals(oppositeType) ? orig.getAmountMinor() : -orig.getAmountMinor();
+            }
+        }
+        if (arAccountId != null && arDelta != 0L) {
+            PatientAccountEntity acct = accountRepo.findById(arAccountId)
+                    .orElseThrow(() -> new NoSuchElementException("PatientAccount not found for reversal"));
+            acct.setBalanceMinor(Math.addExact(acct.getBalanceMinor(), arDelta));
+            accountRepo.save(acct);
+        }
+        return List.copyOf(reversals);
     }
 
     /** Adjudicates CBHI / UHC claim splitting insurer share vs. patient co-pay. */
     @Transactional
     @ClinicalAudit(action = "UHC_ADJUDICATE_CLAIM", resourceType = "InsuranceClaim")
     public InsuranceClaimEntity adjudicateCbhiClaim(String policyNumber, long totalBilledMinor, String adjudicationModel) {
+        if (totalBilledMinor <= 0) {
+            throw new IllegalArgumentException("totalBilledMinor must be strictly positive");
+        }
         CbhiPolicyEntity policy = cbhiRepo.findByPolicyNumberAndActiveTrue(policyNumber)
                 .orElseThrow(() -> new NoSuchElementException("Active CBHI/UHC policy not found: " + policyNumber));
 
@@ -193,8 +381,10 @@ public class UhcBillingService {
         claim.setStatus("ADJUDICATED");
         claim = claimRepo.save(claim);
 
-        postCharge(policy.getFacilityId(), policy.getPatientId(), copay, "XAF",
-                "CLAIM:" + claim.getId(), "Patient co-pay for UHC/CBHI policy " + policyNumber);
+        if (copay > 0) {
+            postCharge(policy.getFacilityId(), policy.getPatientId(), copay, "XAF",
+                    "CLAIM:" + claim.getId(), "Patient co-pay for UHC/CBHI policy " + policyNumber);
+        }
 
         emitOutbox("InsuranceClaim", claim.getId(), "ClaimAdjudicatedEvent",
                 "{\"claimId\":\"" + claim.getId() + "\",\"insurerShareMinor\":" + insurerShare + "}");
@@ -220,14 +410,15 @@ public class UhcBillingService {
         return voucherRepo.save(voucher);
     }
 
-    /** Issues an HMAC-SHA256 signed offline UHC eligibility QR token verifiable without internet. */
+    /** Issues an HMAC-SHA256 signed offline UHC eligibility QR token using externalized secret. */
     @Transactional(readOnly = true)
     public Map<String, Object> issueOfflineEligibilityQr(String policyNumber) {
+        String signingSecret = requireOfflineQrSigningSecret();
         CbhiPolicyEntity policy = cbhiRepo.findByPolicyNumberAndActiveTrue(policyNumber)
                 .orElseThrow(() -> new NoSuchElementException("Active policy not found: " + policyNumber));
         String claimsPayload = policy.getPolicyNumber() + "|" + policy.getPatientId() + "|"
                 + policy.getCoveragePercent() + "|" + policy.getValidUntil();
-        String sig = computeHmacSha256(claimsPayload, OFFLINE_QR_SIGNING_SECRET);
+        String sig = computeHmacSha256(claimsPayload, signingSecret);
         String qrToken = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString((claimsPayload + "|" + sig).getBytes(StandardCharsets.UTF_8));
         return Map.of(
@@ -239,8 +430,11 @@ public class UhcBillingService {
         );
     }
 
-    /** Verifies a scanned offline UHC eligibility QR token deterministically. */
+    /** Verifies a scanned offline UHC eligibility QR token deterministically; fails closed if secret unset. */
     public Map<String, Object> verifyOfflineEligibilityQr(String qrToken) {
+        if (offlineQrSigningSecret == null || offlineQrSigningSecret.isBlank()) {
+            return Map.of("valid", false, "reason", "Offline UHC QR signing secret is not configured");
+        }
         try {
             String decoded = new String(Base64.getUrlDecoder().decode(qrToken), StandardCharsets.UTF_8);
             String[] parts = decoded.split("\\|");
@@ -248,7 +442,7 @@ public class UhcBillingService {
                 return Map.of("valid", false, "reason", "Malformed UHC offline QR token");
             }
             String claimsPayload = parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[3];
-            boolean sigValid = verifyHmacSha256(claimsPayload, parts[4], OFFLINE_QR_SIGNING_SECRET);
+            boolean sigValid = verifyHmacSha256(claimsPayload, parts[4], offlineQrSigningSecret);
             boolean unexpired = !LocalDate.parse(parts[3]).isBefore(LocalDate.now());
             return Map.of(
                     "valid", sigValid && unexpired,
@@ -258,45 +452,70 @@ public class UhcBillingService {
                     "validUntil", parts[3]
             );
         } catch (Exception ex) {
-            return Map.of("valid", false, "reason", ex.getMessage());
+            return Map.of("valid", false, "reason", Objects.toString(ex.getMessage(), "Invalid QR token"));
         }
     }
 
-    /** Credits patient account after verifying Mobile Money HMAC webhook signature. */
+    /**
+     * Idempotently settles a verified Mobile Money webhook by posting a balanced double-entry
+     * journal ({@code DEBIT 1010_MOBILE_MONEY_CLEARING} / {@code CREDIT 1200_PATIENT_AR}) and
+     * decrementing patient receivable balance under optimistic version control.
+     */
     @Transactional
     @RetryableOnTransientSqlFailure
     public PaymentTransactionEntity settleMobileMoneyWebhook(
             String providerCode, UUID accountId, String externalRef,
             long amountMinor, String currency, String rawPayload, String signatureHeader, String webhookSecret) {
-        PaymentGatewaySpi adapter = paymentAdapters.get(providerCode.toUpperCase(Locale.ROOT));
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            throw new IllegalStateException("Mobile Money webhook signing secret must be configured externally");
+        }
+        if (amountMinor <= 0) {
+            throw new IllegalArgumentException("Settlement amountMinor must be strictly positive: " + amountMinor);
+        }
+        if (externalRef == null || externalRef.isBlank()) {
+            throw new IllegalArgumentException("externalRef is required for idempotent settlement");
+        }
+        String normProvider = providerCode.trim().toUpperCase(Locale.ROOT);
+        PaymentGatewaySpi adapter = paymentAdapters.get(normProvider);
         if (adapter == null || !adapter.verifyWebhookSignature(rawPayload, signatureHeader, webhookSecret)) {
             throw new SecurityException("Invalid Mobile Money webhook signature for provider " + providerCode);
         }
 
+        // Idempotency guard: duplicate webhook callbacks return existing settled transaction without double-crediting
+        Optional<PaymentTransactionEntity> existingTx = txRepo.findByProviderCodeAndExternalTxRef(normProvider, externalRef.trim());
+        if (existingTx.isPresent()) {
+            return existingTx.get();
+        }
+
+        String normCurrency = currency != null ? currency.trim().toUpperCase(Locale.ROOT) : "";
         PatientAccountEntity acct = accountRepo.findById(accountId)
                 .orElseThrow(() -> new NoSuchElementException("PatientAccount not found: " + accountId));
-        acct.setBalanceMinor(acct.getBalanceMinor() - amountMinor);
+        if (!normCurrency.equalsIgnoreCase(acct.getCurrency())) {
+            throw new IllegalArgumentException(
+                    "Currency mismatch: account is " + acct.getCurrency() + " but settlement is " + normCurrency);
+        }
+
+        acct.setBalanceMinor(Math.subtractExact(acct.getBalanceMinor(), amountMinor));
         accountRepo.save(acct);
 
-        LedgerEntryEntity credit = new LedgerEntryEntity();
-        credit.setAccountId(accountId);
-        credit.setEntryType("CREDIT");
-        credit.setAmountMinor(amountMinor);
-        credit.setCurrency(currency);
-        credit.setReferenceCode(providerCode + ":" + externalRef);
-        credit.setDescription("Mobile Money settlement");
-        ledgerRepo.save(credit);
+        String refCode = normProvider + ":" + externalRef.trim();
+        postBalancedJournal(List.of(
+                new JournalPostingLine(accountId, GL_MOBILE_MONEY_CLEARING, "DEBIT", amountMinor, normCurrency, refCode,
+                        "Mobile Money clearing receipt (" + normProvider + ")"),
+                new JournalPostingLine(accountId, GL_PATIENT_AR, "CREDIT", amountMinor, normCurrency, refCode,
+                        "Mobile Money patient receivable settlement")
+        ));
 
         PaymentTransactionEntity tx = new PaymentTransactionEntity();
         tx.setAccountId(accountId);
-        tx.setProviderCode(providerCode);
-        tx.setExternalTxRef(externalRef);
+        tx.setProviderCode(normProvider);
+        tx.setExternalTxRef(externalRef.trim());
         tx.setAmountMinor(amountMinor);
-        tx.setCurrency(currency);
+        tx.setCurrency(normCurrency);
         return txRepo.save(tx);
     }
 
-    private static String computeHmacSha256(String payload, String secret) {
+    public static String computeHmacSha256(String payload, String secret) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -307,7 +526,7 @@ public class UhcBillingService {
     }
 
     private static boolean verifyHmacSha256(String payload, String signatureHex, String secret) {
-        if (signatureHex == null || secret == null) return false;
+        if (signatureHex == null || secret == null || secret.isBlank()) return false;
         try {
             String expected = computeHmacSha256(payload, secret);
             return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
@@ -328,7 +547,7 @@ public class UhcBillingService {
     }
 
     @RestController
-    @Tag(name = "UHC / CBHI, OpenIMIS & Billing", description = "Double-entry ledger, CBHI Mutuelles de Santé, OpenIMIS FHIR Coverage/Claim, Vouchers, Offline QR & MoMo")
+    @Tag(name = "UHC / CBHI, OpenIMIS & Billing", description = "Balanced double-entry ledger, CBHI Mutuelles de Santé, OpenIMIS FHIR Coverage/Claim, Vouchers, Offline QR & MoMo")
     public static class UhcBillingController {
         private final UhcBillingService service;
         private final CbhiPolicyRepository cbhiRepo;
@@ -358,6 +577,7 @@ public class UhcBillingService {
         }
 
         @PostMapping("/api/v1/uhc/policies/verify-offline-qr")
+        @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_patient:read')")
         @Operation(summary = "Verify offline UHC eligibility QR token without central internet")
         public Map<String, Object> verifyOfflineQr(@RequestParam String token) {
             return service.verifyOfflineEligibilityQr(token);
@@ -379,12 +599,21 @@ public class UhcBillingService {
 
         @PostMapping("/api/v1/uhc/charges")
         @PreAuthorize("hasAuthority('PERM_billing:invoice')")
-        @Operation(summary = "Post immutable DEBIT charge to patient double-entry account")
+        @Operation(summary = "Post balanced double-entry DEBIT/CREDIT charge to patient account")
         public LedgerEntryEntity postCharge(
                 @RequestParam UUID facilityId, @RequestParam UUID patientId,
                 @RequestParam long amountMinor, @RequestParam(defaultValue = "XAF") String currency,
                 @RequestParam String ref, @RequestParam String description) {
             return service.postCharge(facilityId, patientId, amountMinor, currency, ref, description);
+        }
+
+        @PostMapping("/api/v1/uhc/journals/{journalBatchId}/reverse")
+        @PreAuthorize("hasAuthority('PERM_billing:invoice') or hasAuthority('PERM_system:admin')")
+        @Operation(summary = "Reverse a double-entry journal batch with balanced counter-entries")
+        public List<LedgerEntryEntity> reverseJournal(
+                @PathVariable UUID journalBatchId,
+                @RequestParam String reason) {
+            return service.reverseJournalBatch(journalBatchId, reason);
         }
 
         @PostMapping("/api/v1/uhc/claims/adjudicate")
@@ -397,12 +626,16 @@ public class UhcBillingService {
             return service.adjudicateCbhiClaim(policyNumber, totalBilledMinor, model);
         }
 
-        /** OpenIMIS FHIR R4 Coverage Search Endpoint. */
+        /** OpenIMIS FHIR R4 Coverage Search Endpoint (tenant-scoped). */
         @GetMapping(value = "/fhir/r4/Coverage", produces = "application/fhir+json")
         @PreAuthorize("hasAuthority('PERM_uhc:verify') or hasAuthority('PERM_patient:read')")
-        @Operation(summary = "OpenIMIS-compatible FHIR R4 Coverage eligibility lookup")
+        @Operation(summary = "OpenIMIS-compatible tenant-scoped FHIR R4 Coverage eligibility lookup")
         public Map<String, Object> fhirCoverage(@RequestParam UUID beneficiary) {
-            List<Map<String, Object>> entries = cbhiRepo.findByPatientIdAndActiveTrue(beneficiary).stream()
+            UUID activeFacility = FacilityContext.getFacilityId().orElse(null);
+            List<CbhiPolicyEntity> policies = activeFacility != null
+                    ? cbhiRepo.findByFacilityIdAndPatientIdAndActiveTrue(activeFacility, beneficiary)
+                    : cbhiRepo.findByPatientIdAndActiveTrue(beneficiary);
+            List<Map<String, Object>> entries = policies.stream()
                     .map(p -> Map.<String, Object>of("resource", Map.of(
                             "resourceType", "Coverage",
                             "id", p.getId().toString(),
@@ -437,7 +670,7 @@ public class UhcBillingService {
         }
 
         @PostMapping("/api/v1/uhc/webhooks/{providerCode}")
-        @Operation(summary = "HMAC-verified Mobile Money payment callback (MTN_MOMO / ORANGE_MONEY)")
+        @Operation(summary = "HMAC-verified idempotent Mobile Money payment callback (MTN_MOMO / ORANGE_MONEY)")
         public PaymentTransactionEntity webhook(
                 @PathVariable String providerCode,
                 @RequestParam UUID accountId,
@@ -446,8 +679,9 @@ public class UhcBillingService {
                 @RequestParam(defaultValue = "XAF") String currency,
                 @RequestHeader("X-Webhook-Signature") String signature,
                 @RequestBody String rawPayload) {
+            String configuredSecret = service.requireConfiguredMobileMoneyWebhookSecret();
             return service.settleMobileMoneyWebhook(
-                    providerCode, accountId, externalRef, amountMinor, currency, rawPayload, signature, "opes-momo-dev-secret");
+                    providerCode, accountId, externalRef, amountMinor, currency, rawPayload, signature, configuredSecret);
         }
     }
 }

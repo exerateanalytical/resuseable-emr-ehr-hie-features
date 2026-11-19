@@ -191,24 +191,38 @@ public class ObservationService {
 
     private final ObservationRepository observationRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
+    private final ConsentService consentService;
     private final FhirObservationValidatorService fhirValidatorService;
 
     public ObservationService(ObservationRepository observationRepo) {
-        this(observationRepo, (OutboxRelayService.OutboxRepository) null);
+        this(observationRepo, (OutboxRelayService.OutboxRepository) null, null);
     }
 
     @Autowired
     public ObservationService(
             ObservationRepository observationRepo,
-            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider) {
-        this(observationRepo, outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null);
+            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider,
+            ObjectProvider<ConsentService> consentServiceProvider) {
+        this(
+                observationRepo,
+                outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null,
+                consentServiceProvider != null ? consentServiceProvider.getIfAvailable() : null
+        );
     }
 
     public ObservationService(
             ObservationRepository observationRepo,
             OutboxRelayService.OutboxRepository outboxRepo) {
+        this(observationRepo, outboxRepo, null);
+    }
+
+    public ObservationService(
+            ObservationRepository observationRepo,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            ConsentService consentService) {
         this.observationRepo = Objects.requireNonNull(observationRepo, "ObservationRepository is required");
         this.outboxRepo = outboxRepo;
+        this.consentService = consentService;
         this.fhirValidatorService = new FhirObservationValidatorService(FHIR_R4);
     }
 
@@ -308,6 +322,31 @@ public class ObservationService {
                         }
                     });
         }
+        if (consentService != null) {
+            consentService.assertFhirResourceAiConsentValid(fhirObservation);
+        }
+    }
+
+    /**
+     * Validates a FHIR R4 {@link Observation} against schema, domain rules, and explicit patient
+     * AI-Assisted Processing consent flags for the requested automated clinical AI scopes.
+     */
+    public ConsentService.AiConsentValidationOutcome validateFhirObservationForAiProcessing(
+            Observation fhirObservation,
+            UUID facilityId,
+            boolean isCreate,
+            UUID existingObservationId,
+            java.util.Set<ConsentService.AiProcessingScope> requestedScopes) {
+        validateFhirObservation(fhirObservation, facilityId, isCreate, existingObservationId);
+        if (consentService == null) {
+            throw new IllegalStateException("ConsentService is required for AI-Assisted Processing consent validation");
+        }
+        ConsentService.AiConsentValidationOutcome outcome =
+                consentService.validateFhirResourceAiConsent(fhirObservation, requestedScopes);
+        if (!outcome.allowed()) {
+            consentService.assertFhirResourceAiConsentValid(fhirObservation, requestedScopes);
+        }
+        return outcome;
     }
 
     @ClinicalAudit(action = "OBSERVATION_CREATE", resourceType = "Observation")

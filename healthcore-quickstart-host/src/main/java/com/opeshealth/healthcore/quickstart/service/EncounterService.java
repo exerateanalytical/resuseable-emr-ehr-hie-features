@@ -178,24 +178,38 @@ public class EncounterService {
 
     private final EncounterRepository encounterRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
+    private final ConsentService consentService;
     private final FhirEncounterValidatorService fhirValidatorService;
 
     public EncounterService(EncounterRepository encounterRepo) {
-        this(encounterRepo, (OutboxRelayService.OutboxRepository) null);
+        this(encounterRepo, (OutboxRelayService.OutboxRepository) null, null);
     }
 
     @Autowired
     public EncounterService(
             EncounterRepository encounterRepo,
-            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider) {
-        this(encounterRepo, outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null);
+            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider,
+            ObjectProvider<ConsentService> consentServiceProvider) {
+        this(
+                encounterRepo,
+                outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null,
+                consentServiceProvider != null ? consentServiceProvider.getIfAvailable() : null
+        );
     }
 
     public EncounterService(
             EncounterRepository encounterRepo,
             OutboxRelayService.OutboxRepository outboxRepo) {
+        this(encounterRepo, outboxRepo, null);
+    }
+
+    public EncounterService(
+            EncounterRepository encounterRepo,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            ConsentService consentService) {
         this.encounterRepo = Objects.requireNonNull(encounterRepo, "EncounterRepository is required");
         this.outboxRepo = outboxRepo;
+        this.consentService = consentService;
         this.fhirValidatorService = new FhirEncounterValidatorService(FHIR_R4);
     }
 
@@ -247,6 +261,28 @@ public class EncounterService {
                 && fhirEncounter.getPeriod().getEnd().toInstant().isBefore(fhirEncounter.getPeriod().getStart().toInstant())) {
             throw new IllegalArgumentException("FHIR Encounter.period.end cannot precede period.start");
         }
+        if (consentService != null) {
+            consentService.assertFhirResourceAiConsentValid(fhirEncounter);
+        }
+    }
+
+    /**
+     * Validates a FHIR R4 {@link Encounter} against schema, domain rules, and explicit patient
+     * AI-Assisted Processing consent flags for the requested automated clinical AI scopes.
+     */
+    public ConsentService.AiConsentValidationOutcome validateFhirEncounterForAiProcessing(
+            Encounter fhirEncounter,
+            Set<ConsentService.AiProcessingScope> requestedScopes) {
+        validateFhirEncounter(fhirEncounter);
+        if (consentService == null) {
+            throw new IllegalStateException("ConsentService is required for AI-Assisted Processing consent validation");
+        }
+        ConsentService.AiConsentValidationOutcome outcome =
+                consentService.validateFhirResourceAiConsent(fhirEncounter, requestedScopes);
+        if (!outcome.allowed()) {
+            consentService.assertFhirResourceAiConsentValid(fhirEncounter, requestedScopes);
+        }
+        return outcome;
     }
 
     @ClinicalAudit(action = "ENCOUNTER_CREATE", resourceType = "Encounter")

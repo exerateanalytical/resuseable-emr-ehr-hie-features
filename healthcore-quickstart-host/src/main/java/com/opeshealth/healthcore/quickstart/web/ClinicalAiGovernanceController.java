@@ -10,6 +10,11 @@
  */
 package com.opeshealth.healthcore.quickstart.web;
 
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AuditChainVerificationReport;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AuditEventType;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.HipaaComplianceAuditReport;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.TamperProofAuditEntry;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.AttestationCommand;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.ClinicalAiDraftRecord;
@@ -20,6 +25,7 @@ import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway.RedactedClinical
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway.RedactionContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,12 +73,24 @@ public class ClinicalAiGovernanceController {
 
     private final PhiRedactionGateway phiRedactionGateway;
     private final ClinicalAiGovernanceService governanceService;
+    private final ClinicalAuditLogger clinicalAuditLogger;
 
     public ClinicalAiGovernanceController(
             PhiRedactionGateway phiRedactionGateway,
             ClinicalAiGovernanceService governanceService) {
+        this(phiRedactionGateway, governanceService, governanceService.getClinicalAuditLogger());
+    }
+
+    @Autowired
+    public ClinicalAiGovernanceController(
+            PhiRedactionGateway phiRedactionGateway,
+            ClinicalAiGovernanceService governanceService,
+            ClinicalAuditLogger clinicalAuditLogger) {
         this.phiRedactionGateway = Objects.requireNonNull(phiRedactionGateway);
         this.governanceService = Objects.requireNonNull(governanceService);
+        this.clinicalAuditLogger = clinicalAuditLogger != null
+                ? clinicalAuditLogger
+                : governanceService.getClinicalAuditLogger();
     }
 
     @PostMapping(value = "/redact-preview", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -129,5 +148,32 @@ public class ClinicalAiGovernanceController {
     @Operation(summary = "Retrieve per-facility Clinical AI governance metrics, redaction totals, and attestation rates")
     public ResponseEntity<TenantAiGovernanceMetrics> getTenantMetrics(@PathVariable("facilityId") UUID facilityId) {
         return ResponseEntity.ok(governanceService.getTenantMetrics(facilityId));
+    }
+
+    @GetMapping(value = "/audit/entries", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Query tamper-proof SHA-256 hash-chained clinical AI audit entries (model interactions, attestations, PHI redactions)")
+    public ResponseEntity<List<TamperProofAuditEntry>> queryAuditEntries(
+            @RequestParam(name = "facilityId", required = false) UUID facilityId,
+            @RequestParam(name = "eventType", required = false) AuditEventType eventType,
+            @RequestParam(name = "patientId", required = false) UUID patientId,
+            @RequestParam(name = "from", required = false) Instant from,
+            @RequestParam(name = "to", required = false) Instant to) {
+        return ResponseEntity.ok(clinicalAuditLogger.queryAuditEntries(facilityId, eventType, patientId, from, to));
+    }
+
+    @GetMapping(value = "/audit/verify/{facilityId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Cryptographically verify the tamper-proof SHA-256 hash chain integrity for a facility")
+    public ResponseEntity<AuditChainVerificationReport> verifyAuditChain(
+            @PathVariable("facilityId") UUID facilityId) {
+        return ResponseEntity.ok(clinicalAuditLogger.verifyAuditChain(facilityId));
+    }
+
+    @GetMapping(value = "/audit/hipaa-report/{facilityId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Generate a cryptographically signed HIPAA Compliance Audit Report covering AI interactions, clinician attestations, and PHI redactions")
+    public ResponseEntity<HipaaComplianceAuditReport> generateHipaaComplianceReport(
+            @PathVariable("facilityId") UUID facilityId,
+            @RequestParam(name = "from", required = false) Instant from,
+            @RequestParam(name = "to", required = false) Instant to) {
+        return ResponseEntity.ok(clinicalAuditLogger.generateHipaaComplianceReport(facilityId, from, to));
     }
 }

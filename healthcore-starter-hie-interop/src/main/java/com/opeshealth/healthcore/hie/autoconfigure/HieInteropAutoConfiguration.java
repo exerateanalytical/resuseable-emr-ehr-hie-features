@@ -82,8 +82,9 @@ public class HieInteropAutoConfiguration {
     @Bean @ConditionalOnMissingBean @Conditional(OnInteroperabilityIheSlice.class)
     public InteroperabilityIheController interoperabilityIheController(
             IheDocumentRepository docRepo,
-            MpiCommandService.PatientRepository patientRepo) {
-        return new InteroperabilityIheController(docRepo, patientRepo);
+            MpiCommandService.PatientRepository patientRepo,
+            HieInteropService service) {
+        return new InteroperabilityIheController(docRepo, patientRepo, service);
     }
 
     @Bean @ConditionalOnMissingBean @Conditional(OnHl7AstmDicomSlice.class)

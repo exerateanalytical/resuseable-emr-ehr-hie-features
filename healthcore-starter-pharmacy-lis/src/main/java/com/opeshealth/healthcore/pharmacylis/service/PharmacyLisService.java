@@ -45,6 +45,18 @@ public class PharmacyLisService {
         List<MedicationBatchEntity> findByFacilityIdAndDrugCodeAndQuarantinedFalseAndExpiryDateAfterOrderByExpiryDateAsc(
                 UUID facilityId, String drugCode, LocalDate minExpiry);
         List<MedicationBatchEntity> findByFacilityIdAndExpiryDateBefore(UUID facilityId, LocalDate cutoff);
+
+        /**
+         * Atomic conditional inventory deduction preventing lost updates and negative stock
+         * under concurrent dispensing requests across multiple threads or service replicas.
+         */
+        @Modifying
+        @Query("UPDATE MedicationBatchEntity b SET b.quantityOnHand = b.quantityOnHand - :qty, b.version = b.version + 1 "
+                + "WHERE b.id = :id AND b.facilityId = :facilityId AND b.quarantined = false AND b.quantityOnHand >= :qty")
+        int decrementStockAtomically(
+                @Param("id") UUID id,
+                @Param("facilityId") UUID facilityId,
+                @Param("qty") int qty);
     }
 
     public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {
@@ -117,7 +129,9 @@ public class PharmacyLisService {
 
     /**
      * Picks earliest non-expired, non-quarantined stock lot (First-Expired, First-Out),
-     * enforces dual-witness signoff for Schedule II/III controlled substances, and deducts inventory.
+     * enforces dual-witness signoff for Schedule II/III controlled substances, and atomically
+     * deducts inventory using a conditional database update ({@code quantity_on_hand >= qty})
+     * so concurrent dispensing can never oversell or drive stock negative.
      */
     @Transactional
     @RetryableOnTransientSqlFailure
@@ -126,6 +140,15 @@ public class PharmacyLisService {
             UUID facilityId, UUID patientId, UUID rxOrderId,
             String prescribedDrugCode, String dispensedDrugCode,
             int requestedQty, boolean allowPartial, String pharmacistId, String witnessId) {
+
+        if (requestedQty <= 0) {
+            throw new IllegalArgumentException("Dispense quantity must be greater than zero");
+        }
+        UUID activeFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.getFacilityId().orElse(null);
+        if (activeFacility != null && !activeFacility.equals(facilityId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Cross-tenant pharmacy dispense denied for facility " + facilityId);
+        }
 
         List<MedicationBatchEntity> lots = batchRepo
                 .findByFacilityIdAndDrugCodeAndQuarantinedFalseAndExpiryDateAfterOrderByExpiryDateAsc(
@@ -145,8 +168,13 @@ public class PharmacyLisService {
             throw new IllegalStateException("Insufficient lot stock (" + selected.getQuantityOnHand() + " < " + requestedQty + ")");
         }
 
+        int updatedRows = batchRepo.decrementStockAtomically(selected.getId(), facilityId, qtyToDeduct);
+        if (updatedRows != 1) {
+            throw new org.springframework.dao.OptimisticLockingFailureException(
+                    "Concurrent stock depletion detected for lot " + selected.getLotNumber()
+                            + "; retry dispense against remaining available FEFO inventory.");
+        }
         selected.setQuantityOnHand(selected.getQuantityOnHand() - qtyToDeduct);
-        batchRepo.save(selected);
 
         PharmacyDispenseEntity dispense = new PharmacyDispenseEntity();
         dispense.setFacilityId(facilityId);

@@ -34,18 +34,63 @@ public final class PiiVaultCrypto {
     private static final int GCM_TAG_BITS = 128;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private static volatile SecretKey activeAesKey = defaultDevKey();
-    private static volatile byte[] activeHmacKey = "opes-healthcore-dev-hmac-key-32b".getBytes(StandardCharsets.UTF_8);
+    private static volatile boolean usingDefaultDevKeys = true;
+    private static volatile SecretKey activeAesKey = initAesKey();
+    private static volatile byte[] activeHmacKey = initHmacKey();
 
     private PiiVaultCrypto() {}
 
     /** Configures production 256-bit AES and HMAC keys from Vault/Env at startup. */
     public static void configureKeys(byte[] aes256KeyBytes, byte[] hmacKeyBytes) {
-        if (aes256KeyBytes.length != 32) {
+        if (aes256KeyBytes == null || aes256KeyBytes.length != 32) {
             throw new IllegalArgumentException("AES-256 key must be exactly 32 bytes");
+        }
+        if (hmacKeyBytes == null || hmacKeyBytes.length < 32) {
+            throw new IllegalArgumentException("HMAC-SHA256 key must be at least 32 bytes");
         }
         activeAesKey = new SecretKeySpec(aes256KeyBytes, "AES");
         activeHmacKey = hmacKeyBytes.clone();
+        usingDefaultDevKeys = false;
+    }
+
+    /** Returns true if fallback local-dev keys are still active instead of externalized Vault/Env keys. */
+    public static boolean isUsingDefaultDevKeys() {
+        return usingDefaultDevKeys;
+    }
+
+    /** Fails fast at startup if default local-dev keys are still active in a production profile. */
+    public static void assertProductionKeysConfigured(boolean productionProfileActive) {
+        if (productionProfileActive && usingDefaultDevKeys) {
+            throw new IllegalStateException(
+                    "Default development PII encryption/HMAC keys cannot be used in production. "
+                            + "Configure HEALTHCORE_PII_AES_KEY_B64 and HEALTHCORE_PII_HMAC_KEY_B64 or call PiiVaultCrypto.configureKeys(...).");
+        }
+    }
+
+    private static SecretKey initAesKey() {
+        String envAes = System.getenv("HEALTHCORE_PII_AES_KEY_B64");
+        String envHmac = System.getenv("HEALTHCORE_PII_HMAC_KEY_B64");
+        if (envAes != null && !envAes.isBlank() && envHmac != null && !envHmac.isBlank()) {
+            byte[] decoded = Base64.getDecoder().decode(envAes.trim());
+            if (decoded.length != 32) {
+                throw new IllegalStateException("HEALTHCORE_PII_AES_KEY_B64 must decode to exactly 32 bytes");
+            }
+            usingDefaultDevKeys = false;
+            return new SecretKeySpec(decoded, "AES");
+        }
+        return defaultDevKey();
+    }
+
+    private static byte[] initHmacKey() {
+        String envHmac = System.getenv("HEALTHCORE_PII_HMAC_KEY_B64");
+        if (envHmac != null && !envHmac.isBlank()) {
+            byte[] decoded = Base64.getDecoder().decode(envHmac.trim());
+            if (decoded.length < 32) {
+                throw new IllegalStateException("HEALTHCORE_PII_HMAC_KEY_B64 must decode to at least 32 bytes");
+            }
+            return decoded;
+        }
+        return "opes-healthcore-dev-hmac-key-32b".getBytes(StandardCharsets.UTF_8);
     }
 
     public static String encrypt(String plaintext) {

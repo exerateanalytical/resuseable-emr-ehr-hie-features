@@ -131,8 +131,13 @@ public class BloodBankStarter {
         }
 
         /**
-         * Evaluates immunological ABO and RhD compatibility between donor unit and recipient patient
-         * according to AABB / WHO Blood Transfusion Safety standards.
+         * Evaluates immunological ABO and RhD group compatibility between donor unit and recipient patient.
+         *
+         * <p><strong>Clinical validation &amp; scope notice:</strong> Covers routine ABO/RhD group
+         * rules for {@code PRBC}/{@code WHOLE_BLOOD} (red-cell antigens) and {@code FFP}/{@code PLASMA}
+         * (plasma antibodies). Does NOT evaluate atypical antibodies, direct antiglobulin/crossmatch
+         * testing, RhIG prophylaxis protocols, or special platelet/cryoprecipitate policies.
+         * Independent blood-bank medical director validation is required before live clinical use.</p>
          */
         public CompatibilityEvaluation evaluateCompatibility(
                 String donorAboRh, String recipientAboRh, String componentType) {
@@ -142,7 +147,15 @@ public class BloodBankStarter {
                     ? componentType.trim().toUpperCase(Locale.ROOT)
                     : "PRBC";
 
-            boolean isPlasma = normComponent.contains("FFP") || normComponent.contains("PLASMA");
+            boolean isPlasma = normComponent.equals("FFP") || normComponent.equals("PLASMA");
+            boolean isRedCell = normComponent.equals("PRBC") || normComponent.equals("RBC")
+                    || normComponent.equals("WHOLE_BLOOD") || normComponent.equals("WHOLE");
+            if (!isPlasma && !isRedCell) {
+                throw new IllegalArgumentException(
+                        "Unsupported componentType '" + normComponent + "' for automated ABO/RhD matrix. "
+                                + "Supported: PRBC, WHOLE_BLOOD, FFP, PLASMA. Consult institutional blood-bank SOP for platelets/cryoprecipitate.");
+            }
+
             Set<String> allowedRecipients = isPlasma
                     ? FFP_COMPATIBLE_RECIPIENTS.getOrDefault(normDonor, Set.of())
                     : PRBC_COMPATIBLE_RECIPIENTS.getOrDefault(normDonor, Set.of());
@@ -153,8 +166,8 @@ public class BloodBankStarter {
 
             String guidance = compatible
                     ? (normDonor.equals(normRecipient)
-                            ? "Type-identical " + normComponent + " match (" + normDonor + " -> " + normRecipient + "). Proceed with immediate-spin / AHG crossmatch."
-                            : "ABO/RhD compatible non-identical " + normComponent + " (" + normDonor + " -> " + normRecipient + "). Verify antibody screen is negative.")
+                            ? "Type-identical " + normComponent + " match (" + normDonor + " -> " + normRecipient + "). Proceed with antibody screen and crossmatch per blood-bank SOP."
+                            : "ABO/RhD compatible non-identical " + normComponent + " (" + normDonor + " -> " + normRecipient + "). Verify negative antibody screen and institutional transfusion SOP.")
                     : "CONTRAINDICATED: " + normComponent + " from " + normDonor + " donor is incompatible with " + normRecipient
                             + " recipient — high risk of acute hemolytic transfusion reaction (AHTR).";
 
@@ -225,9 +238,17 @@ public class BloodBankStarter {
          */
         @Transactional(readOnly = true)
         public BloodInventorySummary getFacilityInventorySummary(UUID facilityId) {
-            List<BloodComponentUnitEntity> allUnits = bloodUnitRepository.findAll().stream()
-                    .filter(u -> facilityId == null || facilityId.equals(u.getFacilityId()))
-                    .toList();
+            UUID activeFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.getFacilityId()
+                    .orElse(facilityId);
+            if (activeFacility == null) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Facility tenant ID is required for blood bank inventory queries.");
+            }
+            if (facilityId != null && !activeFacility.equals(facilityId)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Cross-tenant blood bank inventory access denied.");
+            }
+            List<BloodComponentUnitEntity> allUnits = bloodUnitRepository.findByFacilityId(activeFacility);
 
             LocalDate today = LocalDate.now();
             LocalDate sevenDaysOut = today.plus(7, ChronoUnit.DAYS);

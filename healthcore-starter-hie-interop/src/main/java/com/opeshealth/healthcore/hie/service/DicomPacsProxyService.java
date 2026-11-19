@@ -79,9 +79,21 @@ public class DicomPacsProxyService {
             String studyDescription,
             String contentType,
             byte[] dicomBytes) {
-        DicomStudyEntity entity = dicomRepo.findFirstByStudyInstanceUid(studyInstanceUid)
+        UUID activeFacility = HieInteropService.requireTenantFacilityId();
+        if (facilityId != null && !facilityId.equals(activeFacility)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Cross-tenant DICOM STOW-RS denied: facility header does not match authenticated tenant.");
+        }
+        if (!pacsEnabled || pacsBaseUrl == null || pacsBaseUrl.isBlank()) {
+            throw new UnsupportedOperationException(
+                    "External PACS DICOMweb storage is disabled (healthcore.hie.dicom.pacs-enabled=false). "
+                            + "Binary DICOM instances cannot be stored without a configured PACS server; "
+                            + "use POST /api/v1/hie/dicom/studies for metadata-only indexing.");
+        }
+
+        DicomStudyEntity entity = dicomRepo.findFirstByFacilityIdAndStudyInstanceUid(activeFacility, studyInstanceUid)
                 .orElseGet(DicomStudyEntity::new);
-        entity.setFacilityId(facilityId);
+        entity.setFacilityId(activeFacility);
         entity.setPatientId(patientId);
         entity.setStudyInstanceUid(studyInstanceUid);
         entity.setModality(modality != null && !modality.isBlank() ? modality : "DX");
@@ -89,16 +101,6 @@ public class DicomPacsProxyService {
         String resolvedWado = buildWadoStudyUrl(studyInstanceUid);
         entity.setWadoRsUrl(resolvedWado);
         DicomStudyEntity saved = dicomRepo.save(entity);
-
-        if (!pacsEnabled || pacsBaseUrl == null || pacsBaseUrl.isBlank()) {
-            return Map.of(
-                    "status", "INDEXED_LOCAL",
-                    "studyId", saved.getId(),
-                    "studyInstanceUid", saved.getStudyInstanceUid(),
-                    "wadoRsUrl", resolvedWado,
-                    "bytesReceived", dicomBytes != null ? dicomBytes.length : 0
-            );
-        }
 
         try {
             String target = normalizedBase() + "/studies";
@@ -148,16 +150,16 @@ public class DicomPacsProxyService {
     @CircuitBreaker(name = "pacsProxy")
     @Bulkhead(name = "hieOutbound")
     public ResponseEntity<byte[]> retrieveWadoBinary(String studyUid, String seriesUid, String sopUid) {
-        Optional<DicomStudyEntity> studyOpt = dicomRepo.findFirstByStudyInstanceUid(studyUid);
+        UUID activeFacility = HieInteropService.requireTenantFacilityId();
+        Optional<DicomStudyEntity> studyOpt = dicomRepo.findFirstByFacilityIdAndStudyInstanceUid(activeFacility, studyUid);
+        if (studyOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         if (!pacsEnabled || pacsBaseUrl == null || pacsBaseUrl.isBlank()) {
-            if (studyOpt.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-            String json = "{\"studyInstanceUid\":\"" + studyUid + "\",\"wadoRsUrl\":\""
-                    + Objects.toString(studyOpt.get().getWadoRsUrl(), "") + "\",\"pacsProxy\":\"DISABLED\"}";
-            return ResponseEntity.ok()
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(json.getBytes(StandardCharsets.UTF_8));
+                    .body(("{\"error\":\"WADO-RS binary retrieval requires healthcore.hie.dicom.pacs-enabled=true\",\"studyInstanceUid\":\""
+                            + studyUid + "\"}").getBytes(StandardCharsets.UTF_8));
         }
 
         String path = seriesUid != null && sopUid != null
@@ -208,9 +210,10 @@ public class DicomPacsProxyService {
                 // Fall back to local HIE DICOM registry
             }
         }
+        UUID activeFacility = HieInteropService.requireTenantFacilityId();
         List<DicomStudyEntity> local = patientId != null
-                ? dicomRepo.findByPatientIdOrderByStudyDateDesc(patientId)
-                : dicomRepo.findAll();
+                ? dicomRepo.findByFacilityIdAndPatientIdOrderByStudyDateDesc(activeFacility, patientId)
+                : dicomRepo.findByFacilityIdOrderByStudyDateDesc(activeFacility);
         if (modality != null && !modality.isBlank()) {
             local = local.stream().filter(s -> modality.equalsIgnoreCase(s.getModality())).toList();
         }

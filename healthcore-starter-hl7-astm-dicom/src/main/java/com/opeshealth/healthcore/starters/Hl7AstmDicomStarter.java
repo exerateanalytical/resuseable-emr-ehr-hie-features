@@ -83,25 +83,30 @@ public class Hl7AstmDicomStarter {
         }
 
         /**
-         * Ingests an HL7 v2.5.1 pipe-delimited message (`ADT`, `ORM`, `ORU`) with `MSH-10`
-         * deduplication and returns the HL7 v2 acknowledgment (`ACK`).
+         * Ingests an HL7 v2.5.1 pipe-delimited message under the caller's active facility tenant
+         * with {@code MSH-10} deduplication and returns the HL7 v2 acknowledgment ({@code ACK}).
          */
         @Transactional
         @ClinicalAudit(action = "HL7V2_PIPE_INGEST", resourceType = "HL7v2Message")
         public Map<String, Object> ingestHl7v2MessageWithAck(UUID facilityId, String rawHl7Pipe) {
-            UUID scopedFacility = facilityId != null ? facilityId : new UUID(0L, 1L);
-            return hieInteropService.ingestHl7v2Message(scopedFacility, rawHl7Pipe);
+            UUID activeFacility = HieInteropService.requireTenantFacilityId();
+            if (facilityId != null && !facilityId.equals(activeFacility)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Cross-tenant HL7v2 ingestion denied: X-Facility-Id does not match authenticated tenant.");
+            }
+            return hieInteropService.ingestHl7v2Message(activeFacility, rawHl7Pipe);
         }
 
         /**
-         * Queries DICOMweb QIDO-RS imaging studies persisted in PostgreSQL (`hc_dicom_studies`),
-         * optionally filtered by patientId and imaging modality (`CT`, `MR`, `CR`, `US`, `DX`).
+         * Queries tenant-scoped DICOM study metadata persisted in {@code hc_dicom_studies},
+         * optionally filtered by patientId and imaging modality ({@code CT}, {@code MR}, {@code CR}, {@code US}, {@code DX}).
          */
         @Transactional(readOnly = true)
         public List<DicomStudyEntity> searchDicomStudies(UUID patientId, String modality) {
+            UUID activeFacility = HieInteropService.requireTenantFacilityId();
             List<DicomStudyEntity> base = patientId != null
-                    ? dicomStudyRepository.findByPatientIdOrderByStudyDateDesc(patientId)
-                    : dicomStudyRepository.findAll();
+                    ? dicomStudyRepository.findByFacilityIdAndPatientIdOrderByStudyDateDesc(activeFacility, patientId)
+                    : dicomStudyRepository.findByFacilityIdOrderByStudyDateDesc(activeFacility);
             if (modality == null || modality.isBlank()) {
                 return base;
             }

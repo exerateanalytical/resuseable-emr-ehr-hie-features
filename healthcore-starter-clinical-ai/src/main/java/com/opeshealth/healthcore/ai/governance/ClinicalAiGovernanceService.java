@@ -10,6 +10,10 @@
  */
 package com.opeshealth.healthcore.ai.governance;
 
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AiModelInteractionEvent;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.ClinicianAttestationEvent;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.PhiRedactionAuditEvent;
 import com.opeshealth.healthcore.ai.client.GeminiClinicalApiClient.TokenUsage;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
@@ -105,17 +109,31 @@ public class ClinicalAiGovernanceService {
     ) {}
 
     private final ClinicalAuditService clinicalAuditService;
+    private final ClinicalAuditLogger clinicalAuditLogger;
     private final Map<UUID, ClinicalAiDraftRecord> drafts = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> tenantAiFlags = new ConcurrentHashMap<>();
     private final Map<UUID, LongAdder> facilityLatencySumMs = new ConcurrentHashMap<>();
     private final Map<UUID, LongAdder> facilityRequestCount = new ConcurrentHashMap<>();
 
     public ClinicalAiGovernanceService() {
-        this(null);
+        this(null, null);
     }
 
     public ClinicalAiGovernanceService(ClinicalAuditService clinicalAuditService) {
+        this(clinicalAuditService, null);
+    }
+
+    public ClinicalAiGovernanceService(
+            ClinicalAuditService clinicalAuditService,
+            ClinicalAuditLogger clinicalAuditLogger) {
         this.clinicalAuditService = clinicalAuditService;
+        this.clinicalAuditLogger = clinicalAuditLogger != null
+                ? clinicalAuditLogger
+                : new ClinicalAuditLogger(clinicalAuditService);
+    }
+
+    public ClinicalAuditLogger getClinicalAuditLogger() {
+        return clinicalAuditLogger;
     }
 
     /**
@@ -124,6 +142,8 @@ public class ClinicalAiGovernanceService {
     public boolean setTenantAiEnabled(UUID facilityId, boolean enabled) {
         UUID safeFac = facilityId != null ? facilityId : new UUID(0L, 0L);
         tenantAiFlags.put(safeFac, enabled);
+        clinicalAuditLogger.recordTenantPolicyEvent(
+                safeFac, "SYSTEM_GOVERNANCE", "TENANT_AI_POLICY", true, true, "aiEnabled=" + enabled);
         emitAudit(safeFac, null, "SYSTEM_GOVERNANCE", "CLINICAL_AI_TENANT_POLICY_UPDATE",
                 safeFac.toString(), "SUCCESS", "aiEnabled=" + enabled);
         return enabled;
@@ -136,6 +156,9 @@ public class ClinicalAiGovernanceService {
 
     public void assertTenantAiAllowed(UUID facilityId, AiCapabilityType capability) {
         if (!isTenantAiEnabled(facilityId)) {
+            clinicalAuditLogger.recordTenantPolicyEvent(
+                    facilityId, "SYSTEM_GOVERNANCE", capability.name(), false, false,
+                    "Clinical AI disabled for facility tenant");
             emitAudit(facilityId, null, "SYSTEM_GOVERNANCE", "CLINICAL_AI_BLOCKED_BY_TENANT_POLICY",
                     capability.name(), "DENIED", "Clinical AI disabled for tenant");
             throw new IllegalStateException("Clinical AI is disabled for facility tenant " + facilityId
@@ -192,6 +215,36 @@ public class ClinicalAiGovernanceService {
         facilityLatencySumMs.computeIfAbsent(safeFacility, k -> new LongAdder()).add(Math.max(0L, latencyMs));
         facilityRequestCount.computeIfAbsent(safeFacility, k -> new LongAdder()).increment();
 
+        if (totalRedactions > 0) {
+            clinicalAuditLogger.recordPhiRedactionEvent(new PhiRedactionAuditEvent(
+                    safeFacility,
+                    patientId,
+                    capability.name(),
+                    record.createdBy(),
+                    totalRedactions,
+                    safeCounts,
+                    redactedPromptSha256,
+                    "Pre-model HIPAA Safe-Harbor redaction prior to " + modelId
+            ));
+        }
+        clinicalAuditLogger.recordAiModelInteraction(new AiModelInteractionEvent(
+                safeFacility,
+                patientId,
+                draftId,
+                capability.name(),
+                modelId,
+                record.createdBy(),
+                record.status().name(),
+                "SUCCESS",
+                redactedPromptSha256,
+                outputHash,
+                safeCounts,
+                promptTok,
+                outTok,
+                latencyMs,
+                "Draft quarantined pending clinician sign-off"
+        ));
+
         emitAudit(safeFacility, patientId, record.createdBy(), "CLINICAL_AI_DRAFT_CREATED",
                 draftId.toString(), "SUCCESS",
                 "capability=" + capability + " model=" + modelId + " phiRedacted=" + totalRedactions
@@ -244,6 +297,19 @@ public class ClinicalAiGovernanceService {
                 Instant.now()
         );
         drafts.put(draftId, updated);
+
+        clinicalAuditLogger.recordClinicianAttestation(new ClinicianAttestationEvent(
+                existing.facilityId(),
+                existing.patientId(),
+                draftId,
+                existing.capability().name(),
+                existing.modelId(),
+                updated.attestedByPractitionerId(),
+                existing.status().name(),
+                updated.status().name(),
+                updated.outputSha256(),
+                updated.attestationReason()
+        ));
 
         emitAudit(existing.facilityId(), existing.patientId(), updated.attestedByPractitionerId(),
                 "CLINICAL_AI_DRAFT_" + command.decision().name(),

@@ -36,6 +36,8 @@ import java.util.*;
 public class MpiCommandService {
 
     public interface PatientRepository extends JpaRepository<PatientAggregateEntity, UUID> {
+        Optional<PatientAggregateEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+        List<PatientAggregateEntity> findByFacilityId(UUID facilityId);
         Optional<PatientAggregateEntity> findByFacilityIdAndMrn(UUID facilityId, String mrn);
         List<PatientAggregateEntity> findByIdIn(Collection<UUID> ids);
         List<PatientAggregateEntity> findByFacilityIdAndActiveTrueOrderByUpdatedAtDesc(UUID facilityId);
@@ -313,7 +315,7 @@ public class MpiCommandService {
         }
 
         String needle = trimmed.toLowerCase(Locale.ROOT);
-        return patientRepo.findAll().stream()
+        return patientRepo.findByFacilityIdAndActiveTrueOrderByUpdatedAtDesc(facilityId).stream()
                 .filter(p -> Objects.equals(p.getFacilityId(), facilityId) && p.isGoldenRecord() && p.isActive())
                 .filter(p -> p.getFamilyName().toLowerCase(Locale.ROOT).contains(needle)
                         || p.getGivenName().toLowerCase(Locale.ROOT).contains(needle)

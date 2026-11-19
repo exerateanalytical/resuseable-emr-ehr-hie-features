@@ -10,6 +10,9 @@
  */
 package com.opeshealth.healthcore.ai.privacy;
 
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.PhiRedactionAuditEvent;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -91,11 +95,60 @@ public class PhiRedactionGateway {
         }
     }
 
+    private final ClinicalAuditLogger auditLogger;
+
+    public PhiRedactionGateway() {
+        this(null);
+    }
+
+    public PhiRedactionGateway(ClinicalAuditLogger auditLogger) {
+        this.auditLogger = auditLogger;
+    }
+
     public RedactedClinicalPayload redact(String rawClinicalText) {
         return redact(rawClinicalText, RedactionContext.empty());
     }
 
+    public RedactedClinicalPayload redactForFacility(
+            UUID facilityId,
+            UUID patientId,
+            String sourceComponent,
+            String rawClinicalText,
+            RedactionContext context) {
+        RedactedClinicalPayload payload = redactInternal(rawClinicalText, context);
+        if (auditLogger != null && payload.totalRedactions() > 0) {
+            auditLogger.recordPhiRedactionEvent(new PhiRedactionAuditEvent(
+                    facilityId,
+                    patientId,
+                    sourceComponent != null ? sourceComponent : "PHI_REDACTION_GATEWAY",
+                    "PHI_REDACTION_GATEWAY",
+                    payload.totalRedactions(),
+                    payload.redactionCountsByCategory(),
+                    payload.redactedSha256Hex(),
+                    "Safe-Harbor 18-identifier redaction completed"
+            ));
+        }
+        return payload;
+    }
+
     public RedactedClinicalPayload redact(String rawClinicalText, RedactionContext context) {
+        RedactedClinicalPayload payload = redactInternal(rawClinicalText, context);
+        if (auditLogger != null && payload.totalRedactions() > 0) {
+            auditLogger.recordPhiRedactionEvent(new PhiRedactionAuditEvent(
+                    ClinicalAuditLogger.GLOBAL_FACILITY_ID,
+                    null,
+                    "PHI_REDACTION_GATEWAY",
+                    "PHI_REDACTION_GATEWAY",
+                    payload.totalRedactions(),
+                    payload.redactionCountsByCategory(),
+                    payload.redactedSha256Hex(),
+                    "Safe-Harbor 18-identifier redaction completed"
+            ));
+        }
+        return payload;
+    }
+
+    private RedactedClinicalPayload redactInternal(String rawClinicalText, RedactionContext context) {
         if (rawClinicalText == null || rawClinicalText.isEmpty()) {
             return new RedactedClinicalPayload("", Map.of(), Map.of(), 0, sha256Hex(""));
         }

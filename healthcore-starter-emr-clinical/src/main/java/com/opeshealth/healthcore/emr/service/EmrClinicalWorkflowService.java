@@ -63,10 +63,22 @@ public class EmrClinicalWorkflowService {
     }
     public interface ClinicalNoteRepository extends JpaRepository<ClinicalNoteRevisionEntity, UUID> {}
     public interface ClinicalOrderRepository extends JpaRepository<ClinicalOrderEntity, UUID> {
+        List<ClinicalOrderEntity> findByFacilityIdAndPatientIdAndOrderCategoryAndStatus(
+                UUID facilityId, UUID patientId, String orderCategory, String status);
         @Modifying
         @Query("UPDATE ClinicalOrderEntity o SET o.patientId = :survivorId WHERE o.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
+
+    /** Structured CPOE request supplying explicit patient clinical context alongside persisted EMR data. */
+    public record CpoeOrderRequest(
+            ClinicalOrderEntity order,
+            List<String> allergyCodes,
+            List<String> conditionCodes,
+            BigDecimal patientWeightKg,
+            BigDecimal patientEgfr,
+            boolean allergiesVerifiedAsNone
+    ) {}
     public interface WardBedRepository extends JpaRepository<WardBedEntity, UUID> {}
     public interface AdmissionRepository extends JpaRepository<AdmissionEntity, UUID> {}
     public interface EmarRepository extends JpaRepository<EmarAdministrationEntity, UUID> {}
@@ -269,6 +281,75 @@ public class EmrClinicalWorkflowService {
         return noteRepo.save(note);
     }
 
+    /**
+     * Loads persisted patient clinical context (active medications and latest recorded weight)
+     * merged with explicit allergy/condition/eGFR context from the CPOE request, enforcing a
+     * fail-safe missing-context policy before executing CDSS order safety evaluation.
+     */
+    @Transactional
+    @ClinicalAudit(action = "EMR_PLACE_ORDER", resourceType = "ClinicalOrder")
+    public Map<String, Object> placeOrderWithLoadedPatientContext(CpoeOrderRequest request) {
+        Objects.requireNonNull(request, "CpoeOrderRequest is required");
+        ClinicalOrderEntity order = Objects.requireNonNull(request.order(), "ClinicalOrderEntity is required");
+
+        boolean isMedication = "MEDICATION".equalsIgnoreCase(order.getOrderCategory());
+        boolean allergyProfileProvided = request.allergyCodes() != null && !request.allergyCodes().isEmpty();
+        if (isMedication && !allergyProfileProvided && !request.allergiesVerifiedAsNone()
+                && (order.getCdssOverrideReason() == null || order.getCdssOverrideReason().isBlank())) {
+            throw new IllegalStateException(
+                    "MISSING_PATIENT_SAFETY_CONTEXT: Medication order blocked because patient allergy profile "
+                            + "was neither supplied nor explicitly verified as NKDA (allergiesVerifiedAsNone=true). "
+                            + "Provide allergy context or document an emergency clinical overrideReason.");
+        }
+
+        List<String> persistedActiveMeds = orderRepo != null
+                ? orderRepo.findByFacilityIdAndPatientIdAndOrderCategoryAndStatus(
+                        order.getFacilityId(), order.getPatientId(), "MEDICATION", "ACTIVE")
+                        .stream()
+                        .map(ClinicalOrderEntity::getOrderCode)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()
+                : List.of();
+
+        BigDecimal resolvedWeight = request.patientWeightKg();
+        if (resolvedWeight == null && vitalsRepo != null && order.getPatientId() != null) {
+            resolvedWeight = vitalsRepo.findByPatientIdOrderByRecordedAtDesc(order.getPatientId()).stream()
+                    .map(VitalSignsEntity::getWeightKg)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        List<String> allergies = request.allergyCodes() != null ? request.allergyCodes() : List.of();
+        List<String> conditions = request.conditionCodes() != null ? request.conditionCodes() : List.of();
+        Map<String, Object> result = placeOrderWithCdss(
+                order, persistedActiveMeds, allergies, conditions, resolvedWeight, request.patientEgfr());
+
+        if (isMedication && (resolvedWeight == null || request.patientEgfr() == null)) {
+            List<CdsHooksEngine.CdsCard> augmented = new ArrayList<>();
+            @SuppressWarnings("unchecked")
+            List<CdsHooksEngine.CdsCard> baseCards = (List<CdsHooksEngine.CdsCard>) result.get("cdssCards");
+            if (baseCards != null) {
+                augmented.addAll(baseCards);
+            }
+            augmented.add(new CdsHooksEngine.CdsCard(
+                    "INCOMPLETE_SAFETY_CONTEXT",
+                    "warning",
+                    "Missing renal/weight context for medication safety check",
+                    "Order placed without "
+                            + (resolvedWeight == null ? "patient weight" : "")
+                            + (resolvedWeight == null && request.patientEgfr() == null ? " and " : "")
+                            + (request.patientEgfr() == null ? "recent eGFR" : "")
+                            + "; verify renal and weight-based dosing manually.",
+                    false,
+                    List.of("Verify renal function (eGFR) and current weight before administration")
+            ));
+            return Map.of("order", result.get("order"), "cdssCards", List.copyOf(augmented));
+        }
+        return result;
+    }
+
     @Transactional
     @ClinicalAudit(action = "EMR_PLACE_ORDER", resourceType = "ClinicalOrder")
     public Map<String, Object> placeOrderWithCdss(
@@ -284,7 +365,10 @@ public class EmrClinicalWorkflowService {
         List<CdsHooksEngine.CdsCard> cards = cdsHooksEngine.evaluateOrderSafety(
                 new CdsHooksEngine.OrderSafetyRequest(
                         order.getPatientId(), patientWeightKg, patientEgfr, false,
-                        activeMedCodes, allergyCodes, conditionCodes, order.getOrderCode(), null));
+                        activeMedCodes != null ? activeMedCodes : List.of(),
+                        allergyCodes != null ? allergyCodes : List.of(),
+                        conditionCodes != null ? conditionCodes : List.of(),
+                        order.getOrderCode(), null));
 
         boolean hasCriticalBlocker = cards.stream().anyMatch(CdsHooksEngine.CdsCard::overrideRequired);
         if (hasCriticalBlocker && (order.getCdssOverrideReason() == null || order.getCdssOverrideReason().isBlank())) {
@@ -351,14 +435,142 @@ public class EmrClinicalWorkflowService {
         return saved;
     }
 
-    /** Enforces 5-Rights Barcode Medication Administration (eMAR). */
+    /**
+     * Enforces 5-Rights Barcode Medication Administration (eMAR) against the persisted
+     * {@link ClinicalOrderEntity} and {@link AdmissionEntity}:
+     * <ol>
+     *   <li><strong>Right Patient:</strong> Issued wristband identifier matches the ordered patient
+     *       and the active inpatient admission.</li>
+     *   <li><strong>Right Medication:</strong> Scanned drug barcode matches the active medication
+     *       order's normalized medication code (RxNorm / NDC / GTIN code token).</li>
+     *   <li><strong>Right Dose:</strong> Administered dose is non-blank and consistent with the
+     *       ordered dose quantity when specified on the order.</li>
+     *   <li><strong>Right Route:</strong> When an administration route ({@code PO}, {@code IV},
+     *       {@code IM}, {@code SC}, {@code TOPICAL}, {@code INH}) is documented on both order and
+     *       eMAR payload, they must match.</li>
+     *   <li><strong>Right Time &amp; Authority:</strong> Order must be {@code ACTIVE}, admission
+     *       must not be discharged, administration timestamp cannot pre-date order timestamp, and
+     *       administering clinician license must be active.</li>
+     * </ol>
+     *
+     * <p><strong>Clinical scope notice:</strong> This check validates structured identifiers against
+     * stored EMR orders and does not replace GS1/barcode scanner hardware validation or institutional
+     * nursing verification SOPs.</p>
+     */
     @Transactional
     @ClinicalAudit(action = "EMR_ADMINISTER_EMAR", resourceType = "EmarAdministration")
     public EmarAdministrationEntity administerMedicationFiveRights(EmarAdministrationEntity mar) {
-        if (!mar.getPatientId().toString().equals(mar.getScannedPatientWristband())) {
-            throw new SecurityException("5-Rights Check FAILED: Wristband barcode does not match patient ID");
+        Objects.requireNonNull(mar, "EmarAdministrationEntity is required");
+        if (mar.getPatientId() == null || mar.getOrderId() == null || mar.getAdmissionId() == null) {
+            throw new IllegalArgumentException("5-Rights Check FAILED: patientId, orderId, and admissionId are mandatory");
         }
+        if (mar.getScannedPatientWristband() == null || mar.getScannedPatientWristband().isBlank()) {
+            throw new SecurityException("5-Rights Check FAILED: Scanned patient wristband barcode is required");
+        }
+        if (mar.getScannedDrugBarcode() == null || mar.getScannedDrugBarcode().isBlank()) {
+            throw new SecurityException("5-Rights Check FAILED: Scanned medication barcode is required");
+        }
+        if (mar.getDoseAdministered() == null || mar.getDoseAdministered().isBlank()) {
+            throw new IllegalArgumentException("5-Rights Check FAILED: Administered dose is required");
+        }
+        if (mar.getAdministeredBy() == null || mar.getAdministeredBy().isBlank()) {
+            throw new SecurityException("5-Rights Check FAILED: Administering clinician ID is required");
+        }
+
+        // Right Patient wristband token verification (accepts issued "WB:<patientId>" or exact patientId token)
+        String wristband = mar.getScannedPatientWristband().trim();
+        String expectedId = mar.getPatientId().toString();
+        if (!wristband.equals(expectedId) && !wristband.equals("WB:" + expectedId)) {
+            throw new SecurityException("5-Rights Check FAILED (Right Patient): Wristband barcode does not match patient ID");
+        }
+
+        // Load persisted medication order and verify Right Patient, Right Order Status, Right Drug, Right Dose, Right Route, Right Time
+        ClinicalOrderEntity order = orderRepo.findById(mar.getOrderId())
+                .orElseThrow(() -> new NoSuchElementException(
+                        "5-Rights Check FAILED: Medication order not found: " + mar.getOrderId()));
+
+        UUID activeFacility = FacilityContext.getFacilityId().orElse(null);
+        if (activeFacility != null && !activeFacility.equals(order.getFacilityId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "5-Rights Check FAILED: Medication order belongs to a different facility tenant");
+        }
+        if (!"MEDICATION".equalsIgnoreCase(order.getOrderCategory())) {
+            throw new IllegalStateException("5-Rights Check FAILED: Referenced order is not a MEDICATION order");
+        }
+        if (!"ACTIVE".equalsIgnoreCase(order.getStatus())) {
+            throw new IllegalStateException("5-Rights Check FAILED (Right Time): Order status is " + order.getStatus() + ", not ACTIVE");
+        }
+        if (!order.getPatientId().equals(mar.getPatientId())) {
+            throw new SecurityException("5-Rights Check FAILED (Right Patient): Order belongs to a different patient");
+        }
+        enforceActivePractitionerLicense(order.getFacilityId(), mar.getAdministeredBy());
+
+        // Right Drug verification against active order code
+        String scannedDrug = mar.getScannedDrugBarcode().trim().toUpperCase(Locale.ROOT);
+        String orderedCode = order.getOrderCode() != null ? order.getOrderCode().trim().toUpperCase(Locale.ROOT) : "";
+        boolean drugMatches = !orderedCode.isEmpty() && (scannedDrug.equals(orderedCode)
+                || scannedDrug.equals("RX:" + orderedCode)
+                || scannedDrug.equals("NDC:" + orderedCode)
+                || scannedDrug.equals("GTIN:" + orderedCode)
+                || scannedDrug.endsWith(":" + orderedCode));
+        if (!drugMatches) {
+            throw new SecurityException("5-Rights Check FAILED (Right Drug): Scanned drug barcode '"
+                    + mar.getScannedDrugBarcode() + "' does not match ordered medication code '" + order.getOrderCode() + "'");
+        }
+
+        // Right Dose & Right Route consistency check when order specifies dosage/route
+        if (order.getDosageOrInstructions() != null && !order.getDosageOrInstructions().isBlank()) {
+            String orderedDose = extractFirstDoseQuantity(order.getDosageOrInstructions());
+            String givenDose = extractFirstDoseQuantity(mar.getDoseAdministered());
+            if (orderedDose != null && givenDose != null && !orderedDose.equals(givenDose)) {
+                throw new SecurityException("5-Rights Check FAILED (Right Dose): Administered dose '"
+                        + givenDose + "' does not match ordered dose '" + orderedDose + "'");
+            }
+            String orderedRoute = extractRouteToken(order.getDosageOrInstructions());
+            String givenRoute = extractRouteToken(mar.getDoseAdministered());
+            if (orderedRoute != null && givenRoute != null && !orderedRoute.equals(givenRoute)) {
+                throw new SecurityException("5-Rights Check FAILED (Right Route): Administered route '"
+                        + givenRoute + "' does not match ordered route '" + orderedRoute + "'");
+            }
+        }
+
+        // Right Time & active admission check
+        if (order.getOrderedAt() != null && mar.getAdministeredAt() != null
+                && mar.getAdministeredAt().isBefore(order.getOrderedAt())) {
+            throw new IllegalStateException("5-Rights Check FAILED (Right Time): Administration timestamp precedes order creation");
+        }
+        if (admissionRepo != null) {
+            admissionRepo.findById(mar.getAdmissionId()).ifPresent(adm -> {
+                if (!adm.getPatientId().equals(mar.getPatientId())) {
+                    throw new SecurityException("5-Rights Check FAILED (Right Patient): Admission belongs to a different patient");
+                }
+                if (adm.getDischargedAt() != null) {
+                    throw new IllegalStateException("5-Rights Check FAILED (Right Time): Cannot administer inpatient eMAR after discharge");
+                }
+            });
+        }
+
         return emarRepo.save(mar);
+    }
+
+    private static String extractFirstDoseQuantity(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\b(\\d+(?:\\.\\d+)?)\\s*(mg|mcg|g|ml|iu|units?)\\b")
+                .matcher(text);
+        return m.find() ? (m.group(1) + m.group(2).toLowerCase(Locale.ROOT)) : null;
+    }
+
+    private static String extractRouteToken(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\b(PO|ORAL|IV|IM|SC|SUBQ|TOPICAL|INH|PR|SL)\\b")
+                .matcher(text);
+        if (!m.find()) return null;
+        String r = m.group(1).toUpperCase(Locale.ROOT);
+        if ("ORAL".equals(r)) return "PO";
+        if ("SUBQ".equals(r)) return "SC";
+        return r;
     }
 
     @Transactional
@@ -456,14 +668,84 @@ public class EmrClinicalWorkflowService {
         }
     }
 
-    private int computeNews2(VitalSignsEntity v) {
-        int s = 0;
-        if (v.getSpo2Percent() != null && v.getSpo2Percent() <= 91) s += 3;
-        if (v.getSystolicBp() != null && v.getSystolicBp() <= 90) s += 3;
-        if (v.getHeartRateBpm() != null && (v.getHeartRateBpm() >= 131 || v.getHeartRateBpm() <= 40)) s += 3;
-        if (v.getRespRatePerMin() != null && (v.getRespRatePerMin() >= 25 || v.getRespRatePerMin() <= 8)) s += 3;
-        if (v.getTempCelsius() != null && v.getTempCelsius().compareTo(new BigDecimal("39.1")) >= 0) s += 2;
-        return s;
+    /**
+     * Computes Royal College of Physicians (RCP) NEWS2 Scale 1 aggregate early-warning score
+     * from recorded physiological vital signs (assuming room air and Alert consciousness when
+     * not supplied explicitly).
+     *
+     * <p><strong>Clinical validation notice:</strong> Implements RCP NEWS2 Scale 1 thresholds
+     * for non-hypercapnic adults. Scale 2 (hypercapnic respiratory failure, e.g., COPD target
+     * SpO2 88–92%), pediatric PEWS, and obstetric MEOWS are out of scope here. Independent
+     * clinical domain validation is required prior to live patient care deployment.</p>
+     */
+    public int computeNews2(VitalSignsEntity v) {
+        return computeNews2(v, false, "A");
+    }
+
+    /**
+     * Computes full RCP NEWS2 Scale 1 aggregate score including supplemental oxygen (+2)
+     * and ACVPU consciousness level (C/V/P/U = +3).
+     */
+    public int computeNews2(VitalSignsEntity v, boolean supplementalOxygen, String consciousnessAcvpu) {
+        if (v == null) {
+            return 0;
+        }
+        int score = 0;
+
+        // 1. Respiration rate (breaths/min): <=8 (3), 9-11 (1), 12-20 (0), 21-24 (2), >=25 (3)
+        if (v.getRespRatePerMin() != null) {
+            int rr = v.getRespRatePerMin();
+            if (rr <= 8 || rr >= 25) score += 3;
+            else if (rr >= 21) score += 2;
+            else if (rr <= 11) score += 1;
+        }
+
+        // 2. SpO2 Scale 1 (%): <=91 (3), 92-93 (2), 94-95 (1), >=96 (0)
+        if (v.getSpo2Percent() != null) {
+            int spo2 = v.getSpo2Percent();
+            if (spo2 <= 91) score += 3;
+            else if (spo2 <= 93) score += 2;
+            else if (spo2 <= 95) score += 1;
+        }
+
+        // 3. Air or supplemental oxygen: Oxygen (+2), Air (0)
+        if (supplementalOxygen) {
+            score += 2;
+        }
+
+        // 4. Systolic BP (mmHg): <=90 (3), 91-100 (2), 101-110 (1), 111-219 (0), >=220 (3)
+        if (v.getSystolicBp() != null) {
+            int sbp = v.getSystolicBp();
+            if (sbp <= 90 || sbp >= 220) score += 3;
+            else if (sbp <= 100) score += 2;
+            else if (sbp <= 110) score += 1;
+        }
+
+        // 5. Pulse (bpm): <=40 (3), 41-50 (1), 51-90 (0), 91-110 (1), 111-130 (2), >=131 (3)
+        if (v.getHeartRateBpm() != null) {
+            int hr = v.getHeartRateBpm();
+            if (hr <= 40 || hr >= 131) score += 3;
+            else if (hr >= 111) score += 2;
+            else if (hr <= 50 || hr >= 91) score += 1;
+        }
+
+        // 6. Consciousness (ACVPU): Alert = 0; Confusion/Voice/Pain/Unresponsive = 3
+        if (consciousnessAcvpu != null && !consciousnessAcvpu.isBlank()) {
+            String level = consciousnessAcvpu.trim().toUpperCase(Locale.ROOT);
+            if (!level.equals("A") && !level.equals("ALERT")) {
+                score += 3;
+            }
+        }
+
+        // 7. Temperature (°C): <=35.0 (3), 35.1-36.0 (1), 36.1-38.0 (0), 38.1-39.0 (1), >=39.1 (2)
+        if (v.getTempCelsius() != null) {
+            BigDecimal t = v.getTempCelsius();
+            if (t.compareTo(new BigDecimal("35.0")) <= 0) score += 3;
+            else if (t.compareTo(new BigDecimal("39.1")) >= 0) score += 2;
+            else if (t.compareTo(new BigDecimal("36.0")) <= 0 || t.compareTo(new BigDecimal("38.1")) >= 0) score += 1;
+        }
+
+        return score;
     }
 
     private void emitOutbox(String type, UUID id, String eventType, String payload) {
@@ -494,6 +776,7 @@ public class EmrClinicalWorkflowService {
         }
 
         @PostMapping("/appointments/{appointmentId}/transition")
+        @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_triage:write')")
         @Operation(summary = "Advance appointment state (CONFIRMED -> CHECKED_IN -> IN_QUEUE -> COMPLETED | NO_SHOW)")
         public AppointmentEntity transition(@PathVariable UUID appointmentId, @RequestParam String nextStatus) {
             return service.transitionAppointment(appointmentId, nextStatus);
@@ -540,9 +823,9 @@ public class EmrClinicalWorkflowService {
 
         @PostMapping("/orders")
         @PreAuthorize("hasAuthority('PERM_order:sign') or hasAuthority('PERM_rx:prescribe')")
-        @Operation(summary = "Place CPOE order gated by CDSS DDI/allergy/renal & practitioner license checks")
-        public Map<String, Object> order(@RequestBody ClinicalOrderEntity order) {
-            return service.placeOrderWithCdss(order, List.of(), List.of(), List.of(), null, null);
+        @Operation(summary = "Place CPOE order gated by persisted patient context, CDSS DDI/allergy/renal & practitioner license checks")
+        public Map<String, Object> order(@RequestBody CpoeOrderRequest request) {
+            return service.placeOrderWithLoadedPatientContext(request);
         }
 
         @PostMapping("/admissions")

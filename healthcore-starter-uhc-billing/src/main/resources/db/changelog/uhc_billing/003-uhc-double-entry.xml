@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — UHC/CBHI Double-Entry Journal & Idempotency Migration
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="003-uhc-double-entry-ledger" author="jude.nshome@opeshealthsystems.com">
+        <addColumn tableName="hc_ledger_entries">
+            <column name="journal_batch_id" type="${uuid_type}"/>
+            <column name="account_code" type="VARCHAR(64)" defaultValue="1200_PATIENT_AR">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reverses_entry_id" type="${uuid_type}"/>
+        </addColumn>
+        <createIndex indexName="idx_hc_ledger_journal_batch" tableName="hc_ledger_entries">
+            <column name="journal_batch_id"/>
+        </createIndex>
+        <createIndex indexName="idx_hc_payment_provider_ref" tableName="hc_payment_transactions" unique="true">
+            <column name="provider_code"/>
+            <column name="external_tx_ref"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

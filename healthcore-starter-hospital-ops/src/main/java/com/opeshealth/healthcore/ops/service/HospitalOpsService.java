@@ -29,7 +29,9 @@ import java.util.*;
 
 public class HospitalOpsService implements WorkforceCredentialSpi {
 
-    public interface BloodUnitRepository extends JpaRepository<BloodComponentUnitEntity, UUID> {}
+    public interface BloodUnitRepository extends JpaRepository<BloodComponentUnitEntity, UUID> {
+        List<BloodComponentUnitEntity> findByFacilityId(UUID facilityId);
+    }
     public interface BloodDonorRepository extends JpaRepository<BloodDonorEntity, UUID> {}
     public interface TransfusionReactionRepository extends JpaRepository<TransfusionReactionEntity, UUID> {}
     public interface SurgicalScheduleRepository extends JpaRepository<SurgicalScheduleEntity, UUID> {}
@@ -57,6 +59,7 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
     private final CredentialRepository credentialRepo;
     private final WorkforceRosterRepository rosterRepo;
     private final OutboxRelayService.OutboxRepository outboxRepo;
+    private volatile boolean allowUnregisteredPractitionersInDev = false;
 
     public HospitalOpsService(
             BloodUnitRepository bloodRepo,
@@ -177,24 +180,44 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
     }
 
     /**
-     * Verifies whether practitioner holds an active, unexpired medical/nursing license.
-     * Note: Returns {@code true} only if no credential row has been explicitly suspended or expired;
-     * if no credential registry record exists yet in dev mode, defaults to permissive {@code true}
-     * while strictly enforcing expiry/suspension once a practitioner is registered.
+     * Enables permissive unregistered-practitioner behavior strictly for local non-production development.
+     * Throws {@link IllegalStateException} if attempted when a production profile is active.
+     */
+    public void configurePermissiveDevMode(boolean allowUnregistered, boolean productionProfileActive) {
+        if (allowUnregistered && productionProfileActive) {
+            throw new IllegalStateException(
+                    "Fail-open practitioner credential mode cannot be enabled when a production profile is active.");
+        }
+        this.allowUnregisteredPractitionersInDev = allowUnregistered;
+    }
+
+    /**
+     * Verifies whether practitioner holds an active, unexpired, unsuspended medical/nursing license.
+     *
+     * <p><strong>Fail-closed policy:</strong> Returns {@code false} when the practitioner is
+     * unregistered, missing, expired, or suspended. Only returns {@code true} for unregistered
+     * records if explicit non-production dev mode has been opted into via
+     * {@link #configurePermissiveDevMode(boolean, boolean)}.</p>
      */
     @Override
     @Transactional(readOnly = true)
     public boolean isPractitionerActive(UUID facilityId, String practitionerId) {
+        if (facilityId == null || practitionerId == null || practitionerId.isBlank() || credentialRepo == null) {
+            return false;
+        }
         return credentialRepo.findByFacilityIdAndPractitionerId(facilityId, practitionerId)
-                .map(c -> !c.isSuspended() && !c.getExpiresOn().isBefore(LocalDate.now()))
-                .orElse(true);
+                .map(c -> !c.isSuspended() && c.getExpiresOn() != null && !c.getExpiresOn().isBefore(LocalDate.now()))
+                .orElse(allowUnregisteredPractitionersInDev);
     }
 
-    /** Strict query returning false if practitioner is unregistered, suspended, or expired. */
+    /** Strict query always failing closed if practitioner is unregistered, suspended, or expired. */
     @Transactional(readOnly = true)
     public boolean isPractitionerCredentialActive(UUID facilityId, String practitionerId) {
+        if (facilityId == null || practitionerId == null || practitionerId.isBlank() || credentialRepo == null) {
+            return false;
+        }
         return credentialRepo.findByFacilityIdAndPractitionerId(facilityId, practitionerId)
-                .map(c -> !c.isSuspended() && !c.getExpiresOn().isBefore(LocalDate.now()))
+                .map(c -> !c.isSuspended() && c.getExpiresOn() != null && !c.getExpiresOn().isBefore(LocalDate.now()))
                 .orElse(false);
     }
 
@@ -345,6 +368,7 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
         }
 
         @PostMapping("/cold-chain/mqtt-webhook")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_system:admin')")
         @Operation(summary = "Ingest MQTT bridge JSON cold-chain sensor payload")
         public ColdChainTelemetryEntity ingestMqttBridge(@RequestBody ColdChainTelemetryEntity reading) {
             return service.ingestColdChainReading(reading);
@@ -412,9 +436,14 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
         }
 
         @GetMapping("/workforce/rosters")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_staff:onboard') or hasAuthority('PERM_facility:manage') or hasAuthority('PERM_encounter:sign')")
         @Operation(summary = "List facility staff shift & on-call roster by date")
         public List<WorkforceRosterEntity> getRosters(@RequestParam UUID facilityId, @RequestParam LocalDate shiftDate) {
+            UUID activeFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.getFacilityId().orElse(null);
+            if (activeFacility != null && !activeFacility.equals(facilityId)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Cross-tenant roster read denied for facility " + facilityId);
+            }
             return rosterRepo.findByFacilityIdAndShiftDate(facilityId, shiftDate);
         }
     }

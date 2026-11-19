@@ -73,17 +73,24 @@ public final class UhcBillingEntities {
     @Entity @Table(name = "hc_ledger_entries")
     public static class LedgerEntryEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
+        @Column(name = "journal_batch_id", nullable = false) private UUID journalBatchId = UuidV7Generator.nextUuid();
         @Column(name = "account_id", nullable = false) private UUID accountId;
+        @Column(name = "account_code", nullable = false, length = 64) private String accountCode = "1200_PATIENT_AR";
         @Column(name = "entry_type", nullable = false, length = 16) private String entryType; // DEBIT or CREDIT
         @Column(name = "amount_minor", nullable = false) private long amountMinor;
         @Column(name = "currency", nullable = false, length = 8) private String currency;
         @Column(name = "reference_code", nullable = false, length = 100) private String referenceCode;
         @Column(name = "description", length = 300) private String description;
+        @Column(name = "reverses_entry_id") private UUID reversesEntryId;
         @Column(name = "posted_at", nullable = false) private Instant postedAt = Instant.now();
 
         public UUID getId() { return id; }
+        public UUID getJournalBatchId() { return journalBatchId; }
+        public void setJournalBatchId(UUID journalBatchId) { this.journalBatchId = journalBatchId; }
         public UUID getAccountId() { return accountId; }
         public void setAccountId(UUID accountId) { this.accountId = accountId; }
+        public String getAccountCode() { return accountCode; }
+        public void setAccountCode(String accountCode) { this.accountCode = accountCode; }
         public String getEntryType() { return entryType; }
         public void setEntryType(String entryType) { this.entryType = entryType; }
         public long getAmountMinor() { return amountMinor; }
@@ -94,6 +101,8 @@ public final class UhcBillingEntities {
         public void setReferenceCode(String referenceCode) { this.referenceCode = referenceCode; }
         public String getDescription() { return description; }
         public void setDescription(String description) { this.description = description; }
+        public UUID getReversesEntryId() { return reversesEntryId; }
+        public void setReversesEntryId(UUID reversesEntryId) { this.reversesEntryId = reversesEntryId; }
         public Instant getPostedAt() { return postedAt; }
     }
 

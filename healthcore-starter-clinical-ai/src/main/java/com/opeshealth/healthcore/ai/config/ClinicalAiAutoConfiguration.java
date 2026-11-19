@@ -11,6 +11,7 @@
 package com.opeshealth.healthcore.ai.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
 import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine;
 import com.opeshealth.healthcore.ai.client.GeminiClinicalApiClient;
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine;
@@ -40,8 +41,15 @@ public class ClinicalAiAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PhiRedactionGateway phiRedactionGateway() {
-        return new PhiRedactionGateway();
+    public ClinicalAuditLogger clinicalAuditLogger(
+            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider) {
+        return new ClinicalAuditLogger(clinicalAuditServiceProvider.getIfAvailable());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PhiRedactionGateway phiRedactionGateway(ClinicalAuditLogger clinicalAuditLogger) {
+        return new PhiRedactionGateway(clinicalAuditLogger);
     }
 
     @Bean
@@ -56,8 +64,12 @@ public class ClinicalAiAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ClinicalAiGovernanceService clinicalAiGovernanceService(
-            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider) {
-        return new ClinicalAiGovernanceService(clinicalAuditServiceProvider.getIfAvailable());
+            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider,
+            ClinicalAuditLogger clinicalAuditLogger) {
+        return new ClinicalAiGovernanceService(
+                clinicalAuditServiceProvider.getIfAvailable(),
+                clinicalAuditLogger
+        );
     }
 
     @Bean

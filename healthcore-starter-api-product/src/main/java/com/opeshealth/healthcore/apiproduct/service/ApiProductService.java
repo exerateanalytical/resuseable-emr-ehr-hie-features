@@ -162,7 +162,10 @@ public class ApiProductService {
         if (!app.isActive() || app.getWebhookUrl() == null || app.getWebhookUrl().isBlank()) {
             return Map.of("appId", appId, "delivered", false, "reason", "App inactive or webhookUrl unset");
         }
-        String signature = signWebhookPayload(payloadJson, Objects.toString(app.getWebhookSecret(), "opes-webhook-secret"));
+        if (app.getWebhookSecret() == null || app.getWebhookSecret().isBlank()) {
+            throw new IllegalStateException("Developer app webhook secret is not configured for appId=" + appId);
+        }
+        String signature = signWebhookPayload(payloadJson, app.getWebhookSecret());
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(app.getWebhookUrl()))
                     .timeout(Duration.ofSeconds(8))

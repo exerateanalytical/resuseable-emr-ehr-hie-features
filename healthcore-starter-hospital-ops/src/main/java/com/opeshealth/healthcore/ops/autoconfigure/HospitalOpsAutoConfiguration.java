@@ -15,6 +15,7 @@ import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.*;
 import com.opeshealth.healthcore.persistence.autoconfigure.ModuleSliceConditionSupport;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -23,9 +24,11 @@ import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
+import java.util.Arrays;
 import java.util.List;
 
 @AutoConfiguration
@@ -58,10 +61,16 @@ public class HospitalOpsAutoConfiguration {
             CrvsRepository crvsRepo,
             CredentialRepository credentialRepo,
             WorkforceRosterRepository rosterRepo,
-            OutboxRelayService.OutboxRepository outboxRepo) {
-        return new HospitalOpsService(
+            OutboxRelayService.OutboxRepository outboxRepo,
+            Environment environment,
+            @Value("${healthcore.workforce.allow-unregistered-in-dev:false}") boolean allowUnregisteredInDev) {
+        HospitalOpsService service = new HospitalOpsService(
                 bloodRepo, donorRepo, reactionRepo, surgeryRepo, anesthesiaRepo,
                 telemedRepo, coldChainRepo, biomedRepo, crvsRepo, credentialRepo, rosterRepo, outboxRepo);
+        boolean prodActive = Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> "prod".equalsIgnoreCase(p) || "production".equalsIgnoreCase(p));
+        service.configurePermissiveDevMode(allowUnregisteredInDev, prodActive);
+        return service;
     }
 
     @Bean @ConditionalOnMissingBean @Conditional(OnBloodBankSlice.class)

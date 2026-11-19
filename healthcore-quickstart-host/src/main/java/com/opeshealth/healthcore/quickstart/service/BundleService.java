@@ -153,6 +153,7 @@ public class BundleService {
     private final CdsHooksService cdsHooksService;
     private final OutboxRelayService.OutboxRepository outboxRepo;
     private final FhirAuditLoggingService fhirAuditLoggingService;
+    private final ConsentService consentService;
     private final FhirBundleValidatorService validatorService;
 
     public BundleService(
@@ -160,7 +161,7 @@ public class BundleService {
             PractitionerService practitionerService,
             EncounterService encounterService,
             ObservationService observationService) {
-        this(patientService, practitionerService, encounterService, observationService, null, null, null, null);
+        this(patientService, practitionerService, encounterService, observationService, null, null, null, null, null);
     }
 
     public BundleService(
@@ -172,7 +173,7 @@ public class BundleService {
             CdsHooksService cdsHooksService,
             OutboxRelayService.OutboxRepository outboxRepo) {
         this(patientService, practitionerService, encounterService, observationService,
-                transactionManager, cdsHooksService, outboxRepo, null);
+                transactionManager, cdsHooksService, outboxRepo, null, null);
     }
 
     @Autowired
@@ -184,7 +185,8 @@ public class BundleService {
             ObjectProvider<PlatformTransactionManager> txManagerProvider,
             ObjectProvider<CdsHooksService> cdsHooksServiceProvider,
             ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider,
-            ObjectProvider<FhirAuditLoggingService> auditLoggingServiceProvider) {
+            ObjectProvider<FhirAuditLoggingService> auditLoggingServiceProvider,
+            ObjectProvider<ConsentService> consentServiceProvider) {
         this(
                 patientService,
                 practitionerService,
@@ -193,7 +195,8 @@ public class BundleService {
                 txManagerProvider != null ? txManagerProvider.getIfAvailable() : null,
                 cdsHooksServiceProvider != null ? cdsHooksServiceProvider.getIfAvailable() : null,
                 outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null,
-                auditLoggingServiceProvider != null ? auditLoggingServiceProvider.getIfAvailable() : null
+                auditLoggingServiceProvider != null ? auditLoggingServiceProvider.getIfAvailable() : null,
+                consentServiceProvider != null ? consentServiceProvider.getIfAvailable() : null
         );
     }
 
@@ -206,6 +209,20 @@ public class BundleService {
             CdsHooksService cdsHooksService,
             OutboxRelayService.OutboxRepository outboxRepo,
             FhirAuditLoggingService fhirAuditLoggingService) {
+        this(patientService, practitionerService, encounterService, observationService,
+                transactionManager, cdsHooksService, outboxRepo, fhirAuditLoggingService, null);
+    }
+
+    public BundleService(
+            PatientService patientService,
+            PractitionerService practitionerService,
+            EncounterService encounterService,
+            ObservationService observationService,
+            PlatformTransactionManager transactionManager,
+            CdsHooksService cdsHooksService,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            FhirAuditLoggingService fhirAuditLoggingService,
+            ConsentService consentService) {
         this.patientService = Objects.requireNonNull(patientService, "PatientService is required");
         this.practitionerService = Objects.requireNonNull(practitionerService, "PractitionerService is required");
         this.encounterService = Objects.requireNonNull(encounterService, "EncounterService is required");
@@ -214,6 +231,7 @@ public class BundleService {
         this.cdsHooksService = cdsHooksService;
         this.outboxRepo = outboxRepo;
         this.fhirAuditLoggingService = fhirAuditLoggingService;
+        this.consentService = consentService;
         this.validatorService = new FhirBundleValidatorService(FHIR_R4);
     }
 
@@ -303,6 +321,28 @@ public class BundleService {
                 throw new IllegalArgumentException("Bundle entry[" + i + "] with " + verb.toCode() + " must contain a resource");
             }
         }
+        if (consentService != null) {
+            consentService.assertFhirResourceAiConsentValid(inbound);
+        }
+    }
+
+    /**
+     * Validates an HL7 FHIR R4 {@link Bundle} against schema and patient AI-Assisted Processing
+     * consent flags for the requested automated clinical AI scopes.
+     */
+    public ConsentService.AiConsentValidationOutcome validateBundleForAiProcessing(
+            Bundle inbound,
+            java.util.Set<ConsentService.AiProcessingScope> requestedScopes) {
+        validatorService.validateAgainstSchema(inbound);
+        if (consentService == null) {
+            throw new IllegalStateException("ConsentService is required for AI-Assisted Processing consent validation");
+        }
+        ConsentService.AiConsentValidationOutcome outcome =
+                consentService.validateFhirResourceAiConsent(inbound, requestedScopes);
+        if (!outcome.allowed()) {
+            consentService.assertFhirResourceAiConsentValid(inbound, requestedScopes);
+        }
+        return outcome;
     }
 
     /**

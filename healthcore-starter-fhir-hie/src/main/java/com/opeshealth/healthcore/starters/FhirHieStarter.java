@@ -81,43 +81,16 @@ public class FhirHieStarter {
         }
 
         /**
-         * Builds the HL7 FHIR R4 {@link CapabilityStatement} declaring supported resources,
-         * search parameters, transaction/batch Bundle operations, IPS `$summary`, and SMART-on-FHIR security.
+         * Builds the HL7 FHIR R4 {@link CapabilityStatement} strictly reconciled with the
+         * actually implemented HIE endpoints (delegating to {@link HieInteropService}).
          */
         public String buildFhirR4CapabilityStatementJson() {
-            CapabilityStatement cs = new CapabilityStatement();
-            cs.setId("opes-healthcore-fhir-r4-server");
-            cs.setName("OpesHealthCoreFhirR4CapabilityStatement");
-            cs.setTitle("Opes HealthCore HL7 FHIR R4 & HIE Server CapabilityStatement");
-            cs.setStatus(PublicationStatus.ACTIVE);
-            cs.setDate(new Date());
-            cs.setPublisher("Opes Health Systems — Jude Nshome");
-            cs.setKind(CapabilityStatementKind.INSTANCE);
-            cs.setFhirVersion(FHIRVersion._4_0_1);
-            cs.setFormat(List.of(new CodeType("application/fhir+json"), new CodeType("application/json")));
-
-            CapabilityStatementRestComponent rest = cs.addRest();
-            rest.setMode(RestfulCapabilityMode.SERVER);
-            rest.addInteraction().setCode(SystemRestfulInteraction.TRANSACTION);
-            rest.addInteraction().setCode(SystemRestfulInteraction.BATCH);
-
-            for (String resType : List.of("Patient", "Practitioner", "Encounter", "Observation", "Bundle", "AuditEvent", "DocumentReference", "Subscription")) {
-                CapabilityStatement.CapabilityStatementRestResourceComponent rc = rest.addResource();
-                rc.setType(resType);
-                rc.addInteraction().setCode(TypeRestfulInteraction.READ);
-                rc.addInteraction().setCode(TypeRestfulInteraction.SEARCHTYPE);
-                if (!"AuditEvent".equals(resType)) {
-                    rc.addInteraction().setCode(TypeRestfulInteraction.CREATE);
-                    rc.addInteraction().setCode(TypeRestfulInteraction.UPDATE);
-                    rc.addInteraction().setCode(TypeRestfulInteraction.DELETE);
-                }
-            }
-            return FHIR_R4.newJsonParser().setPrettyPrint(true).encodeResourceToString(cs);
+            return hieInteropService.generateCapabilityStatementJson();
         }
 
         /**
-         * Delegates to {@link HieInteropService} to generate the patient's longitudinal
-         * International Patient Summary (IPS) / `$everything` FHIR R4 Bundle.
+         * Delegates to {@link HieInteropService} to generate the tenant-scoped patient summary
+         * FHIR R4 Bundle assembled from persisted HIE records.
          */
         @Transactional(readOnly = true)
         @ClinicalAudit(action = "FHIR_HIE_PATIENT_EVERYTHING", resourceType = "Patient")
@@ -126,26 +99,28 @@ public class FhirHieStarter {
         }
 
         /**
-         * Inspects PostgreSQL `hc_fhir_subscriptions` to report active HIE webhook channels.
+         * Inspects tenant-scoped {@code hc_fhir_subscriptions} to report active HIE webhook channels
+         * strictly within the caller's authenticated facility tenant.
          */
         @Transactional(readOnly = true)
         public SubscriptionChannelHealth getSubscriptionChannelHealth() {
-            List<FhirSubscriptionEntity> all = subscriptionRepository.findAll();
+            UUID facilityId = HieInteropService.requireTenantFacilityId();
+            List<FhirSubscriptionEntity> facilitySubs = subscriptionRepository.findByFacilityId(facilityId);
             List<String> criteria = new ArrayList<>();
             int active = 0;
-            for (FhirSubscriptionEntity sub : all) {
+            for (FhirSubscriptionEntity sub : facilitySubs) {
                 if ("ACTIVE".equalsIgnoreCase(sub.getStatus())) {
                     active++;
-                    criteria.add(sub.getCriteria() + " -> " + sub.getWebhookEndpoint());
+                    criteria.add(sub.getCriteria() + " -> " + sub.getEndpointUrl());
                 }
             }
-            return new SubscriptionChannelHealth(all.size(), active, List.copyOf(criteria));
+            return new SubscriptionChannelHealth(facilitySubs.size(), active, List.copyOf(criteria));
         }
     }
 
     @RestController
     @RequestMapping("/api/v1/fhir-hie")
-    @Tag(name = "FHIR R4 HIE CapabilityStatement, IPS & Subscriptions", description = "HL7 FHIR R4 CapabilityStatement metadata, Patient $everything IPS Bundle, and Subscription health")
+    @Tag(name = "FHIR R4 HIE CapabilityStatement, Patient Summary & Subscriptions", description = "HL7 FHIR R4 CapabilityStatement metadata, tenant-scoped Patient summary Bundle, and Subscription health")
     public static class FhirHieExchangeGatewayController {
 
         private final FhirHieExchangeGatewayService gatewayService;
@@ -162,14 +137,14 @@ public class FhirHieStarter {
 
         @GetMapping(value = "/Patient/{id}/$everything", produces = "application/fhir+json")
         @PreAuthorize("hasAuthority('PERM_patient:read')")
-        @Operation(summary = "Assemble longitudinal Patient $everything / IPS FHIR R4 Bundle")
+        @Operation(summary = "Assemble tenant-scoped Patient summary FHIR R4 Bundle from persisted HIE records")
         public String getPatientEverything(@PathVariable UUID id) {
             return gatewayService.exportPatientEverythingBundle(id);
         }
 
         @GetMapping(value = "/subscriptions/status", produces = MediaType.APPLICATION_JSON_VALUE)
-        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_patient:read')")
-        @Operation(summary = "Inspect active PostgreSQL FHIR R4 REST-Hook Subscription channels")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_system:admin')")
+        @Operation(summary = "Inspect active tenant-scoped FHIR R4 REST-Hook Subscription channels")
         public SubscriptionChannelHealth getSubscriptionStatus() {
             return gatewayService.getSubscriptionChannelHealth();
         }

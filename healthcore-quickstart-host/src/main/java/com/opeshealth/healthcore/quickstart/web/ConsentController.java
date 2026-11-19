@@ -10,11 +10,15 @@
 package com.opeshealth.healthcore.quickstart.web;
 
 import com.opeshealth.healthcore.quickstart.service.ConsentService;
+import com.opeshealth.healthcore.quickstart.service.ConsentService.AiConsentValidationOutcome;
+import com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingConsentRequest;
+import com.opeshealth.healthcore.quickstart.service.ConsentService.AiProcessingScope;
 import com.opeshealth.healthcore.quickstart.service.ConsentService.BreakTheGlassAuditFlag;
 import com.opeshealth.healthcore.quickstart.service.ConsentService.BreakTheGlassComplianceReviewRequest;
 import com.opeshealth.healthcore.quickstart.service.ConsentService.BreakTheGlassInvocationResult;
 import com.opeshealth.healthcore.quickstart.service.ConsentService.Ds4pClassificationRequest;
 import com.opeshealth.healthcore.quickstart.service.ConsentService.Ds4pClassificationResult;
+import com.opeshealth.healthcore.quickstart.service.ConsentService.PatientAiProcessingConsent;
 import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.BreakTheGlassRequest;
 import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.BreakTheGlassSession;
 import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ClinicalSegmentItem;
@@ -67,6 +71,11 @@ public class ConsentController {
     public record ConsentRevocationRequest(
             String actorId,
             String reason
+    ) {}
+
+    public record FhirAiConsentValidationRequest(
+            String fhirResourceJson,
+            java.util.Set<AiProcessingScope> requestedScopes
     ) {}
 
     private final ConsentService consentService;
@@ -319,5 +328,82 @@ public class ConsentController {
             @PathVariable("flagId") UUID flagId,
             @RequestBody BreakTheGlassComplianceReviewRequest reviewRequest) {
         return ResponseEntity.ok(consentService.reviewBreakTheGlassAuditFlag(flagId, reviewRequest));
+    }
+
+    // -------------------------------------------------------------------------
+    // AI-Assisted Clinical Processing Patient Consent Flags & FHIR Validation
+    // -------------------------------------------------------------------------
+
+    @PostMapping(
+            value = "/api/v1/consent/ai-processing",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(
+            summary = "Register or update patient AI-Assisted Processing consent flags",
+            description = "Allows patients to globally opt-in or opt-out of automated AI clinical processing and configure per-workflow flags (summarization, CDS, ambient scribe, predictive analytics, coding, medication reconciliation, health coaching)."
+    )
+    public ResponseEntity<PatientAiProcessingConsent> upsertAiProcessingConsent(
+            @RequestBody AiProcessingConsentRequest request) {
+        return ResponseEntity.status(201).body(consentService.upsertAiProcessingConsent(request));
+    }
+
+    @GetMapping(
+            value = "/api/v1/consent/ai-processing/{patientId}",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(summary = "Retrieve a patient's active AI-Assisted Processing consent flags")
+    public ResponseEntity<PatientAiProcessingConsent> getPatientAiProcessingConsent(
+            @PathVariable("patientId") UUID patientId) {
+        return consentService.getPatientAiProcessingConsent(patientId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping(
+            value = "/api/v1/consent/ai-processing/{patientId}/scopes/{scope}",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(summary = "Opt-in or opt-out a patient for a specific automated AI clinical processing scope")
+    public ResponseEntity<PatientAiProcessingConsent> setAiProcessingScopeFlag(
+            @PathVariable("patientId") UUID patientId,
+            @PathVariable("scope") String scopeCode,
+            @RequestParam("optIn") boolean optIn,
+            @RequestHeader(value = "X-Facility-Id", required = false) UUID facilityId,
+            @RequestHeader(value = "X-Actor-Id", required = false) String actorId,
+            @RequestParam(value = "reason", required = false) String reason) {
+        AiProcessingScope scope = AiProcessingScope.fromCode(scopeCode)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown AI processing scope: " + scopeCode));
+        return ResponseEntity.ok(consentService.setAiProcessingScopeFlag(
+                facilityId, patientId, scope, optIn, actorId, reason));
+    }
+
+    @PostMapping(
+            value = "/api/v1/consent/ai-processing/{patientId}/revoke",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(summary = "Revoke all AI-Assisted Processing consent flags for a patient")
+    public ResponseEntity<PatientAiProcessingConsent> revokeAllAiProcessingConsent(
+            @PathVariable("patientId") UUID patientId,
+            @RequestHeader(value = "X-Facility-Id", required = false) UUID facilityId,
+            @RequestHeader(value = "X-Actor-Id", required = false) String actorId,
+            @RequestParam(value = "reason", required = false) String reason) {
+        return ResponseEntity.ok(consentService.revokeAllAiProcessingConsent(
+                facilityId, patientId, actorId, reason));
+    }
+
+    @PostMapping(
+            value = "/api/v1/consent/ai-processing/validate-fhir",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(summary = "Validate an HL7 FHIR R4 resource or Bundle against patient AI-Assisted Processing consent flags")
+    public ResponseEntity<AiConsentValidationOutcome> validateFhirResourceAiConsent(
+            @RequestBody FhirAiConsentValidationRequest request) {
+        if (request == null || request.fhirResourceJson() == null || request.fhirResourceJson().isBlank()) {
+            throw new IllegalArgumentException("fhirResourceJson is required for FHIR AI consent validation");
+        }
+        return ResponseEntity.ok(consentService.validateFhirJsonAiConsent(
+                request.fhirResourceJson(), request.requestedScopes()));
     }
 }

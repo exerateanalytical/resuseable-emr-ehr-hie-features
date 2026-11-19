@@ -24,7 +24,10 @@ import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementServic
 import com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.SubscriptionEventDispatchRequest;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.service.PatientService;
+import org.hl7.fhir.instance.model.api.IBaseResource;
+import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Bundle.BundleType;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
@@ -32,9 +35,17 @@ import org.hl7.fhir.r4.model.Consent;
 import org.hl7.fhir.r4.model.Consent.ConsentState;
 import org.hl7.fhir.r4.model.Consent.ProvisionComponent;
 import org.hl7.fhir.r4.model.DateTimeType;
+import org.hl7.fhir.r4.model.DomainResource;
+import org.hl7.fhir.r4.model.Encounter;
+import org.hl7.fhir.r4.model.Extension;
+import org.hl7.fhir.r4.model.MedicationRequest;
 import org.hl7.fhir.r4.model.Meta;
+import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Period;
 import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.Resource;
+import org.hl7.fhir.r4.model.StringType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,8 +53,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -52,6 +65,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -77,10 +91,112 @@ public class ConsentService {
     private static final FhirContext FHIR_R4 = FhirContext.forR4();
 
     public static final String DS4P_POLICY_URI = "https://opeshealthsystems.com/fhir/Policy/hipaa-gdpr-ds4p-privacy";
+    public static final String AI_PROCESSING_POLICY_URI = "https://opeshealthsystems.com/fhir/Policy/ai-assisted-clinical-processing-consent";
+    public static final String AI_PROCESSING_CATEGORY_CODE = "AI-ASSISTED-PROCESSING";
+    public static final String AI_CONSENT_TAG_SYSTEM = "https://opeshealthsystems.com/fhir/CodeSystem/ai-processing-scope";
+    public static final String AI_EXTENSION_URL = "https://opeshealthsystems.com/fhir/StructureDefinition/ai-assisted-processing-consent";
+    public static final String AI_OPT_OUT_SECURITY_CODE = "NOAI";
+    public static final String AI_OPT_IN_SECURITY_CODE = "AIPERMIT";
     public static final String ACT_REASON_ETREAT = "ETREAT";
     public static final String AUDIT_FLAG_PENDING_REVIEW = "PENDING_COMPLIANCE_REVIEW";
     public static final String AUDIT_FLAG_APPROVED = "APPROVED_JUSTIFIED_EMERGENCY";
     public static final String AUDIT_FLAG_ESCALATED = "ESCALATED_UNAUTHORIZED_OVERRIDE";
+
+    /**
+     * Granular automated AI clinical processing scopes that patients can individually opt-in to
+     * or opt-out from under HIPAA, GDPR Article 22, and HL7 FHIR R4 Consent governance.
+     */
+    public enum AiProcessingScope {
+        ALL_AI_PROCESSING("ALL_AI", "All Automated AI-Assisted Clinical Processing"),
+        CLINICAL_SUMMARIZATION("AI_SUMMARIZE", "AI Clinical & IPS Chart Summarization"),
+        CLINICAL_DECISION_SUPPORT("AI_CDS", "AI Real-Time Clinical Decision Support & Alerts"),
+        AMBIENT_TRANSCRIPTION("AI_SCRIBE", "AI Ambient Voice Transcription & SOAP Note Generation"),
+        PREDICTIVE_ANALYTICS("AI_PREDICT", "AI Readmission & Disease Progression Forecasting"),
+        PATIENT_HEALTH_COACHING("AI_COACH", "AI Personalized Wellness & Medication Adherence Coaching"),
+        AUTOMATED_MEDICAL_CODING("AI_CODING", "AI ICD-10 / CPT Automated Medical Coding"),
+        MEDICATION_RECONCILIATION("AI_MEDREC", "AI Three-Way Medication Reconciliation"),
+        MULTIMODAL_IMAGE_TRIAGE("AI_IMAGING", "AI Radiology, Dermatology & Lab Image Triage"),
+        SEMANTIC_CLINICAL_SEARCH("AI_SEARCH", "AI Semantic Chart & Clinical Trial Search");
+
+        private final String code;
+        private final String display;
+
+        AiProcessingScope(String code, String display) {
+            this.code = code;
+            this.display = display;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public String display() {
+            return display;
+        }
+
+        public static Optional<AiProcessingScope> fromCode(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return Optional.empty();
+            }
+            String normalized = raw.trim().toUpperCase(Locale.ROOT);
+            for (AiProcessingScope scope : values()) {
+                if (scope.name().equalsIgnoreCase(normalized) || scope.code.equalsIgnoreCase(normalized)) {
+                    return Optional.of(scope);
+                }
+            }
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Request to register or update a patient's granular AI-Assisted Processing consent flags.
+     */
+    public record AiProcessingConsentRequest(
+            UUID facilityId,
+            UUID patientId,
+            boolean globalAiAssistedProcessingOptIn,
+            Map<AiProcessingScope, Boolean> scopeFlags,
+            String recordedBy,
+            String consentChannel,
+            Instant validFrom,
+            Instant validUntil,
+            String notes
+    ) {}
+
+    /**
+     * Persisted patient AI-Assisted Processing consent state with generated HL7 FHIR R4 Consent JSON.
+     */
+    public record PatientAiProcessingConsent(
+            UUID consentRecordId,
+            UUID facilityId,
+            UUID patientId,
+            boolean globalAiAssistedProcessingOptIn,
+            Map<AiProcessingScope, Boolean> scopeFlags,
+            String status,
+            Instant validFrom,
+            Instant validUntil,
+            String recordedBy,
+            String consentChannel,
+            String notes,
+            String fhirConsentJson,
+            Instant updatedAt
+    ) {}
+
+    /**
+     * Outcome of validating an HL7 FHIR R4 resource or Bundle against patient AI-Assisted
+     * Processing consent flags and embedded resource-level AI privacy tags.
+     */
+    public record AiConsentValidationOutcome(
+            UUID patientId,
+            String resourceType,
+            String resourceId,
+            Set<AiProcessingScope> requestedScopes,
+            boolean allowed,
+            Set<AiProcessingScope> permittedScopes,
+            Set<AiProcessingScope> deniedScopes,
+            String reasonCode,
+            String diagnosticMessage
+    ) {}
 
     /**
      * Mandatory compliance audit flag generated whenever Break-the-Glass ({@code ETREAT})
@@ -157,6 +273,7 @@ public class ConsentService {
     private final Map<UUID, FhirConsentDirective> directivesById = new ConcurrentHashMap<>();
     private final Map<UUID, BreakTheGlassAuditFlag> auditFlagsById = new ConcurrentHashMap<>();
     private final Map<String, UUID> auditFlagIdByToken = new ConcurrentHashMap<>();
+    private final Map<UUID, PatientAiProcessingConsent> aiConsentsByPatientId = new ConcurrentHashMap<>();
 
     @Autowired
     public ConsentService(
@@ -271,8 +388,11 @@ public class ConsentService {
                 ? parsed.getPolicyFirstRep().getUri()
                 : DS4P_POLICY_URI;
 
+        UUID resolvedFacilityId = facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID;
+        syncAiConsentFromParsedFhirConsent(resolvedFacilityId, patientId, parsed, validFrom, validUntil);
+
         return registerConsentDirective(new ConsentDirectiveRequest(
-                facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID,
+                resolvedFacilityId,
                 patientId,
                 provisionType,
                 categories,
@@ -768,6 +888,742 @@ public class ConsentService {
         }
 
         return updated;
+    }
+
+    // =========================================================================
+    // AI-Assisted Clinical Processing Patient Consent Flags & FHIR Validation
+    // =========================================================================
+
+    /**
+     * Registers or updates a patient's granular 'AI-Assisted Processing' consent flags, allowing
+     * opt-in or opt-out globally and per automated clinical AI workflow (summarization, CDS,
+     * ambient transcription, predictive analytics, coding, medication reconciliation, coaching).
+     */
+    @ClinicalAudit(action = "FHIR_AI_PROCESSING_CONSENT_UPSERT", resourceType = "Consent")
+    public PatientAiProcessingConsent upsertAiProcessingConsent(AiProcessingConsentRequest request) {
+        if (request == null || request.patientId() == null) {
+            throw new IllegalArgumentException("AiProcessingConsentRequest with patientId is required");
+        }
+        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        Instant now = Instant.now();
+        Instant validFrom = request.validFrom() != null ? request.validFrom() : now;
+        Instant validUntil = request.validUntil() != null
+                ? request.validUntil()
+                : validFrom.plusSeconds(365L * 24 * 3600);
+        if (validUntil.isBefore(validFrom)) {
+            throw new IllegalArgumentException("AI processing consent validUntil cannot precede validFrom");
+        }
+
+        EnumMap<AiProcessingScope, Boolean> normalizedFlags = new EnumMap<>(AiProcessingScope.class);
+        if (request.scopeFlags() != null) {
+            for (Map.Entry<AiProcessingScope, Boolean> entry : request.scopeFlags().entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    normalizedFlags.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        normalizedFlags.put(AiProcessingScope.ALL_AI_PROCESSING, request.globalAiAssistedProcessingOptIn());
+
+        PatientAiProcessingConsent existing = aiConsentsByPatientId.get(request.patientId());
+        UUID recordId = existing != null ? existing.consentRecordId() : UUID.randomUUID();
+        String recordedBy = (request.recordedBy() != null && !request.recordedBy().isBlank())
+                ? request.recordedBy().trim()
+                : "PATIENT_PORTAL";
+        String channel = (request.consentChannel() != null && !request.consentChannel().isBlank())
+                ? request.consentChannel().trim()
+                : "PATIENT_PORTAL";
+        String notes = request.notes() != null ? request.notes().trim() : "";
+
+        Map<AiProcessingScope, Boolean> immutableFlags = Collections.unmodifiableMap(normalizedFlags);
+        String fhirConsentJson = encodeAiProcessingConsentAsFhirJson(
+                recordId, request.patientId(), request.globalAiAssistedProcessingOptIn(),
+                immutableFlags, "active", validFrom, validUntil, now);
+
+        PatientAiProcessingConsent saved = new PatientAiProcessingConsent(
+                recordId,
+                facilityId,
+                request.patientId(),
+                request.globalAiAssistedProcessingOptIn(),
+                immutableFlags,
+                "active",
+                validFrom,
+                validUntil,
+                recordedBy,
+                channel,
+                notes,
+                fhirConsentJson,
+                now
+        );
+        aiConsentsByPatientId.put(request.patientId(), saved);
+
+        if (fhirAuditLoggingService != null) {
+            fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
+                    facilityId.toString(),
+                    recordedBy,
+                    "PATIENT_OR_CLINICIAN",
+                    "FHIR_AI_PROCESSING_CONSENT_UPDATED",
+                    "Consent",
+                    recordId.toString(),
+                    request.patientId(),
+                    "POST",
+                    "/api/v1/consent/ai-processing",
+                    "127.0.0.1",
+                    null,
+                    "SUCCESS",
+                    0L,
+                    "globalAiOptIn=" + request.globalAiAssistedProcessingOptIn()
+                            + " scopeFlags=" + immutableFlags
+                            + " channel=" + channel
+            ));
+        }
+
+        return saved;
+    }
+
+    /**
+     * Toggles a patient's opt-in or opt-out flag for a specific {@link AiProcessingScope}
+     * (or {@link AiProcessingScope#ALL_AI_PROCESSING} for global opt-in/out).
+     */
+    @ClinicalAudit(action = "FHIR_AI_PROCESSING_SCOPE_TOGGLE", resourceType = "Consent")
+    public PatientAiProcessingConsent setAiProcessingScopeFlag(
+            UUID facilityId,
+            UUID patientId,
+            AiProcessingScope scope,
+            boolean optIn,
+            String actorId,
+            String reason) {
+        if (patientId == null || scope == null) {
+            throw new IllegalArgumentException("patientId and AiProcessingScope are required");
+        }
+        PatientAiProcessingConsent existing = aiConsentsByPatientId.get(patientId);
+        EnumMap<AiProcessingScope, Boolean> merged = new EnumMap<>(AiProcessingScope.class);
+        if (existing != null && existing.scopeFlags() != null) {
+            merged.putAll(existing.scopeFlags());
+        }
+        boolean globalOptIn;
+        if (scope == AiProcessingScope.ALL_AI_PROCESSING) {
+            globalOptIn = optIn;
+            merged.put(AiProcessingScope.ALL_AI_PROCESSING, optIn);
+        } else {
+            merged.put(scope, optIn);
+            // If opting in to a specific workflow while previously having no record, enable global opt-in
+            // only if explicitly opting in or keep existing global flag when already configured.
+            globalOptIn = existing != null ? existing.globalAiAssistedProcessingOptIn() : optIn;
+        }
+        return upsertAiProcessingConsent(new AiProcessingConsentRequest(
+                facilityId != null ? facilityId : (existing != null ? existing.facilityId() : PatientService.DEFAULT_FACILITY_ID),
+                patientId,
+                globalOptIn,
+                merged,
+                actorId,
+                existing != null ? existing.consentChannel() : "CLINICAL_PORTAL",
+                existing != null ? existing.validFrom() : Instant.now(),
+                existing != null ? existing.validUntil() : Instant.now().plusSeconds(365L * 24 * 3600),
+                reason
+        ));
+    }
+
+    /**
+     * Immediately revokes all AI-Assisted Processing consent flags for a patient, marking
+     * the consent record {@code inactive} and opting out of every automated AI scope.
+     */
+    @ClinicalAudit(action = "FHIR_AI_PROCESSING_CONSENT_REVOKE", resourceType = "Consent")
+    public PatientAiProcessingConsent revokeAllAiProcessingConsent(
+            UUID facilityId,
+            UUID patientId,
+            String actorId,
+            String reason) {
+        if (patientId == null) {
+            throw new IllegalArgumentException("patientId is required");
+        }
+        PatientAiProcessingConsent existing = aiConsentsByPatientId.get(patientId);
+        UUID resolvedFacility = facilityId != null
+                ? facilityId
+                : (existing != null ? existing.facilityId() : PatientService.DEFAULT_FACILITY_ID);
+        UUID recordId = existing != null ? existing.consentRecordId() : UUID.randomUUID();
+        Instant now = Instant.now();
+
+        EnumMap<AiProcessingScope, Boolean> allDenied = new EnumMap<>(AiProcessingScope.class);
+        for (AiProcessingScope s : AiProcessingScope.values()) {
+            allDenied.put(s, false);
+        }
+        Map<AiProcessingScope, Boolean> immutableDenied = Collections.unmodifiableMap(allDenied);
+        String resolvedActor = (actorId != null && !actorId.isBlank()) ? actorId.trim() : "PATIENT_PORTAL";
+        String resolvedReason = (reason != null && !reason.isBlank())
+                ? reason.trim()
+                : "Patient revoked AI-Assisted Processing consent";
+
+        String fhirJson = encodeAiProcessingConsentAsFhirJson(
+                recordId, patientId, false, immutableDenied, "inactive",
+                existing != null ? existing.validFrom() : now, now, now);
+
+        PatientAiProcessingConsent revoked = new PatientAiProcessingConsent(
+                recordId,
+                resolvedFacility,
+                patientId,
+                false,
+                immutableDenied,
+                "inactive",
+                existing != null ? existing.validFrom() : now,
+                now,
+                resolvedActor,
+                existing != null ? existing.consentChannel() : "PATIENT_PORTAL",
+                resolvedReason,
+                fhirJson,
+                now
+        );
+        aiConsentsByPatientId.put(patientId, revoked);
+
+        if (fhirAuditLoggingService != null) {
+            fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
+                    resolvedFacility.toString(),
+                    resolvedActor,
+                    "PATIENT",
+                    "FHIR_AI_PROCESSING_CONSENT_REVOKED",
+                    "Consent",
+                    recordId.toString(),
+                    patientId,
+                    "POST",
+                    "/api/v1/consent/ai-processing/" + patientId + "/revoke",
+                    "127.0.0.1",
+                    null,
+                    "SUCCESS",
+                    0L,
+                    resolvedReason
+            ));
+        }
+
+        return revoked;
+    }
+
+    /**
+     * Retrieves a patient's current AI-Assisted Processing consent flags if configured.
+     */
+    public Optional<PatientAiProcessingConsent> getPatientAiProcessingConsent(UUID patientId) {
+        if (patientId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(aiConsentsByPatientId.get(patientId));
+    }
+
+    /**
+     * Evaluates whether a patient currently permits automated AI-Assisted Processing for the given
+     * {@link AiProcessingScope}. Requires an active, non-expired consent record where neither the
+     * global flag nor the specific scope flag is opted out.
+     */
+    public boolean isAiProcessingPermitted(UUID patientId, AiProcessingScope scope) {
+        if (patientId == null || scope == null) {
+            return false;
+        }
+        PatientAiProcessingConsent consent = aiConsentsByPatientId.get(patientId);
+        if (consent == null || !"active".equalsIgnoreCase(consent.status())) {
+            return false;
+        }
+        Instant now = Instant.now();
+        if (consent.validFrom() != null && now.isBefore(consent.validFrom())) {
+            return false;
+        }
+        if (consent.validUntil() != null && now.isAfter(consent.validUntil())) {
+            return false;
+        }
+        if (scope == AiProcessingScope.ALL_AI_PROCESSING) {
+            return consent.globalAiAssistedProcessingOptIn();
+        }
+        Boolean explicitScopeDecision = consent.scopeFlags() != null ? consent.scopeFlags().get(scope) : null;
+        if (explicitScopeDecision != null) {
+            // An explicit per-scope flag governs unless the patient revoked global AI processing
+            // AND did not explicitly opt in to this specific workflow.
+            return explicitScopeDecision;
+        }
+        return consent.globalAiAssistedProcessingOptIn();
+    }
+
+    /**
+     * Validates an HL7 FHIR R4 resource (or {@link Bundle}) against patient 'AI-Assisted Processing'
+     * consent flags and embedded resource-level AI privacy tags/extensions.
+     *
+     * <p>Resources that do not carry AI-Assisted Processing tags/extensions and are validated without
+     * explicit requested scopes pass cleanly ({@code NO_AI_PROCESSING_REQUESTED}) so standard EHR
+     * persistence is unaffected. When AI processing scopes are present—either on the resource's
+     * {@code meta.tag}/{@code meta.security}/extensions or explicitly requested by the caller—this
+     * validator enforces patient opt-in/opt-out flags, detects contradictory {@code NOAI} labels,
+     * and records an audit event.</p>
+     */
+    public AiConsentValidationOutcome validateFhirResourceAiConsent(
+            IBaseResource resource,
+            Set<AiProcessingScope> explicitRequestedScopes) {
+        if (resource == null) {
+            throw new IllegalArgumentException("FHIR resource must not be null for AI consent validation");
+        }
+
+        String resourceType = resource.fhirType();
+        String resourceId = (resource instanceof Resource r && r.hasId()) ? r.getIdElement().getIdPart() : "unassigned";
+
+        // If Bundle, evaluate bundle-level tags AND each contained entry resource
+        if (resource instanceof Bundle bundle) {
+            Set<AiProcessingScope> bundleLevelScopes = new LinkedHashSet<>();
+            if (explicitRequestedScopes != null) {
+                bundleLevelScopes.addAll(explicitRequestedScopes);
+            }
+            ExtractedResourceAiMetadata bundleMeta = extractResourceAiMetadata(bundle);
+            if (!bundleMeta.invalidScopeCodes().isEmpty()) {
+                return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                        null, "Bundle", resourceId, Set.copyOf(bundleLevelScopes), false,
+                        Set.of(), Set.copyOf(bundleLevelScopes), "INVALID_AI_SCOPE_TAG",
+                        "FHIR Bundle contains unrecognized ai-processing-scope tag(s): " + bundleMeta.invalidScopeCodes()
+                ));
+            }
+            bundleLevelScopes.addAll(bundleMeta.requestedScopes());
+
+            if (bundleMeta.explicitNoAiFlag() && !bundleLevelScopes.isEmpty()) {
+                return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                        null, "Bundle", resourceId, Set.copyOf(bundleLevelScopes), false,
+                        Set.of(), Set.copyOf(bundleLevelScopes), "RESOURCE_TAGGED_NOAI_OPT_OUT",
+                        "FHIR Bundle is marked NOAI (opt-out) and cannot be submitted for AI-Assisted Processing scopes: " + bundleLevelScopes
+                ));
+            }
+
+            Set<AiProcessingScope> aggregatedRequested = new LinkedHashSet<>(bundleLevelScopes);
+            Set<AiProcessingScope> aggregatedPermitted = new LinkedHashSet<>();
+            UUID lastEvaluatedPatient = null;
+
+            for (BundleEntryComponent entry : bundle.getEntry()) {
+                if (!entry.hasResource()) {
+                    continue;
+                }
+                Resource entryRes = entry.getResource();
+                AiConsentValidationOutcome entryOutcome = validateSingleFhirResourceAiConsent(
+                        entryRes, bundleLevelScopes);
+                if (entryOutcome.patientId() != null) {
+                    lastEvaluatedPatient = entryOutcome.patientId();
+                }
+                aggregatedRequested.addAll(entryOutcome.requestedScopes());
+                aggregatedPermitted.addAll(entryOutcome.permittedScopes());
+                if (!entryOutcome.allowed()) {
+                    return entryOutcome;
+                }
+            }
+
+            if (aggregatedRequested.isEmpty()) {
+                return new AiConsentValidationOutcome(
+                        lastEvaluatedPatient, "Bundle", resourceId, Set.of(), true,
+                        Set.of(), Set.of(), "NO_AI_PROCESSING_REQUESTED",
+                        "FHIR Bundle does not request automated AI-Assisted Processing."
+                );
+            }
+            return new AiConsentValidationOutcome(
+                    lastEvaluatedPatient, "Bundle", resourceId, Set.copyOf(aggregatedRequested), true,
+                    Set.copyOf(aggregatedPermitted), Set.of(), "AI_CONSENT_PERMITTED",
+                    "All Bundle entries satisfied patient AI-Assisted Processing consent flags."
+            );
+        }
+
+        if (resource instanceof Resource r) {
+            return validateSingleFhirResourceAiConsent(r,
+                    explicitRequestedScopes != null ? explicitRequestedScopes : Set.of());
+        }
+
+        return new AiConsentValidationOutcome(
+                null, resourceType, resourceId, Set.of(), true,
+                Set.of(), Set.of(), "NO_AI_PROCESSING_REQUESTED",
+                "Resource does not carry AI-Assisted Processing metadata."
+        );
+    }
+
+    /**
+     * Parses a raw HL7 FHIR R4 JSON payload and validates it against patient 'AI-Assisted Processing'
+     * consent flags and requested scopes.
+     */
+    public AiConsentValidationOutcome validateFhirJsonAiConsent(
+            String rawFhirJson,
+            Set<AiProcessingScope> explicitRequestedScopes) {
+        if (rawFhirJson == null || rawFhirJson.isBlank()) {
+            throw new IllegalArgumentException("Raw FHIR R4 JSON payload must not be blank");
+        }
+        IBaseResource parsed;
+        try {
+            parsed = FHIR_R4.newJsonParser().parseResource(rawFhirJson);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid HL7 FHIR R4 JSON payload: " + ex.getMessage(), ex);
+        }
+        return validateFhirResourceAiConsent(parsed, explicitRequestedScopes);
+    }
+
+    /**
+     * Enforces AI-Assisted Processing consent validation for an HL7 FHIR R4 resource during
+     * FHIR schema/domain validation pipelines (throws on invalid AI tags or opted-out consent).
+     */
+    public void assertFhirResourceAiConsentValid(IBaseResource resource) {
+        assertFhirResourceAiConsentValid(resource, Set.of());
+    }
+
+    /**
+     * Enforces AI-Assisted Processing consent validation for an HL7 FHIR R4 resource and explicit
+     * automated AI processing scopes (throws {@link IllegalArgumentException} for invalid/contradictory
+     * FHIR AI tags or {@link IllegalStateException} when patient consent denies AI processing).
+     */
+    public void assertFhirResourceAiConsentValid(
+            IBaseResource resource,
+            Set<AiProcessingScope> explicitRequestedScopes) {
+        AiConsentValidationOutcome outcome = validateFhirResourceAiConsent(resource, explicitRequestedScopes);
+        if (!outcome.allowed()) {
+            if ("INVALID_AI_SCOPE_TAG".equals(outcome.reasonCode())
+                    || "MISSING_PATIENT_REFERENCE_FOR_AI_CONSENT".equals(outcome.reasonCode())) {
+                throw new IllegalArgumentException("FHIR AI-Assisted Processing validation error ["
+                        + outcome.reasonCode() + "]: " + outcome.diagnosticMessage());
+            }
+            throw new IllegalStateException("FHIR AI-Assisted Processing consent denied ["
+                    + outcome.reasonCode() + "]: " + outcome.diagnosticMessage());
+        }
+    }
+
+    private record ExtractedResourceAiMetadata(
+            Set<AiProcessingScope> requestedScopes,
+            List<String> invalidScopeCodes,
+            boolean explicitNoAiFlag,
+            Boolean extensionOptInFlag
+    ) {}
+
+    private AiConsentValidationOutcome validateSingleFhirResourceAiConsent(
+            Resource resource,
+            Set<AiProcessingScope> inheritedScopes) {
+        String resourceType = resource.fhirType();
+        String resourceId = resource.hasId() ? resource.getIdElement().getIdPart() : "unassigned";
+        ExtractedResourceAiMetadata meta = extractResourceAiMetadata(resource);
+
+        Set<AiProcessingScope> requestedScopes = new LinkedHashSet<>(inheritedScopes);
+        requestedScopes.addAll(meta.requestedScopes());
+
+        if (!meta.invalidScopeCodes().isEmpty()) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    extractPatientIdFromFhirResource(resource), resourceType, resourceId,
+                    Set.copyOf(requestedScopes), false, Set.of(), Set.copyOf(requestedScopes),
+                    "INVALID_AI_SCOPE_TAG",
+                    "FHIR " + resourceType + " contains unrecognized ai-processing-scope code(s): " + meta.invalidScopeCodes()
+            ));
+        }
+
+        // Standard non-AI FHIR resource with no requested AI scopes passes cleanly
+        if (requestedScopes.isEmpty()) {
+            return new AiConsentValidationOutcome(
+                    extractPatientIdFromFhirResource(resource), resourceType, resourceId,
+                    Set.of(), true, Set.of(), Set.of(), "NO_AI_PROCESSING_REQUESTED",
+                    "FHIR " + resourceType + " does not request automated AI-Assisted Processing."
+            );
+        }
+
+        UUID patientId = extractPatientIdFromFhirResource(resource);
+        if (meta.explicitNoAiFlag()) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    patientId, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.of(), Set.copyOf(requestedScopes), "RESOURCE_TAGGED_NOAI_OPT_OUT",
+                    "FHIR " + resourceType + " carries security label 'NOAI' prohibiting AI-Assisted Processing for scopes: " + requestedScopes
+            ));
+        }
+        if (Boolean.FALSE.equals(meta.extensionOptInFlag())) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    patientId, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.of(), Set.copyOf(requestedScopes), "RESOURCE_EXTENSION_AI_OPT_OUT",
+                    "FHIR " + resourceType + " carries ai-assisted-processing-consent=false extension prohibiting AI scopes: " + requestedScopes
+            ));
+        }
+        if (patientId == null) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    null, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.of(), Set.copyOf(requestedScopes), "MISSING_PATIENT_REFERENCE_FOR_AI_CONSENT",
+                    "FHIR " + resourceType + " requests AI-Assisted Processing scopes " + requestedScopes
+                            + " but lacks a resolvable Patient UUID reference for consent verification."
+            ));
+        }
+
+        PatientAiProcessingConsent consent = aiConsentsByPatientId.get(patientId);
+        if (consent == null) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    patientId, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.of(), Set.copyOf(requestedScopes), "AI_CONSENT_NOT_GRANTED",
+                    "Patient/" + patientId + " has no active AI-Assisted Processing opt-in consent for requested scopes: " + requestedScopes
+            ));
+        }
+
+        Instant now = Instant.now();
+        if (!"active".equalsIgnoreCase(consent.status())
+                || (consent.validFrom() != null && now.isBefore(consent.validFrom()))
+                || (consent.validUntil() != null && now.isAfter(consent.validUntil()))) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    patientId, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.of(), Set.copyOf(requestedScopes), "AI_CONSENT_INACTIVE_OR_EXPIRED",
+                    "Patient/" + patientId + " AI-Assisted Processing consent is inactive or outside its validity period."
+            ));
+        }
+
+        Set<AiProcessingScope> permitted = new LinkedHashSet<>();
+        Set<AiProcessingScope> denied = new LinkedHashSet<>();
+        for (AiProcessingScope scope : requestedScopes) {
+            if (isAiProcessingPermitted(patientId, scope)) {
+                permitted.add(scope);
+            } else {
+                denied.add(scope);
+            }
+        }
+
+        if (!denied.isEmpty()) {
+            return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                    patientId, resourceType, resourceId, Set.copyOf(requestedScopes), false,
+                    Set.copyOf(permitted), Set.copyOf(denied), "AI_CONSENT_OPTED_OUT",
+                    "Patient/" + patientId + " opted out of AI-Assisted Processing for scope(s): " + denied
+            ));
+        }
+
+        return recordAiConsentValidationAudit(new AiConsentValidationOutcome(
+                patientId, resourceType, resourceId, Set.copyOf(requestedScopes), true,
+                Set.copyOf(permitted), Set.of(), "AI_CONSENT_PERMITTED",
+                "Patient/" + patientId + " has active AI-Assisted Processing opt-in consent for scope(s): " + permitted
+        ));
+    }
+
+    private ExtractedResourceAiMetadata extractResourceAiMetadata(Resource resource) {
+        Set<AiProcessingScope> scopes = new LinkedHashSet<>();
+        List<String> invalidCodes = new ArrayList<>();
+        boolean noAiFlag = false;
+        Boolean extensionOptIn = null;
+
+        if (resource.hasMeta()) {
+            Meta meta = resource.getMeta();
+            for (Coding tag : meta.getTag()) {
+                if (AI_CONSENT_TAG_SYSTEM.equalsIgnoreCase(tag.getSystem()) && tag.hasCode()) {
+                    Optional<AiProcessingScope> parsed = AiProcessingScope.fromCode(tag.getCode());
+                    if (parsed.isPresent()) {
+                        scopes.add(parsed.get());
+                    } else if (AI_OPT_OUT_SECURITY_CODE.equalsIgnoreCase(tag.getCode())) {
+                        noAiFlag = true;
+                    } else {
+                        invalidCodes.add(tag.getCode());
+                    }
+                }
+            }
+            for (Coding sec : meta.getSecurity()) {
+                if (sec.hasCode()) {
+                    if (AI_OPT_OUT_SECURITY_CODE.equalsIgnoreCase(sec.getCode())) {
+                        noAiFlag = true;
+                    } else if (AI_CONSENT_TAG_SYSTEM.equalsIgnoreCase(sec.getSystem())) {
+                        Optional<AiProcessingScope> parsed = AiProcessingScope.fromCode(sec.getCode());
+                        if (parsed.isPresent()) {
+                            scopes.add(parsed.get());
+                        } else if (!AI_OPT_IN_SECURITY_CODE.equalsIgnoreCase(sec.getCode())) {
+                            invalidCodes.add(sec.getCode());
+                        }
+                    }
+                }
+            }
+        }
+
+        if (resource instanceof DomainResource domainResource && domainResource.hasExtension()) {
+            for (Extension ext : domainResource.getExtension()) {
+                if (AI_EXTENSION_URL.equalsIgnoreCase(ext.getUrl())) {
+                    if (ext.getValue() instanceof BooleanType boolVal && boolVal.hasValue()) {
+                        extensionOptIn = boolVal.getValue();
+                        if (Boolean.TRUE.equals(extensionOptIn) && scopes.isEmpty()) {
+                            scopes.add(AiProcessingScope.ALL_AI_PROCESSING);
+                        }
+                    } else if (ext.getValue() instanceof StringType strVal && strVal.hasValue()) {
+                        Optional<AiProcessingScope> parsed = AiProcessingScope.fromCode(strVal.getValue());
+                        if (parsed.isPresent()) {
+                            scopes.add(parsed.get());
+                        } else {
+                            invalidCodes.add(strVal.getValue());
+                        }
+                    }
+                }
+            }
+        }
+
+        return new ExtractedResourceAiMetadata(scopes, invalidCodes, noAiFlag, extensionOptIn);
+    }
+
+    private UUID extractPatientIdFromFhirResource(Resource resource) {
+        try {
+            if (resource instanceof Patient patient && patient.hasId()) {
+                return extractUuidFromReference(patient.getIdElement().getIdPart());
+            }
+            if (resource instanceof Observation obs && obs.hasSubject() && obs.getSubject().hasReference()) {
+                return extractUuidFromReference(obs.getSubject().getReference());
+            }
+            if (resource instanceof Encounter enc && enc.hasSubject() && enc.getSubject().hasReference()) {
+                return extractUuidFromReference(enc.getSubject().getReference());
+            }
+            if (resource instanceof MedicationRequest medReq && medReq.hasSubject() && medReq.getSubject().hasReference()) {
+                return extractUuidFromReference(medReq.getSubject().getReference());
+            }
+            if (resource instanceof Consent consent && consent.hasPatient() && consent.getPatient().hasReference()) {
+                return extractUuidFromReference(consent.getPatient().getReference());
+            }
+            // Generic fallback for Condition, DiagnosticReport, CarePlan, DocumentReference, etc.
+            String json = FHIR_R4.newJsonParser().encodeResourceToString(resource);
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                    "\"reference\"\\s*:\\s*\"Patient/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\"")
+                    .matcher(json);
+            if (matcher.find()) {
+                return UUID.fromString(matcher.group(1));
+            }
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private void syncAiConsentFromParsedFhirConsent(
+            UUID facilityId,
+            UUID patientId,
+            Consent parsed,
+            Instant validFrom,
+            Instant validUntil) {
+        boolean isAiConsent = false;
+        if (parsed.hasCategory()) {
+            for (CodeableConcept cat : parsed.getCategory()) {
+                for (Coding c : cat.getCoding()) {
+                    if (AI_PROCESSING_CATEGORY_CODE.equalsIgnoreCase(c.getCode())) {
+                        isAiConsent = true;
+                    }
+                }
+            }
+        }
+        if (parsed.hasPolicy()) {
+            for (Consent.ConsentPolicyComponent p : parsed.getPolicy()) {
+                if (AI_PROCESSING_POLICY_URI.equalsIgnoreCase(p.getUri())) {
+                    isAiConsent = true;
+                }
+            }
+        }
+
+        EnumMap<AiProcessingScope, Boolean> extractedFlags = new EnumMap<>(AiProcessingScope.class);
+        boolean rootPermit = parsed.hasProvision()
+                && parsed.getProvision().getType() == Consent.ConsentProvisionType.PERMIT;
+
+        if (parsed.hasProvision()) {
+            ProvisionComponent rootProv = parsed.getProvision();
+            for (Coding label : rootProv.getSecurityLabel()) {
+                if (AI_CONSENT_TAG_SYSTEM.equalsIgnoreCase(label.getSystem()) && label.hasCode()) {
+                    isAiConsent = true;
+                    AiProcessingScope.fromCode(label.getCode())
+                            .ifPresent(scope -> extractedFlags.put(scope, rootPermit));
+                } else if (AI_OPT_OUT_SECURITY_CODE.equalsIgnoreCase(label.getCode())) {
+                    isAiConsent = true;
+                    extractedFlags.put(AiProcessingScope.ALL_AI_PROCESSING, false);
+                } else if (AI_OPT_IN_SECURITY_CODE.equalsIgnoreCase(label.getCode())) {
+                    isAiConsent = true;
+                    extractedFlags.put(AiProcessingScope.ALL_AI_PROCESSING, true);
+                }
+            }
+            for (ProvisionComponent sub : rootProv.getProvision()) {
+                boolean subPermit = sub.getType() == Consent.ConsentProvisionType.PERMIT;
+                for (Coding label : sub.getSecurityLabel()) {
+                    if (AI_CONSENT_TAG_SYSTEM.equalsIgnoreCase(label.getSystem()) && label.hasCode()) {
+                        isAiConsent = true;
+                        AiProcessingScope.fromCode(label.getCode())
+                                .ifPresent(scope -> extractedFlags.put(scope, subPermit));
+                    }
+                }
+            }
+        }
+
+        if (!isAiConsent) {
+            return;
+        }
+
+        boolean globalOptIn = extractedFlags.getOrDefault(AiProcessingScope.ALL_AI_PROCESSING, rootPermit);
+        if (parsed.getStatus() == ConsentState.INACTIVE || parsed.getStatus() == ConsentState.REJECTED) {
+            revokeAllAiProcessingConsent(facilityId, patientId, "FHIR_CONSENT_SYNC",
+                    "Synced inactive/rejected FHIR Consent resource");
+            return;
+        }
+        upsertAiProcessingConsent(new AiProcessingConsentRequest(
+                facilityId,
+                patientId,
+                globalOptIn,
+                extractedFlags,
+                "FHIR_CONSENT_SYNC",
+                "FHIR_R4_API",
+                validFrom,
+                validUntil,
+                "Synchronized from raw HL7 FHIR R4 Consent resource"
+        ));
+    }
+
+    private AiConsentValidationOutcome recordAiConsentValidationAudit(AiConsentValidationOutcome outcome) {
+        if (fhirAuditLoggingService != null) {
+            fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
+                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    "FHIR_AI_CONSENT_VALIDATOR",
+                    "ROLE_SYSTEM_VALIDATOR",
+                    outcome.allowed() ? "FHIR_AI_CONSENT_VALIDATION_PERMITTED" : "FHIR_AI_CONSENT_VALIDATION_DENIED",
+                    outcome.resourceType(),
+                    outcome.resourceId(),
+                    outcome.patientId(),
+                    "VALIDATE",
+                    "/api/v1/consent/ai-processing/validate-fhir",
+                    "127.0.0.1",
+                    null,
+                    outcome.allowed() ? "SUCCESS" : "DENIED",
+                    0L,
+                    "reason=" + outcome.reasonCode() + " detail=" + outcome.diagnosticMessage()
+            ));
+        }
+        return outcome;
+    }
+
+    private static String encodeAiProcessingConsentAsFhirJson(
+            UUID recordId,
+            UUID patientId,
+            boolean globalOptIn,
+            Map<AiProcessingScope, Boolean> scopeFlags,
+            String status,
+            Instant validFrom,
+            Instant validUntil,
+            Instant updatedAt) {
+        Consent consent = new Consent();
+        consent.setId(recordId.toString());
+        consent.setMeta(new Meta()
+                .setLastUpdated(Date.from(updatedAt))
+                .addProfile("http://hl7.org/fhir/StructureDefinition/Consent"));
+        consent.setStatus("active".equalsIgnoreCase(status) ? ConsentState.ACTIVE : ConsentState.INACTIVE);
+        consent.setScope(new CodeableConcept().addCoding(new Coding()
+                .setSystem("http://terminology.hl7.org/CodeSystem/consentscope")
+                .setCode("patient-privacy")
+                .setDisplay("Privacy Consent")));
+        consent.addCategory(new CodeableConcept().addCoding(new Coding()
+                .setSystem(AI_CONSENT_TAG_SYSTEM)
+                .setCode(AI_PROCESSING_CATEGORY_CODE)
+                .setDisplay("AI-Assisted Clinical Processing Consent")));
+        consent.setPatient(new Reference("Patient/" + patientId));
+        consent.setDateTimeElement(new DateTimeType(Date.from(updatedAt)));
+        consent.addPolicy().setUri(AI_PROCESSING_POLICY_URI);
+
+        ProvisionComponent rootProvision = new ProvisionComponent();
+        rootProvision.setType(globalOptIn ? Consent.ConsentProvisionType.PERMIT : Consent.ConsentProvisionType.DENY);
+        rootProvision.setPeriod(new Period()
+                .setStart(Date.from(validFrom))
+                .setEnd(Date.from(validUntil)));
+        rootProvision.addSecurityLabel(new Coding()
+                .setSystem(AI_CONSENT_TAG_SYSTEM)
+                .setCode(globalOptIn ? AI_OPT_IN_SECURITY_CODE : AI_OPT_OUT_SECURITY_CODE)
+                .setDisplay(globalOptIn ? "AI-Assisted Processing Permitted" : "AI-Assisted Processing Opt-Out"));
+
+        for (Map.Entry<AiProcessingScope, Boolean> entry : scopeFlags.entrySet()) {
+            if (entry.getKey() == AiProcessingScope.ALL_AI_PROCESSING) {
+                continue;
+            }
+            ProvisionComponent sub = new ProvisionComponent();
+            sub.setType(Boolean.TRUE.equals(entry.getValue())
+                    ? Consent.ConsentProvisionType.PERMIT
+                    : Consent.ConsentProvisionType.DENY);
+            sub.addSecurityLabel(new Coding()
+                    .setSystem(AI_CONSENT_TAG_SYSTEM)
+                    .setCode(entry.getKey().code())
+                    .setDisplay(entry.getKey().display()));
+            rootProvision.addProvision(sub);
+        }
+        consent.setProvision(rootProvision);
+        return FHIR_R4.newJsonParser().setPrettyPrint(true).encodeResourceToString(consent);
     }
 
     public FhirConsentEnforcementService getEnforcementService() {
