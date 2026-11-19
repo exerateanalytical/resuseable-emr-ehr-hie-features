@@ -198,6 +198,11 @@
                 <artifactId>healthcore-starter-workflow-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-clinical-ai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Healthcare Standards: HL7 FHIR R4 + HL7 v2 -->
             <dependency>

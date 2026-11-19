@@ -57,6 +57,7 @@
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-fhir-hie</artifactId></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-hl7-astm-dicom</artifactId></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-interoperability-ihe</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-clinical-ai</artifactId></dependency>
 
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-graphql</artifactId></dependency>

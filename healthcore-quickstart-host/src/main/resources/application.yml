@@ -107,6 +107,19 @@ healthcore:
     mllp:
       enabled: false # Enable via -Dhealthcore.hie.mllp.enabled=true to bind HL7v2 TCP listener
       port: 2575
+  ai:
+    enabled: ${HEALTHCORE_AI_ENABLED:true}
+    api-key: ${GEMINI_API_KEY:}
+    text-model: ${HEALTHCORE_AI_TEXT_MODEL:gemini-4-hydrogen}
+    transcribe-model: ${HEALTHCORE_AI_TRANSCRIBE_MODEL:gemini-3.5-transcribe}
+    tts-model: ${HEALTHCORE_AI_TTS_MODEL:gemini-3.8-flash-lite-tts}
+    embedding-model: ${HEALTHCORE_AI_EMBEDDING_MODEL:gemini-embedding-2}
+    decisions-model: ${HEALTHCORE_AI_DECISIONS_MODEL:gemini-decision-1}
+    enforce-safe-harbor-redaction: ${HEALTHCORE_AI_ENFORCE_SAFE_HARBOR_REDACTION:true}
+    require-clinician-attestation: ${HEALTHCORE_AI_REQUIRE_CLINICIAN_ATTESTATION:true}
+    connect-timeout-seconds: 15
+    request-timeout-seconds: 60
+    max-retries: 3
 
 springdoc:
   default-produces-media-type: application/fhir+json

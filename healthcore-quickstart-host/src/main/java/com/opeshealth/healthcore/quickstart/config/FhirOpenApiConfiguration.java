@@ -158,6 +158,16 @@ public class FhirOpenApiConfiguration {
                         new Tag().name("Payer Clearinghouse, EDI X12 (837 / 835) & Denial Appeals").description("Pre-submission claim scrubbing, EDI X12 837P/837I generation, EDI 835 remittance reconciliation, FHIR ExplanationOfBenefit, and CARC/RARC denial appeal workflows"),
                         new Tag().name("Integration Dead-Letter Queue (DLQ) & Webhook/MLLP Replay").description("Inspect, replay, bulk-replay, or dismiss failed FHIR Subscription webhooks, HL7v2 MLLP deliveries, transactional outbox events, and federated XCA calls"),
                         new Tag().name("Multi-Tenant SaaS Onboarding & Feature-Flag Governance").description("Self-service healthcare facility onboarding, archetype licensing (EMR/EHR/HIE/PIS/LIS), API quota plans, terminology pack versioning, and per-facility feature flags"),
+                        new Tag().name("Clinical AI — Ambient Scribe & Voice-to-SOAP").description("Audio transcription (gemini-3.5-transcribe), Safe-Harbor PHI redaction, and structured SOAP + FHIR R4 draft generation requiring clinician attestation"),
+                        new Tag().name("Clinical AI — Automated Medical Coding & DRG/UHC Billing").description("Extracts ICD-10, ICD-11, SNOMED-CT, LOINC, CPT, and DRG/UHC codes with clinical evidence spans and CDI queries"),
+                        new Tag().name("Clinical AI — Longitudinal Chart & IPS Summarizer").description("Generates DS4P-aware SBAR handoff briefs, ED triage briefs, IPS executive summaries, and plain-language discharge summaries"),
+                        new Tag().name("Clinical AI — Multimodal Diagnostic & Image Triage").description("Structured clinician-review triage of wound photos, dermatology captures, scanned lab slips, and ECG strips"),
+                        new Tag().name("Clinical AI — Clinical Decision Support & Differential Assistant").description("Human-in-the-loop drug-disease, pharmacogenomics, sepsis cues, and differential workup synthesis"),
+                        new Tag().name("Clinical AI — Prior Auth & Claim Denial Appeals").description("Drafts payer medical necessity narratives and CARC/RARC claim denial appeal letters from redacted patient chart evidence"),
+                        new Tag().name("Clinical AI — Calibrated Triage & Policy Decisions (gemini-decision-1)").description("Calibrated yes/no (noul), ESI 1-5 acuity routing (choice), and medical necessity rubric (score) decisions with zero output tokens"),
+                        new Tag().name("Clinical AI — Multilingual Patient Discharge & Voice Coach").description("Plain-language EN/FR discharge plans and optional WAV voice synthesis (gemini-3.8-flash-lite-tts) for low-literacy care coaching"),
+                        new Tag().name("Clinical AI — Semantic Chart Search & Trial Cohort Matching").description("Safe-Harbor redacted clinical embeddings (gemini-embedding-2) and tenant-scoped cosine-similarity search across charts and trial protocols"),
+                        new Tag().name("Clinical AI — PHI Redaction Gateway, Governance & Attestation Ledger").description("HIPAA Safe-Harbor 18-identifier redaction inspection, mandatory clinician sign-off on AI drafts, tenant AI kill-switch, and audit metrics"),
                         new Tag().name("CDS Hooks 2.0 Clinical Decision Support").description("HL7 CDS Hooks 2.0 Discovery, Hook Execution (patient-view, encounter-start, encounter-discharge, observation-review), and Feedback endpoints")
                 ))
                 .addSecurityItem(new SecurityRequirement()
@@ -205,9 +215,21 @@ public class FhirOpenApiConfiguration {
                         "/api/v1/clearinghouse/**",
                         "/api/v1/ops/dlq/**",
                         "/api/v1/admin/tenants/**",
+                        "/api/v1/ai/**",
                         "/api/v1/cds-services/**",
                         "/cds-services/**"
                 )
+                .addOperationCustomizer(fhirStandardResponsesAndHeadersCustomizer)
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi clinicalAiSuiteGroupedOpenApi(OperationCustomizer fhirStandardResponsesAndHeadersCustomizer) {
+        return GroupedOpenApi.builder()
+                .group("clinical-ai-suite")
+                .displayName("Opes HealthCore Clinical & Operational AI Suite")
+                .packagesToScan("com.opeshealth.healthcore.quickstart.web")
+                .pathsToMatch("/api/v1/ai/**")
                 .addOperationCustomizer(fhirStandardResponsesAndHeadersCustomizer)
                 .build();
     }

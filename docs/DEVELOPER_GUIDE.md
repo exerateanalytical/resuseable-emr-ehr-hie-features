@@ -240,3 +240,40 @@ Add the `healthcore-mobile-kmp:healthcore-mobile-sdk` dependency to your Android
 - [ ] **Signing Keys**: Rotate RS256 / Ed25519 signing keys into HSM/KMS and publish `/.well-known/jwks.json` for IPS and Digital Health Certificate verification.
 - [ ] **Rate Limiting & DLQ Monitoring**: Configure Bucket4j quotas per tenant archetype (`TenantGovernanceController`) and monitor `/api/v1/ops/dlq/summary` alerts.
 - [ ] **HIPAA/GDPR Audit Verification**: Schedule automated daily verification of `/api/v1/audit-events/verify-chain` and review pending Break-the-Glass flags at `/api/v1/consent/break-the-glass/audit-flags`.
+- [ ] **Clinical AI Governance**: Set `GEMINI_API_KEY` exclusively in server-side secrets, confirm `HEALTHCORE_AI_ENFORCE_SAFE_HARBOR_REDACTION=true`, and train clinicians to attest drafts via `/api/v1/ai/governance/drafts/{draftId}/attest`.
+
+---
+
+## 8. Clinical & Operational AI Suite (`healthcore-starter-clinical-ai`)
+
+Add the composable Clinical AI starter to any Spring Boot 4.0 EMR/EHR/HIE application:
+
+```xml
+<dependency>
+    <groupId>com.opeshealth.healthcore</groupId>
+    <artifactId>healthcore-starter-clinical-ai</artifactId>
+</dependency>
+```
+
+### Server-Side Model Routing & Guardrails
+- **`gemini-4-hydrogen`**: Ambient SOAP + FHIR R4 drafting (`/api/v1/ai/scribe/soap-draft`), ICD-10/ICD-11/SNOMED/LOINC/CPT coding (`/api/v1/ai/coding/suggest`), DS4P-aware SBAR/ED/IPS summaries (`/api/v1/ai/summaries/generate`), multimodal image triage (`/api/v1/ai/vision/triage`), advisory CDS (`/api/v1/ai/cds/evaluate`), prior-auth/appeal letters (`/api/v1/ai/revenue/narratives`), and bilingual discharge coaching (`/api/v1/ai/coach/discharge-plan`).
+- **`gemini-3.5-transcribe`**: Pre-recorded consultation audio transcription inside the Ambient Clinical Scribe workflow.
+- **`gemini-3.8-flash-lite-tts`**: Patient-friendly WAV voice discharge instructions (`audio/wav`, 24kHz mono 16-bit).
+- **`gemini-embedding-2`**: Safe-Harbor redacted semantic chart search & clinical trial cohort matching (`/api/v1/ai/semantic/index`, `/api/v1/ai/semantic/search`).
+- **`gemini-decision-1`** (`POST /v1beta/decisions`): Calibrated ESI 1–5 emergency triage, sepsis escalation probability gates, and prior-auth medical necessity rubric scoring (`/api/v1/ai/decisions/emergency-triage`, `/api/v1/ai/decisions/prior-auth-rubric`).
+
+### Mandatory Human-in-the-Loop Attestation Flow
+1. Preview HIPAA Safe-Harbor redaction before sending any prompt:
+   ```bash
+   curl -X POST http://localhost:3000/api/v1/ai/governance/redact-preview \
+     -H "Content-Type: application/json" \
+     -d '{"rawClinicalText":"Patient: Jean Mbarga, MRN: CM-99281, DOB: 1982-04-19, phone +237-699-123-456 presents with fever 39.2C."}'
+   ```
+2. Generate any clinical AI draft (returns `draftId` with status `DRAFT_PENDING_ATTESTATION`).
+3. Clinician reviews and signs off before chart commit:
+   ```bash
+   curl -X POST http://localhost:3000/api/v1/ai/governance/drafts/{draftId}/attest \
+     -H "Content-Type: application/json" \
+     -d '{"practitionerId":"DR-NGONO-402","decision":"APPROVED","attestationReason":"Verified against bedside vitals and exam"}'
+   ```
+

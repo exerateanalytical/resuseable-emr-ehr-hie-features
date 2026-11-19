@@ -43,6 +43,7 @@
 | `healthcore-starter-offline-sync` | Hybrid Logical Clock (`HLC`), `sync_seq` delta pull/push, clinical conflict queue, Ed25519 QR IPS Health Card |
 | `healthcore-starter-templates-dashboards` | **608 bilingual (EN/FR) authentic hospital templates**, `QuestionnaireResponse`, OpenHTMLtoPDF PDF/A, **7 live SQL CQRS dashboards**, Apache POI XLSX + CSV bulk import/export, Cascading Facility Onboarding, concrete PG/MSSQL/MySQL backup & PITR/Edge DR |
 | `healthcore-starter-api-product` | OpenAPI 3.1 contract, API keys, sliding-window rate limiter (`429 Retry-After`), HMAC webhook signer |
+| `healthcore-starter-clinical-ai` | Server-side Gemini Clinical AI gateway (`gemini-4-hydrogen`, `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `gemini-embedding-2`, `gemini-decision-1`), mandatory HIPAA Safe-Harbor 18-identifier PHI redaction, tenant kill-switch, and clinician attestation ledger |
 | `healthcore-quickstart-host` | Reference `<1 hour` Spring Boot 4.0 + PostgreSQL 16+ host, `pg_trgm` GIN & partial index changelog, `enable-rls-policies.sql`, Keycloak realm, Logback PHI redaction, Windows WinSW service, ArchUnit & Testcontainers multi-DB suite |
 | `healthcore-mobile-kmp` | Pure Kotlin + Compose Multiplatform Android (SQLCipher/WorkManager/Camera QR) + iPhone/iPadOS (Keychain/Apple Pencil/BGTaskScheduler) suite |
 
@@ -112,5 +113,6 @@ For step-by-step Maven BOM assembly recipes, multi-RDBMS setup, Keycloak/RLS sec
 - **Payer Clearinghouse & EDI X12 (`837`/`835`)**: Automated claim scrubbing, remittance reconciliation, FHIR `ExplanationOfBenefit`, and denial appeals (`/api/v1/clearinghouse/**`)
 - **Integration DLQ & Webhook/MLLP Replay**: Operational dead-letter inspection, single/bulk replay, and circuit-breaker health (`/api/v1/ops/dlq/**`)
 - **Multi-Tenant SaaS Onboarding & Feature-Flag Governance**: Self-service facility onboarding, module licensing, terminology version pinning, and per-tenant feature flags (`/api/v1/admin/tenants/**`)
+- **Clinical & Operational AI Suite (`healthcore-starter-clinical-ai`)**: Ambient Scribe & Voice-to-SOAP (`/api/v1/ai/scribe/**`), Automated Medical Coding (`/api/v1/ai/coding/**`), DS4P-Aware Chart & IPS Summarizer (`/api/v1/ai/summaries/**`), Multimodal Image Triage (`/api/v1/ai/vision/**`), Advisory Clinical Decision Support (`/api/v1/ai/cds/**`), Prior-Auth & Claim Denial Appeal Writer (`/api/v1/ai/revenue/**`), Calibrated `gemini-decision-1` Triage & Policy Engine (`/api/v1/ai/decisions/**`), Multilingual Text+Voice Discharge Coach (`/api/v1/ai/coach/**`), Semantic Chart & Trial Cohort Search (`/api/v1/ai/semantic/**`), and Safe-Harbor PHI Redaction + Clinician Attestation Governance (`/api/v1/ai/governance/**`)
 
 OpenAPI 3.1 Swagger UI is served at `http://localhost:3000/swagger-ui.html`.
