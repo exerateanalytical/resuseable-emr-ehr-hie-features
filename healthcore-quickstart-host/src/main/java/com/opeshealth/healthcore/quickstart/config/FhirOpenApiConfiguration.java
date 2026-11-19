@@ -146,6 +146,18 @@ public class FhirOpenApiConfiguration {
                         new Tag().name("FHIR R4 Digital Health Certificates & JWS QR Verification").description("JWS signed (RS256 & Ed25519) health certificates, SMART Health Card (shc:/) QR code generation (SVG/PNG), mobile verification, and RFC 7517 JWKS"),
                         new Tag().name("FHIR R4 International Patient Summary ($summary) & JWS QR Payloads").description("HL7 FHIR R4 Patient/{id}/$summary operation generating JWS-signed (RS256 & Ed25519) IPS Document Bundles, SMART Health Card (shc:/) QR payloads, SVG/PNG QR codes, and cryptographic verification"),
                         new Tag().name("FHIR R4 Consent, DS4P Privacy & Break-the-Glass").description("HL7 FHIR R4 Consent lifecycle, DS4P Data Segmentation for Privacy (HIV, PSY, ETH, SDV, GEN, VIP), and Break-the-Glass (ETREAT) emergency access with mandatory HIPAA/GDPR audit flagging"),
+                        new Tag().name("FHIR R4 SMART Health Links (shlink:/)").description("AES-256-GCM encrypted SMART Health Links, passcode-protected manifests, live-updating patient sharing links, revocation, and QR code rendering"),
+                        new Tag().name("FHIR R4 Chart Portability ($everything & Compartments)").description("HL7 FHIR R4 Patient/{id}/$everything, Encounter/{id}/$everything, and Patient Compartment Search with DS4P privacy enforcement"),
+                        new Tag().name("Federated HIE Exchange (UDAP / TEFCA / IHE XCPD & XCA)").description("X.509 Trust Anchors, UDAP Dynamic Client Registration, IHE XCPD Cross-Community Patient Discovery, and IHE XCA Cross-Community Query & Retrieve"),
+                        new Tag().name("FHIR R4 Clinical Quality Measures (eCQM / $evaluate-measure)").description("HEDIS, CMS eCQM, and WHO quality indicator definitions and Measure/{id}/$evaluate-measure FHIR MeasureReport generation"),
+                        new Tag().name("FHIR R4 Patient Messaging & Recall (SMS / WhatsApp / USSD)").description("Omnichannel FHIR Communication delivery, EN/FR clinical recall templates, opt-out consent controls, and feature-phone USSD sessions"),
+                        new Tag().name("FHIR R4 Longitudinal CarePlans, Goals & Care-Gap Closure").description("Evidence-based chronic disease & maternal CarePlans (Diabetes, Hypertension, HIV ART, TB DOT, ANC, Heart Failure), Task closure, and overdue care-gap detection"),
+                        new Tag().name("FHIR R4 Radiology Modality Worklist (DICOM MWL / MPPS & Critical Findings)").description("Imaging ServiceRequest scheduling into DICOM MWL, MPPS acquisition updates, structured FHIR DiagnosticReport sign-off, and closed-loop critical findings acknowledgment"),
+                        new Tag().name("Clinical Research, Dynamic eConsent & OMOP CDM v5.4 Export").description("Study protocol management, dynamic eConsent opt-in/withdrawal, cohort eligibility screening, and Safe-Harbor OMOP CDM v5.4 export"),
+                        new Tag().name("Offline-First Encrypted Media & Binary Attachment Sync").description("Resumable, chunked, SHA-256-verified encrypted binary uploads (wound photos, PDFs, ultrasound clips) for KMP mobile devices"),
+                        new Tag().name("Payer Clearinghouse, EDI X12 (837 / 835) & Denial Appeals").description("Pre-submission claim scrubbing, EDI X12 837P/837I generation, EDI 835 remittance reconciliation, FHIR ExplanationOfBenefit, and CARC/RARC denial appeal workflows"),
+                        new Tag().name("Integration Dead-Letter Queue (DLQ) & Webhook/MLLP Replay").description("Inspect, replay, bulk-replay, or dismiss failed FHIR Subscription webhooks, HL7v2 MLLP deliveries, transactional outbox events, and federated XCA calls"),
+                        new Tag().name("Multi-Tenant SaaS Onboarding & Feature-Flag Governance").description("Self-service healthcare facility onboarding, archetype licensing (EMR/EHR/HIE/PIS/LIS), API quota plans, terminology pack versioning, and per-facility feature flags"),
                         new Tag().name("CDS Hooks 2.0 Clinical Decision Support").description("HL7 CDS Hooks 2.0 Discovery, Hook Execution (patient-view, encounter-start, encounter-discharge, observation-review), and Feedback endpoints")
                 ))
                 .addSecurityItem(new SecurityRequirement()
@@ -183,6 +195,16 @@ public class FhirOpenApiConfiguration {
                         "/api/v1/proms/**",
                         "/api/v1/sdoh/**",
                         "/api/v1/certificates/**",
+                        "/api/v1/shl/**",
+                        "/api/v1/hie/**",
+                        "/api/v1/messaging/**",
+                        "/api/v1/care-plans/**",
+                        "/api/v1/radiology/**",
+                        "/api/v1/research/**",
+                        "/api/v1/sync/media/**",
+                        "/api/v1/clearinghouse/**",
+                        "/api/v1/ops/dlq/**",
+                        "/api/v1/admin/tenants/**",
                         "/api/v1/cds-services/**",
                         "/cds-services/**"
                 )

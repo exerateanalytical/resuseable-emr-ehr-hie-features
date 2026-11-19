@@ -300,3 +300,42 @@ resolveFhirSyncConflict:
 UPDATE local_fhir_sync_conflict
 SET status = ?, merged_payload_json = ?, resolved_by = ?, resolved_at_ms = ?
 WHERE conflict_id = ?;
+
+-- =============================================================================
+-- Resumable Chunked Encrypted Media / Binary Attachment Queue (Wound Photos, PDFs)
+-- =============================================================================
+
+CREATE TABLE local_fhir_media_queue (
+    media_id TEXT NOT NULL PRIMARY KEY,
+    facility_id TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    clinical_category TEXT NOT NULL,
+    local_encrypted_path TEXT NOT NULL,
+    total_size_bytes INTEGER NOT NULL,
+    total_chunks INTEGER NOT NULL,
+    uploaded_chunks INTEGER NOT NULL DEFAULT 0,
+    remote_upload_id TEXT,
+    sha256_hex TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    created_at_ms INTEGER NOT NULL
+);
+
+enqueueOfflineMediaAttachment:
+INSERT OR REPLACE INTO local_fhir_media_queue(
+    media_id, facility_id, patient_id, file_name, content_type,
+    clinical_category, local_encrypted_path, total_size_bytes,
+    total_chunks, uploaded_chunks, remote_upload_id, sha256_hex, status, created_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectPendingOfflineMedia:
+SELECT * FROM local_fhir_media_queue
+WHERE facility_id = ? AND status IN ('QUEUED', 'UPLOADING')
+ORDER BY created_at_ms ASC;
+
+updateOfflineMediaProgress:
+UPDATE local_fhir_media_queue
+SET uploaded_chunks = ?, remote_upload_id = ?, status = ?
+WHERE media_id = ?;
+

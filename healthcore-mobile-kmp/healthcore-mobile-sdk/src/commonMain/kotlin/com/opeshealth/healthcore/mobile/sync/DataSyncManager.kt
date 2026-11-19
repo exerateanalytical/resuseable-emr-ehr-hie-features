@@ -207,6 +207,32 @@ data class SyncEngineTelemetry(
     val lastErrorMessage: String? = null
 )
 
+@Serializable
+data class OfflineMediaAttachmentRecord(
+    val mediaId: String,
+    val facilityId: String,
+    val patientId: String,
+    val fileName: String,
+    val contentType: String,
+    val clinicalCategory: String,
+    val localEncryptedPath: String,
+    val totalSizeBytes: Long,
+    val totalChunks: Long,
+    val uploadedChunks: Long = 0L,
+    val remoteUploadId: String? = null,
+    val sha256Hex: String,
+    val status: String = "QUEUED",
+    val createdAtMs: Long
+)
+
+@Serializable
+data class OfflineMediaSyncSummary(
+    val facilityId: String,
+    val completedAttachments: Int,
+    val uploadedChunksCount: Int,
+    val failedAttachments: Int
+)
+
 /**
  * SQLDelight persistence adapter encapsulating all local database operations required by
  * [DataSyncManager], backed by `HealthCoreOffline.sq` (`HealthCoreOfflineDatabase`).
@@ -412,6 +438,59 @@ class SqlDelightFhirSyncStore(val db: HealthCoreOfflineDatabase) {
 
     fun updateSyncCursor(facilityId: String, nextSeq: Long, serverHlc: String) {
         queries.upsertCheckpoint(facilityId, nextSeq, serverHlc)
+    }
+
+    fun enqueueMediaAttachment(record: OfflineMediaAttachmentRecord) {
+        queries.enqueueOfflineMediaAttachment(
+            media_id = record.mediaId,
+            facility_id = record.facilityId,
+            patient_id = record.patientId,
+            file_name = record.fileName,
+            content_type = record.contentType,
+            clinical_category = record.clinicalCategory,
+            local_encrypted_path = record.localEncryptedPath,
+            total_size_bytes = record.totalSizeBytes,
+            total_chunks = record.totalChunks,
+            uploaded_chunks = record.uploadedChunks,
+            remote_upload_id = record.remoteUploadId,
+            sha256_hex = record.sha256Hex,
+            status = record.status,
+            created_at_ms = record.createdAtMs
+        )
+    }
+
+    fun listPendingMediaAttachments(facilityId: String): List<OfflineMediaAttachmentRecord> =
+        queries.selectPendingOfflineMedia(facilityId).executeAsList().map { row ->
+            OfflineMediaAttachmentRecord(
+                mediaId = row.media_id,
+                facilityId = row.facility_id,
+                patientId = row.patient_id,
+                fileName = row.file_name,
+                contentType = row.content_type,
+                clinicalCategory = row.clinical_category,
+                localEncryptedPath = row.local_encrypted_path,
+                totalSizeBytes = row.total_size_bytes,
+                totalChunks = row.total_chunks,
+                uploadedChunks = row.uploaded_chunks,
+                remoteUploadId = row.remote_upload_id,
+                sha256Hex = row.sha256_hex,
+                status = row.status,
+                createdAtMs = row.created_at_ms
+            )
+        }
+
+    fun updateMediaUploadProgress(
+        mediaId: String,
+        uploadedChunks: Long,
+        remoteUploadId: String?,
+        status: String
+    ) {
+        queries.updateOfflineMediaProgress(
+            uploaded_chunks = uploadedChunks,
+            remote_upload_id = remoteUploadId,
+            status = status,
+            media_id = mediaId
+        )
     }
 
     private fun mapQueueRow(row: com.opeshealth.healthcore.mobile.db.Local_fhir_sync_queue): QueuedFhirSyncItem =
@@ -1271,6 +1350,170 @@ class DataSyncManager(
 
     fun listCachedPatientResources(patientId: String): List<LocalFhirResourceRecord> =
         store.listLocalResourcesForPatient(patientId)
+
+    /**
+     * Enqueues a locally encrypted clinical attachment (wound photo, referral PDF, ultrasound clip)
+     * in SQLDelight (`local_fhir_media_queue`) for resumable chunked upload to `/api/v1/sync/media/**`.
+     */
+    fun enqueueOfflineEncryptedAttachment(
+        facilityId: String,
+        patientId: String,
+        fileName: String,
+        contentType: String,
+        clinicalCategory: String,
+        localEncryptedPath: String,
+        totalSizeBytes: Long,
+        totalChunks: Long,
+        sha256Hex: String,
+        wallClockMs: Long
+    ): OfflineMediaAttachmentRecord {
+        val record = OfflineMediaAttachmentRecord(
+            mediaId = hlc.nextUuidV7(wallClockMs),
+            facilityId = facilityId,
+            patientId = patientId,
+            fileName = fileName,
+            contentType = contentType,
+            clinicalCategory = clinicalCategory,
+            localEncryptedPath = localEncryptedPath,
+            totalSizeBytes = totalSizeBytes,
+            totalChunks = totalChunks.coerceAtLeast(1L),
+            uploadedChunks = 0L,
+            remoteUploadId = null,
+            sha256Hex = sha256Hex,
+            status = "QUEUED",
+            createdAtMs = wallClockMs
+        )
+        store.enqueueMediaAttachment(record)
+        return record
+    }
+
+    fun listPendingOfflineMedia(facilityId: String): List<OfflineMediaAttachmentRecord> =
+        store.listPendingMediaAttachments(facilityId)
+
+    /**
+     * Resumes uploading pending encrypted offline clinical media attachments in `local_fhir_media_queue`
+     * against the Spring Boot `/api/v1/sync/media/init`, `/chunks`, and `/complete` endpoints.
+     *
+     * @param chunkBase64Provider supplies the Base64-encoded encrypted chunk bytes for `(localEncryptedPath, chunkIndex)`.
+     */
+    suspend fun syncPendingEncryptedMedia(
+        facilityId: String,
+        bearerToken: String,
+        chunkBase64Provider: suspend (localEncryptedPath: String, chunkIndex: Int) -> String?
+    ): Result<OfflineMediaSyncSummary> = syncMutex.withLock {
+        runCatching {
+            val pendingMedia = store.listPendingMediaAttachments(facilityId)
+            var completedAttachments = 0
+            var uploadedChunksCount = 0
+            var failedAttachments = 0
+
+            for (item in pendingMedia) {
+                var uploadId = item.remoteUploadId
+                if (uploadId.isNullOrBlank()) {
+                    val initPayload = buildJsonObject {
+                        put("facilityId", item.facilityId)
+                        put("patientId", item.patientId)
+                        put("originNodeId", nodeId)
+                        put("fileName", item.fileName)
+                        put("contentType", item.contentType)
+                        put("clinicalCategory", item.clinicalCategory)
+                        put("totalChunks", item.totalChunks.toInt())
+                        put("totalSizeBytes", item.totalSizeBytes)
+                        put("expectedSha256Hex", item.sha256Hex)
+                        put("clientEncryptedAesGcm", true)
+                    }
+                    val initResp = runCatching {
+                        httpClient.post("$baseUrl/api/v1/sync/media/init") {
+                            header(HttpHeaders.Authorization, "Bearer $bearerToken")
+                            contentType(ContentType.Application.Json)
+                            setBody(json.encodeToString(JsonObject.serializer(), initPayload))
+                        }
+                    }.getOrNull()
+
+                    if (initResp == null || !initResp.status.isSuccess()) {
+                        failedAttachments++
+                        continue
+                    }
+                    val initObj = runCatching { json.parseToJsonElement(initResp.bodyAsText()).jsonObject }.getOrNull()
+                    uploadId = initObj?.get("uploadId")?.jsonPrimitive?.contentOrNull
+                    if (uploadId.isNullOrBlank()) {
+                        failedAttachments++
+                        continue
+                    }
+                    store.updateMediaUploadProgress(
+                        mediaId = item.mediaId,
+                        uploadedChunks = item.uploadedChunks,
+                        remoteUploadId = uploadId,
+                        status = "UPLOADING"
+                    )
+                }
+
+                var currentUploaded = item.uploadedChunks.toInt()
+                var chunkFailure = false
+                for (chunkIdx in currentUploaded until item.totalChunks.toInt()) {
+                    val chunkBase64 = chunkBase64Provider(item.localEncryptedPath, chunkIdx)
+                    if (chunkBase64.isNullOrBlank()) {
+                        chunkFailure = true
+                        break
+                    }
+                    val chunkPayload = buildJsonObject {
+                        put("chunkIndex", chunkIdx)
+                        put("chunkBase64Data", chunkBase64)
+                    }
+                    val chunkResp = runCatching {
+                        httpClient.post("$baseUrl/api/v1/sync/media/$uploadId/chunks") {
+                            header(HttpHeaders.Authorization, "Bearer $bearerToken")
+                            contentType(ContentType.Application.Json)
+                            setBody(json.encodeToString(JsonObject.serializer(), chunkPayload))
+                        }
+                    }.getOrNull()
+
+                    if (chunkResp == null || !chunkResp.status.isSuccess()) {
+                        chunkFailure = true
+                        break
+                    }
+                    currentUploaded = chunkIdx + 1
+                    uploadedChunksCount++
+                    store.updateMediaUploadProgress(
+                        mediaId = item.mediaId,
+                        uploadedChunks = currentUploaded.toLong(),
+                        remoteUploadId = uploadId,
+                        status = "UPLOADING"
+                    )
+                }
+
+                if (chunkFailure) {
+                    failedAttachments++
+                    continue
+                }
+
+                val completeResp = runCatching {
+                    httpClient.post("$baseUrl/api/v1/sync/media/$uploadId/complete") {
+                        header(HttpHeaders.Authorization, "Bearer $bearerToken")
+                    }
+                }.getOrNull()
+
+                if (completeResp != null && completeResp.status.isSuccess()) {
+                    store.updateMediaUploadProgress(
+                        mediaId = item.mediaId,
+                        uploadedChunks = item.totalChunks,
+                        remoteUploadId = uploadId,
+                        status = "COMPLETED"
+                    )
+                    completedAttachments++
+                } else {
+                    failedAttachments++
+                }
+            }
+
+            OfflineMediaSyncSummary(
+                facilityId = facilityId,
+                completedAttachments = completedAttachments,
+                uploadedChunksCount = uploadedChunksCount,
+                failedAttachments = failedAttachments
+            )
+        }
+    }
 
     private fun quarantineConflictInSqlDelight(
         queueItem: QueuedFhirSyncItem,

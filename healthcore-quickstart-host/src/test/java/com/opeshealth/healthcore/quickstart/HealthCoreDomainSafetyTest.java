@@ -4284,6 +4284,239 @@ class HealthCoreDomainSafetyTest {
         assertTrue(managerSource.contains("HLC_LAST_WRITE_WINS"));
     }
 
+    @Test
+    void allTwelveEnterpriseDigitalHealthExpansionCapabilitiesWorkEndToEnd() {
+        var auditLogging = new com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService();
+        var subscriptions = new com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService(auditLogging);
+        var consentService = new com.opeshealth.healthcore.quickstart.service.ConsentService(
+                new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService(auditLogging, subscriptions),
+                auditLogging,
+                subscriptions);
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+
+        // 1. SMART Health Links (shlink:/) — AES-256-GCM encryption, passcode manifest, decryption & revocation
+        var shlController = new com.opeshealth.healthcore.quickstart.web.SmartHealthLinkController(
+                new com.opeshealth.healthcore.quickstart.service.SmartHealthLinkService(auditLogging));
+        var shlCreated = shlController.createSmartHealthLink(
+                "https://healthcore.opeshealthsystems.com",
+                new com.opeshealth.healthcore.quickstart.service.SmartHealthLinkService.CreateSmartHealthLinkRequest(
+                        facilityId, patientId, "Emergency Travel IPS", "994411", true, 48, 5,
+                        List.of(new com.opeshealth.healthcore.quickstart.service.SmartHealthLinkService.ShlFileInput(
+                                "application/fhir+json", "ips.json", "{\"resourceType\":\"Bundle\",\"type\":\"document\"}"))
+                )).getBody();
+        assertNotNull(shlCreated);
+        assertTrue(shlCreated.shlinkUri().startsWith("shlink:/"));
+        assertThrows(SecurityException.class, () -> shlController.resolveManifest(
+                shlCreated.shlId(), "https://healthcore.opeshealthsystems.com",
+                new com.opeshealth.healthcore.quickstart.service.SmartHealthLinkService.ShlManifestRequest("BorderClinic", "WRONG", 0)));
+        var shlManifest = shlController.resolveManifest(
+                shlCreated.shlId(), "https://healthcore.opeshealthsystems.com",
+                new com.opeshealth.healthcore.quickstart.service.SmartHealthLinkService.ShlManifestRequest("BorderClinic", "994411", 0)).getBody();
+        assertNotNull(shlManifest);
+        assertEquals(1, shlManifest.files().size());
+        var decryptedShl = shlController.decryptFile(
+                shlCreated.shlId(), shlManifest.files().getFirst().fileId(), shlCreated.symmetricKeyBase64Url()).getBody();
+        assertNotNull(decryptedShl);
+        assertTrue(decryptedShl.digestVerified());
+        assertTrue(decryptedShl.plainContent().contains("\"Bundle\""));
+        shlController.revokeSmartHealthLink(shlCreated.shlId(), "Trip ended", "https://healthcore.opeshealthsystems.com");
+
+        // 2. FHIR Chart Portability (Patient/$everything & Compartment Search)
+        var portabilityController = new com.opeshealth.healthcore.quickstart.web.FhirChartPortabilityController(
+                new com.opeshealth.healthcore.quickstart.service.FhirChartPortabilityService(null, null, null, consentService, auditLogging));
+        var everythingResp = portabilityController.exportPatientEverything(patientId, "dr.nshome", null, null, null, null).getBody();
+        assertNotNull(everythingResp);
+        assertEquals("Patient/$everything", everythingResp.scope());
+        assertTrue(everythingResp.fhirBundleJson().contains("\"resourceType\": \"Bundle\""));
+
+        // 3. Federated HIE Exchange (UDAP / TEFCA Trust Anchors / IHE XCPD & XCA)
+        var hieController = new com.opeshealth.healthcore.quickstart.web.FederatedHieExchangeController(
+                new com.opeshealth.healthcore.quickstart.service.FederatedHieExchangeService(auditLogging));
+        var udapClient = hieController.registerUdapClient(
+                new com.opeshealth.healthcore.quickstart.service.FederatedHieExchangeService.UdapClientRegistrationRequest(
+                        "2.16.120.1.100.1", "Douala EHR Gateway", "hdr.payload.sig", "https://ehr.local/cb",
+                        java.util.Set.of("system/Patient.rs"), "TREAT")).getBody();
+        assertNotNull(udapClient);
+        var xcpd = hieController.discoverPatientAcrossCommunities(
+                new com.opeshealth.healthcore.quickstart.service.FederatedHieExchangeService.XcpdPatientDiscoveryRequest(
+                        facilityId, "Mbarga", "Clarisse", "1988-03-19", "female", "CM-ID-001", "TREAT", List.of())).getBody();
+        assertNotNull(xcpd);
+        assertTrue(xcpd.matchedCommunitiesCount() >= 2);
+        var firstMatch = xcpd.matches().getFirst();
+        var xcaQuery = hieController.queryCrossCommunityDocuments(
+                new com.opeshealth.healthcore.quickstart.service.FederatedHieExchangeService.XcaDocumentQueryRequest(
+                        facilityId, firstMatch.communityOid(), firstMatch.remotePatientId(), "TREAT", "60591-5", null)).getBody();
+        assertNotNull(xcaQuery);
+        assertEquals(1, xcaQuery.documents().size());
+        var xcaDoc = hieController.retrieveCrossCommunityDocument(
+                firstMatch.communityOid(), xcaQuery.documents().getFirst().documentUniqueId()).getBody();
+        assertNotNull(xcaDoc);
+        assertEquals(64, xcaDoc.sha256Checksum().length());
+
+        // 4. Clinical Quality Measures (eCQM / $evaluate-measure)
+        var cqmController = new com.opeshealth.healthcore.quickstart.web.ClinicalQualityMeasureController(
+                new com.opeshealth.healthcore.quickstart.service.ClinicalQualityMeasureService(auditLogging));
+        var cqmEval = cqmController.evaluateMeasure(
+                "CMS122-HBA1C-CONTROL",
+                new com.opeshealth.healthcore.quickstart.service.ClinicalQualityMeasureService.EvaluateMeasureRequest(
+                        facilityId, java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2026, 12, 31), "summary",
+                        List.of(
+                                new com.opeshealth.healthcore.quickstart.service.ClinicalQualityMeasureService.PatientMeasureEvidence(
+                                        UUID.randomUUID(), true, false, false, 6.3, null, "URBAN"),
+                                new com.opeshealth.healthcore.quickstart.service.ClinicalQualityMeasureService.PatientMeasureEvidence(
+                                        UUID.randomUUID(), true, false, false, 8.4, null, "URBAN"),
+                                new com.opeshealth.healthcore.quickstart.service.ClinicalQualityMeasureService.PatientMeasureEvidence(
+                                        UUID.randomUUID(), true, true, false, 9.2, null, "URBAN")
+                        ))).getBody();
+        assertNotNull(cqmEval);
+        assertEquals(2, cqmEval.denominatorCount());
+        assertEquals(1, cqmEval.numeratorCount());
+        assertEquals(50.0, cqmEval.performanceScorePercent());
+        assertTrue(cqmEval.fhirMeasureReportJson().contains("\"MeasureReport\""));
+
+        // 5. Omnichannel Patient Messaging & USSD Recall Engine
+        var msgController = new com.opeshealth.healthcore.quickstart.web.PatientMessagingController(
+                new com.opeshealth.healthcore.quickstart.service.PatientMessagingService(auditLogging));
+        var msgSent = msgController.sendMessage(
+                new com.opeshealth.healthcore.quickstart.service.PatientMessagingService.SendPatientMessageRequest(
+                        facilityId, patientId,
+                        com.opeshealth.healthcore.quickstart.service.PatientMessagingService.MessagingChannel.WHATSAPP,
+                        com.opeshealth.healthcore.quickstart.service.PatientMessagingService.MessageTemplateCode.EPI_IMMUNIZATION_RECALL,
+                        "fr", "+237670112233", Map.of("vaccine", "Yellow Fever"), null, false)).getBody();
+        assertNotNull(msgSent);
+        assertTrue(msgSent.renderedBody().contains("PEV"));
+        var ussdResp = msgController.handleUssdSession(
+                new com.opeshealth.healthcore.quickstart.service.PatientMessagingService.UssdSessionRequest("sess-1", "+237670112233", "")).getBody();
+        assertNotNull(ussdResp);
+        assertFalse(ussdResp.endSession());
+
+        // 6. Longitudinal CarePlan, Goal & Care-Gap Closure Engine
+        var carePlanController = new com.opeshealth.healthcore.quickstart.web.CarePlanPathwayController(
+                new com.opeshealth.healthcore.quickstart.service.CarePlanPathwayService(auditLogging));
+        var carePlan = carePlanController.enrollPatient(
+                new com.opeshealth.healthcore.quickstart.service.CarePlanPathwayService.EnrollCarePlanRequest(
+                        facilityId, patientId,
+                        com.opeshealth.healthcore.quickstart.service.CarePlanPathwayService.ClinicalPathwayCode.DIABETES_T2,
+                        "dr.nshome", java.time.LocalDate.of(2026, 1, 1))).getBody();
+        assertNotNull(carePlan);
+        var gaps = carePlanController.evaluateCareGaps(patientId, "2026-06-01").getBody();
+        assertNotNull(gaps);
+        assertTrue(gaps.overdueCareGapsCount() >= 1);
+
+        // 7. Radiology DICOM MWL, MPPS & Closed-Loop Critical Findings Escalation
+        var radController = new com.opeshealth.healthcore.quickstart.web.RadiologyWorklistController(
+                new com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService(auditLogging, subscriptions));
+        var mwlOrder = radController.scheduleOrder(
+                new com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService.ScheduleImagingOrderRequest(
+                        facilityId, patientId, "dr.ed",
+                        com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService.ImagingModality.CT,
+                        "71260", "CT Chest Angiogram", "CHEST", "Rule out PE", "CT_SCANNER_1", true)).getBody();
+        assertNotNull(mwlOrder);
+        radController.updateMpps(mwlOrder.orderId(),
+                new com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService.MppsUpdateRequest(
+                        com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService.MppsStatus.COMPLETED, "tech.1", 4, 320));
+        var radReport = radController.signReport(
+                new com.opeshealth.healthcore.quickstart.service.RadiologyWorklistService.RadiologyReportSignOffRequest(
+                        mwlOrder.orderId(), "dr.rad", "Saddle embolus seen", "Acute saddle pulmonary embolism",
+                        true, "PULMONARY_EMBOLISM", false)).getBody();
+        assertNotNull(radReport);
+        assertEquals(1, radController.listUnacknowledgedCritical().getBody().size());
+        var ackReport = radController.acknowledgeCriticalFinding(radReport.reportId(), "dr.ed").getBody();
+        assertNotNull(ackReport);
+        assertEquals("ACKNOWLEDGED_CLOSED_LOOP", ackReport.acknowledgmentStatus());
+
+        // 8. Clinical Research, Dynamic eConsent & HIPAA Safe-Harbor OMOP CDM v5.4 Export
+        var researchController = new com.opeshealth.healthcore.quickstart.web.ClinicalResearchOmopController(
+                new com.opeshealth.healthcore.quickstart.service.ClinicalResearchOmopService(auditLogging));
+        researchController.signEConsent(
+                new com.opeshealth.healthcore.quickstart.service.ClinicalResearchOmopService.ResearchEConsentRequest(
+                        facilityId, patientId, "OPES-CARDIO-2026", true, true, null));
+        var omopExport = researchController.exportOmopCdm(
+                "OPES-CARDIO-2026",
+                List.of(new com.opeshealth.healthcore.quickstart.service.ClinicalResearchOmopService.CandidateResearchPatient(
+                        patientId, 94, "female", java.util.Set.of("I10", "E11.9"), 7.2, java.time.LocalDate.of(2026, 5, 10)))).getBody();
+        assertNotNull(omopExport);
+        assertEquals(1, omopExport.consentedSubjectsExported());
+        assertEquals(2, omopExport.conditionOccurrenceTable().size());
+
+        // 9. Resumable Chunked Encrypted Offline Media Sync
+        var mediaController = new com.opeshealth.healthcore.quickstart.web.OfflineMediaSyncController(
+                new com.opeshealth.healthcore.quickstart.service.OfflineMediaSyncService(auditLogging));
+        byte[] chunk0 = "encrypted-wound-part-1-".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] chunk1 = "encrypted-wound-part-2".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var initMedia = mediaController.initiateUpload(
+                new com.opeshealth.healthcore.quickstart.service.OfflineMediaSyncService.InitMediaUploadRequest(
+                        facilityId, patientId, "kmp-android-01", "wound.jpg.enc", "image/jpeg", "WOUND_PHOTO",
+                        2, chunk0.length + chunk1.length, null, true)).getBody();
+        assertNotNull(initMedia);
+        mediaController.uploadChunk(initMedia.uploadId(),
+                new com.opeshealth.healthcore.quickstart.service.OfflineMediaSyncService.MediaChunkUploadRequest(
+                        0, java.util.Base64.getEncoder().encodeToString(chunk0), null));
+        mediaController.uploadChunk(initMedia.uploadId(),
+                new com.opeshealth.healthcore.quickstart.service.OfflineMediaSyncService.MediaChunkUploadRequest(
+                        1, java.util.Base64.getEncoder().encodeToString(chunk1), null));
+        var completedMedia = mediaController.completeUpload(initMedia.uploadId()).getBody();
+        assertNotNull(completedMedia);
+        assertEquals("COMPLETED_VERIFIED", completedMedia.status());
+        assertNotNull(completedMedia.fhirDocumentReferenceId());
+
+        // 10. Payer Clearinghouse, EDI X12 837/835 & Denial Appeals
+        var clearinghouseController = new com.opeshealth.healthcore.quickstart.web.PayerClearinghouseController(
+                new com.opeshealth.healthcore.quickstart.service.PayerClearinghouseService(auditLogging));
+        var claim = clearinghouseController.submitClaim(
+                new com.opeshealth.healthcore.quickstart.service.PayerClearinghouseService.ClaimSubmissionRequest(
+                        facilityId, patientId, "PAYER-CNPS", "MEM-8821", "837P", "NPI-123456",
+                        java.time.LocalDate.now(), List.of("I10"),
+                        List.of(new com.opeshealth.healthcore.quickstart.service.PayerClearinghouseService.ClaimServiceLine(
+                                "99214", "Cardiology Follow-up", 1, 25000L)),
+                        "XAF")).getBody();
+        assertNotNull(claim);
+        assertTrue(claim.scrubbingResult().passed());
+        assertTrue(claim.ediX12837Payload().contains("ST*837*"));
+        var denied = clearinghouseController.reconcileRemittance(
+                new com.opeshealth.healthcore.quickstart.service.PayerClearinghouseService.Edi835RemittanceRequest(
+                        claim.claimId(), "TR-835-01", 0L, 25000L, "96", "N130", "DENIED")).getBody();
+        assertNotNull(denied);
+        assertTrue(denied.fhirExplanationOfBenefitJson().contains("\"ExplanationOfBenefit\""));
+        var appealed = clearinghouseController.appealClaim(
+                claim.claimId(),
+                new com.opeshealth.healthcore.quickstart.service.PayerClearinghouseService.ClaimAppealRequest(
+                        "billing.lead", "Attached specialist referral and signed ECG clinical documentation.", List.of("DocumentReference/1"))).getBody();
+        assertNotNull(appealed);
+        assertEquals("APPEAL_SUBMITTED", appealed.status());
+
+        // 11. Integration DLQ & Webhook/MLLP Replay Management
+        var dlqController = new com.opeshealth.healthcore.quickstart.web.IntegrationDlqReplayController(
+                new com.opeshealth.healthcore.quickstart.service.IntegrationDlqReplayService(auditLogging));
+        var dlqEntry = dlqController.recordDeadLetter(
+                new com.opeshealth.healthcore.quickstart.service.IntegrationDlqReplayService.RecordDeadLetterRequest(
+                        facilityId,
+                        com.opeshealth.healthcore.quickstart.service.IntegrationDlqReplayService.IntegrationChannelType.FHIR_SUBSCRIPTION_WEBHOOK,
+                        "https://regional-hie.local/webhook", "Observation", "obs-99", "corr-1", "{}", 503, "Downstream 503")).getBody();
+        assertNotNull(dlqEntry);
+        var bulkReplay = dlqController.replayBulk(
+                com.opeshealth.healthcore.quickstart.service.IntegrationDlqReplayService.IntegrationChannelType.FHIR_SUBSCRIPTION_WEBHOOK,
+                "ops.admin").getBody();
+        assertNotNull(bulkReplay);
+        assertEquals(1, bulkReplay.succeededCount());
+
+        // 12. Multi-Tenant SaaS Onboarding & Feature-Flag Governance
+        var tenantController = new com.opeshealth.healthcore.quickstart.web.TenantGovernanceController(
+                new com.opeshealth.healthcore.quickstart.service.TenantGovernanceService(auditLogging));
+        var tenant = tenantController.onboardTenant(
+                new com.opeshealth.healthcore.quickstart.service.TenantGovernanceService.OnboardTenantRequest(
+                        "Yaounde University Teaching Hospital", "CM", "Yaounde",
+                        com.opeshealth.healthcore.quickstart.service.TenantGovernanceService.DeploymentArchetype.REGIONAL_HIE,
+                        "POSTGRESQL", 3000, null, Map.of("beta.aiAmbientNotes.enabled", false))).getBody();
+        assertNotNull(tenant);
+        assertEquals(3000, tenant.apiRateLimitRpm());
+        tenantController.updateFeatureFlag(tenant.facilityId(),
+                new com.opeshealth.healthcore.quickstart.service.TenantGovernanceService.FeatureFlagUpdateRequest(
+                        "beta.aiAmbientNotes.enabled", true, "platform.admin"));
+        assertEquals(Boolean.TRUE, tenantController.checkFeatureFlag(tenant.facilityId(), "beta.aiAmbientNotes.enabled").getBody().get("enabled"));
+    }
+
     @SuppressWarnings("unused")
     private static void dummyValidationTarget(String payload) {
     }

@@ -91,4 +91,26 @@ mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=po
 #   -Dhealthcore.hie.mllp.enabled=true                     (Enable HL7v2 MLLP TCP :2575)
 ```
 
+---
+
+## Developer Guide (EMR, EHR, HIE & Offline Mobile)
+
+For step-by-step Maven BOM assembly recipes, multi-RDBMS setup, Keycloak/RLS security configuration, end-to-end cURL clinical playbooks, KMP `DataSyncManager` integration, and a production go-live checklist, see the full **[EMR, EHR & HIE Developer Guide](docs/DEVELOPER_GUIDE.md)**.
+
+### Enterprise Digital Health & National HIE Services Included in `healthcore-quickstart-host`
+- **SMART Health Links (`shlink:/`)**: AES-256-GCM encrypted manifests, passcodes, expiry, max-access limits, and revocation (`/api/v1/shl/**`)
+- **FHIR Chart Portability (`$everything`)**: `Patient/{id}/$everything`, `Encounter/{id}/$everything`, and Patient Compartment search with DS4P enforcement
+- **Federated HIE Trust (UDAP / TEFCA / IHE XCPD & XCA)**: X.509 Trust Anchors, UDAP Dynamic Client Registration, Cross-Community Patient Discovery & Document Query/Retrieve (`/api/v1/hie/**`)
+- **Clinical Quality Measures (eCQM / CQL)**: Standard CMS/HEDIS/WHO `Measure` catalog & `$evaluate-measure` FHIR `MeasureReport` generation (`/api/v1/fhir/Measure/**`)
+- **FHIR Consent, DS4P Privacy & Break-the-Glass**: Fine-grained `HIV`/`PSY`/`ETH`/`SDV`/`GEN`/`VIP` segmentation with mandatory compliance audit flagging (`/api/v1/consent/**`, `/api/v1/fhir/Consent/**`)
+- **JWS-Signed IPS (`$summary`) & Digital Health Certificates**: `RS256` & `Ed25519` JWS signing, SMART Health Card (`shc:/`) SVG/PNG QR codes, verification, and RFC 7517 JWKS (`/api/v1/ips/**`, `/api/v1/certificates/**`)
+- **Omnichannel Patient Messaging & Recall**: Bilingual EN/FR `SMS`/`WHATSAPP`/`USSD`/`PUSH` notifications & interactive feature-phone USSD menus (`/api/v1/messaging/**`)
+- **Longitudinal CarePlans & Care-Gap Closure**: Diabetes, Hypertension, HIV ART, TB DOT, Maternal ANC, and Heart Failure pathways (`/api/v1/care-plans/**`)
+- **Radiology Modality Worklist (DICOM MWL/MPPS) & Critical Findings Escalation**: Closed-loop radiology safety acknowledgment (`/api/v1/radiology/**`)
+- **Clinical Research, Dynamic eConsent & OMOP CDM v5.4 Export**: Trial eligibility cohort builder & HIPAA Safe-Harbor OMOP export (`/api/v1/research/**`)
+- **Resumable Chunked Encrypted Offline Media Sync**: SHA-256-verified binary attachment uploads paired with KMP `DataSyncManager` (`/api/v1/sync/media/**`)
+- **Payer Clearinghouse & EDI X12 (`837`/`835`)**: Automated claim scrubbing, remittance reconciliation, FHIR `ExplanationOfBenefit`, and denial appeals (`/api/v1/clearinghouse/**`)
+- **Integration DLQ & Webhook/MLLP Replay**: Operational dead-letter inspection, single/bulk replay, and circuit-breaker health (`/api/v1/ops/dlq/**`)
+- **Multi-Tenant SaaS Onboarding & Feature-Flag Governance**: Self-service facility onboarding, module licensing, terminology version pinning, and per-tenant feature flags (`/api/v1/admin/tenants/**`)
+
 OpenAPI 3.1 Swagger UI is served at `http://localhost:3000/swagger-ui.html`.
