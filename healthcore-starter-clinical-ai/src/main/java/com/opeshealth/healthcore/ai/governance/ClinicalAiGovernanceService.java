@@ -49,7 +49,8 @@ public class ClinicalAiGovernanceService {
         PATIENT_DISCHARGE_COACH,
         SEMANTIC_CLINICAL_SEARCH,
         PREDICTIVE_RISK_AND_PROGRESSION,
-        CAPACITY_AND_STAFFING_FORECAST
+        CAPACITY_AND_STAFFING_FORECAST,
+        MEDICATION_RECONCILIATION
     }
 
     public enum DraftAttestationStatus {

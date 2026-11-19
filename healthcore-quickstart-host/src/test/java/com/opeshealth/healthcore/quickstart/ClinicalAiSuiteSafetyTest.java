@@ -28,6 +28,14 @@ import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine.ClinicianOver
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine.CoachingChannel;
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine.PatientCoachingRequest;
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine.RedactedCoachingContext;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.BillingComplianceFinding;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.BillingComplianceReport;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.BillingRegime;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.CandidateBillingCode;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.CareSetting;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.ClinicalCodingRequest;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine.RedactedCodingContext;
 import com.opeshealth.healthcore.ai.config.ClinicalAiProperties;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.AiCapabilityType;
@@ -55,6 +63,15 @@ import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine.Redacted
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine.RiskTier;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine.TrendDirection;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.DeterministicReconciliationBaseline;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.MedicationEntry;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.MedicationReconciliationRequest;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.MedicationSource;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.PharmacyDispenseRecord;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.ReconciliationDiscrepancy;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.ReconciliationTransition;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine.RedactedReconciliationContext;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway.RedactedClinicalPayload;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway.RedactionContext;
 import com.opeshealth.healthcore.ai.summarizer.ClinicalSummarizer;
@@ -1124,6 +1141,258 @@ class ClinicalAiSuiteSafetyTest {
             assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
             assertTrue(recordedAuditActions.contains("CLINICAL_AI_CAPACITY_FORECAST_REQUESTED:IN_PROGRESS"));
             assertTrue(recordedAuditActions.contains("CLINICAL_AI_CAPACITY_FORECAST_FAILED:FAILURE"));
+        }
+    }
+
+    @Test
+    void clinicalCodingEngineEnforcesBillingComplianceAndRedactsPhi() {
+        ClinicalAiProperties props = new ClinicalAiProperties();
+        props.setApiKey("");
+        GeminiClinicalApiClient client = new GeminiClinicalApiClient(props);
+        PhiRedactionGateway redactor = new PhiRedactionGateway();
+        ClinicalAiGovernanceService governance = new ClinicalAiGovernanceService();
+        ClinicalCodingEngine engine = new ClinicalCodingEngine(client, redactor, governance);
+
+        String encounterFhirBundle = """
+                {
+                  "resourceType": "Bundle",
+                  "type": "searchset",
+                  "entry": [
+                    {
+                      "resource": {
+                        "resourceType": "Patient",
+                        "gender": "female",
+                        "birthDate": "1989-12-04",
+                        "name": [{"family": "Tchouamo", "given": ["Nadine"]}],
+                        "identifier": [{"value": "CM-BAF-77102"}],
+                        "telecom": [{"system": "phone", "value": "+237-655-221-904"}, {"system": "email", "value": "nadine.tchouamo@example.cm"}],
+                        "address": [{"line": ["77 Boulevard Bafoussam"]}]
+                      }
+                    },
+                    {
+                      "resource": {
+                        "resourceType": "Condition",
+                        "clinicalStatus": {"coding": [{"code": "active"}]},
+                        "code": {"text": "Type 2 diabetes mellitus without complications", "coding": [{"code": "E11.9"}]}
+                      }
+                    }
+                  ]
+                }
+                """;
+
+        List<CandidateBillingCode> testCandidates = List.of(
+                new CandidateBillingCode("ICD-10-CM", "V01.1", "Pedestrian injured in collision with pedal cycle", true, List.of()),
+                new CandidateBillingCode("ICD-10-CM", "E11.9", "Type 2 diabetes mellitus without complications", false, List.of()),
+                new CandidateBillingCode("ICD-10-CM", "INVALID-999", "Malformed diagnosis", false, List.of()),
+                new CandidateBillingCode("CPT", "99213", "Office outpatient visit established 20-29 min", false, List.of()),
+                new CandidateBillingCode("CPT", "99215", "Office outpatient visit high MDM", false, List.of()),
+                new CandidateBillingCode("CPT", "80053", "Comprehensive metabolic panel", false, List.of()),
+                new CandidateBillingCode("CPT", "80048", "Basic metabolic panel", false, List.of())
+        );
+
+        UUID facId = UUID.randomUUID();
+        UUID patId = UUID.randomUUID();
+        UUID encId = UUID.randomUUID();
+
+        ClinicalCodingRequest req = new ClinicalCodingRequest(
+                facId,
+                patId,
+                encId,
+                "CODER-CPC-09",
+                CareSetting.TELEHEALTH,
+                BillingRegime.CMS_MEDICARE_USA,
+                "Patient: Nadine Tchouamo (MRN CM-BAF-77102, DOB 1989-12-04, email nadine.tchouamo@example.cm) "
+                        + "seen via video follow-up for stable Type 2 Diabetes Mellitus, HbA1c 7.1%.",
+                "Routine telehealth chronic care follow-up, refilled Metformin 500mg BID.",
+                List.of(encounterFhirBundle),
+                List.of("ICD-10-CM", "CPT"),
+                testCandidates,
+                List.of(),
+                List.of(),
+                null
+        );
+
+        RedactedCodingContext ctx = engine.prepareRedactedCodingContext(req);
+        String redactedText = ctx.redactedPayload().redactedText();
+
+        // 1. Mandatory Safe-Harbor PHI redaction verification
+        assertFalse(redactedText.contains("Nadine"));
+        assertFalse(redactedText.contains("Tchouamo"));
+        assertFalse(redactedText.contains("CM-BAF-77102"));
+        assertFalse(redactedText.contains("1989-12-04"));
+        assertFalse(redactedText.contains("+237-655-221-904"));
+        assertFalse(redactedText.contains("nadine.tchouamo@example.cm"));
+        assertFalse(redactedText.contains("77 Boulevard Bafoussam"));
+        assertTrue(redactedText.contains("HbA1c 7.1%"));
+        assertTrue(redactedText.contains("Metformin 500mg BID"));
+
+        // 2. Deterministic billing compliance audit verification
+        BillingComplianceReport report = ctx.preScreenComplianceReport();
+        assertFalse(report.claimReadyWithoutBlockingErrors());
+        assertTrue(report.blockingErrorCount() >= 4);
+        List<String> ruleCodes = report.findings().stream()
+                .map(BillingComplianceFinding::ruleCode)
+                .toList();
+        assertTrue(ruleCodes.contains("BILL-ICD10-FORMAT"));
+        assertTrue(ruleCodes.contains("BILL-ICD10-SEQ"));
+        assertTrue(ruleCodes.contains("BILL-ICD10-UNSPECIFIED"));
+        assertTrue(ruleCodes.contains("BILL-NCCI-001"));
+        assertTrue(ruleCodes.contains("BILL-NCCI-002"));
+        assertTrue(ruleCodes.contains("BILL-UPCODING-001"));
+        assertTrue(ruleCodes.contains("BILL-TELEHEALTH-MOD"));
+
+        // 3. Verify tenant kill-switch blocks coding automation
+        UUID blockedFac = UUID.randomUUID();
+        governance.setTenantAiEnabled(blockedFac, false);
+        assertThrows(IllegalStateException.class, () ->
+                engine.automateClinicalCoding(new ClinicalCodingRequest(
+                        blockedFac, patId, encId, "CODER-CPC-09", CareSetting.OUTPATIENT,
+                        BillingRegime.CMS_MEDICARE_USA, "Routine hypertension visit.", null,
+                        List.of(), List.of("ICD-10-CM", "CPT"), List.of(), List.of(), List.of(), null)));
+
+        // 4. Verify missing GEMINI_API_KEY propagates HTTP 503 cleanly without fabricated billing codes
+        if (System.getenv("GEMINI_API_KEY") == null || System.getenv("GEMINI_API_KEY").isBlank()) {
+            GeminiApiException ex = assertThrows(GeminiApiException.class, () ->
+                    engine.automateClinicalCoding(req));
+            assertEquals(503, ex.getHttpStatus());
+            assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
+        }
+    }
+
+    @Test
+    void medicationReconciliationEngineDetectsDiscrepanciesRedactsPhiAndEnforcesGovernance() {
+        ClinicalAiProperties props = new ClinicalAiProperties();
+        props.setApiKey("");
+        GeminiClinicalApiClient client = new GeminiClinicalApiClient(props);
+        PhiRedactionGateway redactor = new PhiRedactionGateway();
+        ClinicalAiGovernanceService governance = new ClinicalAiGovernanceService();
+        MedicationReconciliationEngine engine = new MedicationReconciliationEngine(client, redactor, governance);
+
+        String fhirBundle = """
+                {
+                  "resourceType": "Bundle",
+                  "type": "searchset",
+                  "entry": [
+                    {
+                      "resource": {
+                        "resourceType": "Patient",
+                        "gender": "male",
+                        "birthDate": "1961-07-18",
+                        "name": [{"family": "Nkeng", "given": ["Victor"]}],
+                        "identifier": [{"value": "CM-DLA-84215"}],
+                        "telecom": [{"system": "phone", "value": "+237-670-443-210"}, {"system": "email", "value": "victor.nkeng@example.cm"}],
+                        "address": [{"line": ["88 Rue Bonanjo Douala"]}]
+                      }
+                    },
+                    {
+                      "resource": {
+                        "resourceType": "AllergyIntolerance",
+                        "criticality": "high",
+                        "code": {"text": "Penicillin"}
+                      }
+                    }
+                  ]
+                }
+                """;
+
+        List<MedicationEntry> currentList = List.of(
+                // Warfarin (high-alert) omitted from admission notes -> MREC-OMISSION-001
+                new MedicationEntry("Coumadin", "855332", "5", "mg", "once daily", "PO", "active",
+                        MedicationSource.CURRENT_MEDICATION_LIST, "For atrial fibrillation"),
+                // Lisinopril dose conflict (10mg in EHR vs 20mg in pharmacy & admission note) -> MREC-DOSE-001
+                new MedicationEntry("Lisinopril", "314076", "10", "mg", "once daily", "PO", "active",
+                        MedicationSource.CURRENT_MEDICATION_LIST, null),
+                // Metformin frequency conflict (BID in EHR vs once daily in admission note) -> MREC-FREQ-001
+                new MedicationEntry("Glucophage", "861004", "500", "mg", "twice daily", "PO", "active",
+                        MedicationSource.CURRENT_MEDICATION_LIST, null),
+                // Atorvastatin concordant across all 3 sources -> matchedMedications
+                new MedicationEntry("Atorvastatin", "617312", "40", "mg", "once daily", "PO", "active",
+                        MedicationSource.CURRENT_MEDICATION_LIST, null),
+                // Furosemide declined at pharmacy -> MREC-ADHERENCE-001
+                new MedicationEntry("Furosemide", "310429", "40", "mg", "once daily", "PO", "active",
+                        MedicationSource.CURRENT_MEDICATION_LIST, null)
+        );
+
+        String admissionNotes = "Admitted Patient: Victor Nkeng (MRN CM-DLA-84215, DOB 1961-07-18, phone +237-670-443-210). "
+                + "Home medications per patient report: Lisinopril 20mg once daily, Metformin 500mg once daily, "
+                + "Atorvastatin 40mg once daily, Furosemide 40mg once daily, and Amoxicillin 500mg three times daily "
+                + "started at urgent care yesterday. Also taking Gabapentin 300mg at bedtime.";
+
+        List<PharmacyDispenseRecord> pharmacyRecords = List.of(
+                new PharmacyDispenseRecord("Pharmacie Bonanjo", "Warfarin sodium", "855332", "5mg", "Take 1 tablet once daily", "2026-10-20", 30, "completed"),
+                new PharmacyDispenseRecord("Pharmacie Bonanjo", "Lisinopril", "314077", "20mg", "Take 1 tablet once daily", "2026-10-25", 30, "completed"),
+                new PharmacyDispenseRecord("Pharmacie Bonanjo", "Metformin HCl", "861004", "500mg", "Take 1 tablet twice daily", "2026-10-25", 30, "completed"),
+                new PharmacyDispenseRecord("Pharmacie Bonanjo", "Atorvastatin", "617312", "40mg", "Take 1 tablet once daily", "2026-10-25", 30, "completed"),
+                new PharmacyDispenseRecord("Pharmacie Bonanjo", "Furosemide", "310429", "40mg", "Take 1 tablet once daily", "2026-10-01", 30, "declined"),
+                // Unlisted pharmacy fill + therapeutic duplication with Lisinopril (RAAS_INHIBITOR) -> MREC-OMISSION-002 & MREC-DUP-001
+                new PharmacyDispenseRecord("Pharmacie Akwa", "Losartan", "979492", "50mg", "Take 1 tablet once daily", "2026-11-02", 30, "completed")
+        );
+
+        UUID facId = UUID.randomUUID();
+        UUID patId = UUID.randomUUID();
+        UUID encId = UUID.randomUUID();
+
+        MedicationReconciliationRequest req = new MedicationReconciliationRequest(
+                facId,
+                patId,
+                encId,
+                "PHARMD-MBAPPE",
+                ReconciliationTransition.ADMISSION,
+                currentList,
+                admissionNotes,
+                pharmacyRecords,
+                List.of(fhirBundle),
+                List.of(),
+                List.of(),
+                List.of(),
+                null
+        );
+
+        RedactedReconciliationContext ctx = engine.prepareRedactedReconciliationContext(req);
+        String redactedText = ctx.redactedPayload().redactedText();
+
+        // 1. Mandatory HIPAA Safe-Harbor PHI redaction verification across admission notes & FHIR bundle
+        assertFalse(redactedText.contains("Victor"));
+        assertFalse(redactedText.contains("Nkeng"));
+        assertFalse(redactedText.contains("CM-DLA-84215"));
+        assertFalse(redactedText.contains("1961-07-18"));
+        assertFalse(redactedText.contains("+237-670-443-210"));
+        assertFalse(redactedText.contains("victor.nkeng@example.cm"));
+        assertFalse(redactedText.contains("88 Rue Bonanjo Douala"));
+        assertTrue(redactedText.contains("birthYear=1961"));
+        assertTrue(redactedText.contains("Lisinopril"));
+
+        // 2. Deterministic three-way reconciliation discrepancy verification
+        DeterministicReconciliationBaseline baseline = ctx.deterministicBaseline();
+        assertTrue(baseline.criticalCount() >= 2);
+        assertTrue(baseline.matchedMedications().contains("atorvastatin"));
+
+        List<String> ruleCodes = baseline.discrepancies().stream()
+                .map(ReconciliationDiscrepancy::ruleCode)
+                .toList();
+        assertTrue(ruleCodes.contains("MREC-OMISSION-001"));
+        assertTrue(ruleCodes.contains("MREC-OMISSION-002"));
+        assertTrue(ruleCodes.contains("MREC-COMMISSION-001"));
+        assertTrue(ruleCodes.contains("MREC-DOSE-001"));
+        assertTrue(ruleCodes.contains("MREC-FREQ-001"));
+        assertTrue(ruleCodes.contains("MREC-DUP-001"));
+        assertTrue(ruleCodes.contains("MREC-ALLERGY-001"));
+        assertTrue(ruleCodes.contains("MREC-ADHERENCE-001"));
+
+        // 3. Verify tenant kill-switch blocks reconciliation
+        UUID blockedFac = UUID.randomUUID();
+        governance.setTenantAiEnabled(blockedFac, false);
+        assertThrows(IllegalStateException.class, () ->
+                engine.reconcileMedications(new MedicationReconciliationRequest(
+                        blockedFac, patId, encId, "PHARMD-MBAPPE", ReconciliationTransition.ADMISSION,
+                        currentList, admissionNotes, pharmacyRecords, List.of(), List.of(), List.of(), List.of(), null)));
+
+        // 4. Verify missing GEMINI_API_KEY propagates HTTP 503 cleanly without fabricated reconciliation plans
+        if (System.getenv("GEMINI_API_KEY") == null || System.getenv("GEMINI_API_KEY").isBlank()) {
+            GeminiApiException ex = assertThrows(GeminiApiException.class, () ->
+                    engine.reconcileMedications(req));
+            assertEquals(503, ex.getHttpStatus());
+            assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
         }
     }
 }

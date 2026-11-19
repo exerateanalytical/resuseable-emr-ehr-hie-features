@@ -14,10 +14,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine;
 import com.opeshealth.healthcore.ai.client.GeminiClinicalApiClient;
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine;
+import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService;
 import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
+import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine;
 import com.opeshealth.healthcore.ai.summarizer.ClinicalSummarizer;
 import com.opeshealth.healthcore.ai.transcription.ClinicalTranscriptionEngine;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
@@ -135,6 +137,32 @@ public class ClinicalAiAutoConfiguration {
                 phiRedactionGateway,
                 clinicalAiGovernanceService,
                 clinicalAuditServiceProvider.getIfAvailable()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ClinicalCodingEngine clinicalCodingEngine(
+            GeminiClinicalApiClient geminiClinicalApiClient,
+            PhiRedactionGateway phiRedactionGateway,
+            ClinicalAiGovernanceService clinicalAiGovernanceService) {
+        return new ClinicalCodingEngine(
+                geminiClinicalApiClient,
+                phiRedactionGateway,
+                clinicalAiGovernanceService
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public MedicationReconciliationEngine medicationReconciliationEngine(
+            GeminiClinicalApiClient geminiClinicalApiClient,
+            PhiRedactionGateway phiRedactionGateway,
+            ClinicalAiGovernanceService clinicalAiGovernanceService) {
+        return new MedicationReconciliationEngine(
+                geminiClinicalApiClient,
+                phiRedactionGateway,
+                clinicalAiGovernanceService
         );
     }
 }
