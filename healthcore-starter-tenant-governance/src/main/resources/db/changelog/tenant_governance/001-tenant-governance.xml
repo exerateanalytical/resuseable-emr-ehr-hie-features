@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="tenant-governance-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_tenant_organizations">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="org_code" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="organization_type" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="country_iso" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_tenant_facilities">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="organization_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="facility_code" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="facility_type" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="country_iso" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="timezone_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="currency_code" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="default_locale" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="lifecycle_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="status_reason" type="varchar(400)"/>
+            <column name="onboarded_at" type="${ts_type}"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_facility_departments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="parent_department_id" type="${uuid_type}"/>
+            <column name="department_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="department_type" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="bed_capacity" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_facility_departments" columnNames="facility_id,department_code" constraintName="uq_fac_dept_code"/>
+
+        <createTable tableName="hc_facility_feature_flags">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="flag_key" type="varchar(96)"><constraints nullable="false"/></column>
+            <column name="enabled" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="kill_switch" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="updated_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_facility_feature_flags" columnNames="facility_id,flag_key" constraintName="uq_fac_feature_flag"/>
+
+        <createTable tableName="hc_cross_facility_grants">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="source_facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="target_facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="grantee_actor_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="grant_scope" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="reason" type="varchar(400)"><constraints nullable="false"/></column>
+            <column name="granted_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="expires_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="revoked" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="revoked_by" type="varchar(120)"/>
+            <column name="revoked_at" type="${ts_type}"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

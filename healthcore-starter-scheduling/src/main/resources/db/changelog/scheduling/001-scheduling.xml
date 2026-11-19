@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="scheduling-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_resource_calendars">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="department_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="resource_kind" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="resource_ref" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="slot_duration_minutes" type="int" defaultValueNumeric="20"><constraints nullable="false"/></column>
+            <column name="max_concurrent_bookings" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_appointment_types">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="type_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="specialty_code" type="varchar(64)"/>
+            <column name="default_duration_minutes" type="int" defaultValueNumeric="20"><constraints nullable="false"/></column>
+            <column name="buffer_minutes" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_appointment_types" columnNames="facility_id,type_code" constraintName="uq_appt_type_fac_code"/>
+
+        <createTable tableName="hc_scheduled_appointments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="calendar_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="room_calendar_id" type="${uuid_type}"/>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="appointment_type_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="practitioner_ref" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="department_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="scheduled_start" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="scheduled_end" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="visit_reason" type="varchar(400)"/>
+            <column name="cancellation_reason" type="varchar(300)"/>
+            <column name="recurring_series_id" type="${uuid_type}"/>
+            <column name="queue_token_number" type="int"/>
+            <column name="checked_in_at" type="${ts_type}"/>
+            <column name="created_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_scheduled_appointments" indexName="idx_sched_appt_fac_cal_start">
+            <column name="facility_id"/><column name="calendar_id"/><column name="scheduled_start"/>
+        </createIndex>
+
+        <createTable tableName="hc_appointment_waitlist">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="calendar_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="appointment_type_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="priority_rank" type="int" defaultValueNumeric="3"><constraints nullable="false"/></column>
+            <column name="preferred_from" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="preferred_until" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="notes" type="varchar(300)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

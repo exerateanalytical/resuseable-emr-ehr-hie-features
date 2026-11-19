@@ -98,9 +98,6 @@ import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.Hipa
 import com.opeshealth.healthcore.quickstart.service.ObservationService;
 import com.opeshealth.healthcore.quickstart.service.PractitionerService;
 import com.opeshealth.healthcore.quickstart.config.FhirOpenApiConfiguration;
-import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration;
-import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.DialectMigrationSummary;
-import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.RdbmsDialect;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlExceptionResolver;
 import com.opeshealth.healthcore.quickstart.service.ColdChainMonitoringService;
@@ -134,7 +131,6 @@ import ca.uhn.fhir.validation.ValidationResult;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
-import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Encounter;
 import org.hl7.fhir.r4.model.Observation;
@@ -2686,47 +2682,20 @@ class HealthCoreDomainSafetyTest {
     }
 
     @Test
-    void flywayMultiDbMigrationConfigurationAndSqlScriptsMaintainParityAcrossPostgresMysqlAndSqlServer() {
-        // 1. Dialect detection from JDBC URLs and product names
-        assertEquals(RdbmsDialect.POSTGRESQL,
-                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:postgresql://localhost:5432/healthcore"));
-        assertEquals(RdbmsDialect.MYSQL,
-                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:mysql://localhost:3306/healthcore?serverTimezone=UTC"));
-        assertEquals(RdbmsDialect.SQLSERVER,
-                FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:sqlserver://localhost:1433;databaseName=healthcore"));
-        assertThrows(IllegalArgumentException.class,
-                () -> FlywayMultiDbMigrationConfiguration.resolveDialect("jdbc:oracle:thin:@localhost:1521:xe"));
+    void liquibaseMasterChangelogIsSoleMigrationOwnerAcrossPostgresMysqlAndSqlServer() throws Exception {
+        ClassPathResource master = new ClassPathResource("db/changelog/db.changelog-master.xml");
+        assertTrue(master.exists(), "Canonical Liquibase master changelog must exist");
+        String xml = master.getContentAsString(StandardCharsets.UTF_8);
 
-        // 2. Flyway FluentConfiguration assembly for each RDBMS target
-        for (RdbmsDialect dialect : RdbmsDialect.values()) {
-            FluentConfiguration fluentConfig = FlywayMultiDbMigrationConfiguration.buildFluentConfiguration(
-                    null,
-                    dialect,
-                    true,
-                    true,
-                    FlywayMultiDbMigrationConfiguration.HISTORY_TABLE_NAME
-            );
-            assertEquals(FlywayMultiDbMigrationConfiguration.HISTORY_TABLE_NAME, fluentConfig.getTable());
-            assertTrue(fluentConfig.isBaselineOnMigrate());
-            assertTrue(fluentConfig.isValidateOnMigrate());
-            assertEquals(1, fluentConfig.getLocations().length);
-            assertTrue(fluentConfig.getLocations()[0].getDescriptor().contains(dialect.classpathFolder()));
-            assertEquals(dialect.placeholders(), fluentConfig.getPlaceholders());
-        }
-
-        // 3. Cross-dialect schema parity across PostgreSQL, MySQL, and SQL Server V1 & V2 SQL scripts
-        Map<RdbmsDialect, DialectMigrationSummary> summaries =
-                FlywayMultiDbMigrationConfiguration.verifyCrossDialectSchemaParity();
-        assertEquals(3, summaries.size());
-
-        DialectMigrationSummary pgSummary = summaries.get(RdbmsDialect.POSTGRESQL);
-        DialectMigrationSummary mysqlSummary = summaries.get(RdbmsDialect.MYSQL);
-        DialectMigrationSummary mssqlSummary = summaries.get(RdbmsDialect.SQLSERVER);
-
-        assertEquals(pgSummary.discoveredTables(), mysqlSummary.discoveredTables());
-        assertEquals(pgSummary.discoveredTables(), mssqlSummary.discoveredTables());
-        assertEquals(pgSummary.discoveredIndexes(), mysqlSummary.discoveredIndexes());
-        assertEquals(pgSummary.discoveredIndexes(), mssqlSummary.discoveredIndexes());
+        assertTrue(xml.contains("dbms=\"postgresql\""), "Must define PostgreSQL dialect aliases");
+        assertTrue(xml.contains("dbms=\"mssql\""), "Must define SQL Server dialect aliases");
+        assertTrue(xml.contains("dbms=\"mysql\""), "Must define MySQL dialect aliases");
+        assertTrue(xml.contains("db/changelog/tenant_governance/001-tenant-governance.xml"));
+        assertTrue(xml.contains("db/changelog/scheduling/001-scheduling.xml"));
+        assertTrue(xml.contains("db/changelog/orders_results/001-orders-results.xml"));
+        assertTrue(xml.contains("db/changelog/patient_portal/001-patient-portal.xml"));
+        assertFalse(new ClassPathResource("db/migration/postgresql/V1__healthcore_core_schema.sql").exists(),
+                "Legacy Flyway SQL migrations must be removed when Liquibase is sole migration owner");
     }
 
     @Test

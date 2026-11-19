@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Master Patient Index (Active Golden Records)</h2>
+                        <form th:action="@{/ui/patients}" method="get" class="inline-actions">
+                            <input type="text" name="q" th:value="${query}" placeholder="Search surname or given name..." style="padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px;"/>
+                            <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+                        </form>
+                    </div>
+                    <div th:if="${#lists.isEmpty(patients)}" class="empty-state">
+                        No patients found in the active facility. Register the first patient using the form on the right.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(patients)}">
+                        <thead>
+                        <tr>
+                            <th>MRN</th>
+                            <th>Patient Name</th>
+                            <th>DOB</th>
+                            <th>Gender</th>
+                            <th>Phone</th>
+                            <th>Locale</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="p : ${patients}">
+                            <td class="mono" th:text="${p.mrn}">DLA-001001</td>
+                            <td th:text="${p.familyName + ', ' + p.givenName}">Ndiaye, Amina</td>
+                            <td class="mono" th:text="${p.birthDate}">1988-04-14</td>
+                            <td th:text="${p.gender}">female</td>
+                            <td class="mono" th:text="${p.primaryPhone != null ? p.primaryPhone : '—'}">—</td>
+                            <td class="mono" th:text="${p.preferredLanguage}">fr</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Register New Patient</h2>
+                    </div>
+                    <div class="panel-body">
+                        <form th:action="@{/ui/patients}" method="post" class="form-grid">
+                            <div class="form-field">
+                                <label>MRN</label>
+                                <input type="text" name="mrn" required placeholder="DLA-001099"/>
+                            </div>
+                            <div class="form-field">
+                                <label>Birth Date</label>
+                                <input type="date" name="birthDate" required/>
+                            </div>
+                            <div class="form-field">
+                                <label>Given Name</label>
+                                <input type="text" name="givenName" required/>
+                            </div>
+                            <div class="form-field">
+                                <label>Family Name</label>
+                                <input type="text" name="familyName" required/>
+                            </div>
+                            <div class="form-field">
+                                <label>Gender</label>
+                                <select name="gender">
+                                    <option value="female">Female</option>
+                                    <option value="male">Male</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label>Preferred Language</label>
+                                <select name="preferredLanguage">
+                                    <option value="en">English (en)</option>
+                                    <option value="fr">Français (fr)</option>
+                                    <option value="es">Español (es)</option>
+                                    <option value="ar">العربية (ar)</option>
+                                </select>
+                            </div>
+                            <div class="form-field full">
+                                <label>Primary Phone</label>
+                                <input type="text" name="primaryPhone" placeholder="+237690000000"/>
+                            </div>
+                            <div class="form-field full">
+                                <button type="submit" class="btn btn-primary">Register Patient</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

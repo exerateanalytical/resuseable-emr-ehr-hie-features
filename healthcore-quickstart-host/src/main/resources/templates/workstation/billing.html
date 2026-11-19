@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Patient Receivable Accounts (Double-Entry Ledger)</h2>
+                    </div>
+                    <div th:if="${#lists.isEmpty(accounts)}" class="empty-state">
+                        No patient billing accounts created yet.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(accounts)}">
+                        <thead>
+                        <tr>
+                            <th>Account ID</th>
+                            <th>Patient ID</th>
+                            <th>Currency</th>
+                            <th class="num">Balance (Minor Units)</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="acc : ${accounts}">
+                            <td class="mono" th:text="${acc.id}">uuid</td>
+                            <td class="mono" th:text="${acc.patientId}">uuid</td>
+                            <td class="mono" th:text="${acc.currency}">XAF</td>
+                            <td class="mono num" th:text="${acc.balanceMinor}">15000</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Post Balanced Patient Charge</h2>
+                    </div>
+                    <div class="panel-body">
+                        <form th:action="@{/ui/billing/charge}" method="post" class="form-grid">
+                            <div class="form-field full">
+                                <label>Patient</label>
+                                <select name="patientId" required>
+                                    <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label>Amount (Minor Units)</label>
+                                <input type="number" name="amountMinor" min="1" value="10000" required/>
+                            </div>
+                            <div class="form-field">
+                                <label>Currency</label>
+                                <input type="text" name="currency" value="XAF" required/>
+                            </div>
+                            <div class="form-field">
+                                <label>Reference Code</label>
+                                <input type="text" name="referenceCode" required placeholder="INV-DLA-0099"/>
+                            </div>
+                            <div class="form-field">
+                                <label>Description</label>
+                                <input type="text" name="description" required placeholder="Outpatient lab panel"/>
+                            </div>
+                            <div class="form-field full">
+                                <button type="submit" class="btn btn-primary">Post Double-Entry Charge</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

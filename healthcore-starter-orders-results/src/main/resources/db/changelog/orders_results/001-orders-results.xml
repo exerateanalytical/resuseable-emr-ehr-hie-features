@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="orders-results-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_order_sets">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="set_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="clinical_indication" type="varchar(300)"/>
+            <column name="items_spec" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_order_sets" columnNames="facility_id,set_code" constraintName="uq_order_set_fac_code"/>
+
+        <createTable tableName="hc_unified_orders">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="order_domain" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="code_system" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="order_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="order_display" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="priority" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="clinical_notes" type="varchar(500)"/>
+            <column name="accession_number" type="varchar(64)"/>
+            <column name="reflex_source_order_id" type="${uuid_type}"/>
+            <column name="ordered_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="acknowledged_by" type="varchar(120)"/>
+            <column name="acknowledged_at" type="${ts_type}"/>
+            <column name="cancellation_reason" type="varchar(300)"/>
+            <column name="ordered_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_unified_orders" indexName="idx_unified_orders_fac_patient">
+            <column name="facility_id"/><column name="patient_id"/><column name="status"/>
+        </createIndex>
+
+        <createTable tableName="hc_order_specimens">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="accession_barcode" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="specimen_type" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="collected_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="collected_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="condition_notes" type="varchar(300)"/>
+        </createTable>
+
+        <createTable tableName="hc_clinical_results">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="result_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="result_display" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="numeric_value" type="decimal(14,4)"/>
+            <column name="text_value" type="varchar(1000)"/>
+            <column name="unit" type="varchar(40)"/>
+            <column name="reference_range" type="varchar(120)"/>
+            <column name="abnormal_flag" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="revision_number" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="amended_from_result_id" type="${uuid_type}"/>
+            <column name="amendment_reason" type="varchar(400)"/>
+            <column name="entered_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="verified_by" type="varchar(120)"/>
+            <column name="verified_at" type="${ts_type}"/>
+            <column name="critical_ack_required" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="critical_ack_by" type="varchar(120)"/>
+            <column name="critical_ack_at" type="${ts_type}"/>
+            <column name="critical_ack_notes" type="varchar(400)"/>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_clinical_results" indexName="idx_clinical_results_fac_crit">
+            <column name="facility_id"/><column name="critical_ack_required"/><column name="status"/>
+        </createIndex>
+
+        <createTable tableName="hc_reflex_order_rules">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="trigger_result_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="trigger_flag" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="reflex_domain" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="reflex_order_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="reflex_order_display" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="reflex_priority" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

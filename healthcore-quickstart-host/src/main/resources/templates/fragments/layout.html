@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title th:text="${title} + ' — Opes HealthCore HIS'">Opes HealthCore HIS</title>
+    <link rel="stylesheet" th:href="@{/css/workstation.css}"/>
+</head>
+<body>
+<aside class="sidebar" th:fragment="sidebar(activeNav, facility)">
+    <div class="brand-header">
+        <div class="brand-title">Opes HealthCore HIS</div>
+        <div class="brand-facility" th:text="${facility != null ? facility.name + ' (' + facility.facilityCode + ')' : 'No Active Facility'}">
+            Douala Reference Hospital
+        </div>
+    </div>
+
+    <div class="nav-section">Clinical Operations</div>
+    <ul class="nav-list">
+        <li><a class="nav-link" th:classappend="${activeNav == 'overview'} ? ' active'" th:href="@{/ui/overview}">Hospital Overview</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'patients'} ? ' active'" th:href="@{/ui/patients}">Patients &amp; MPI</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'scheduling'} ? ' active'" th:href="@{/ui/scheduling}">Appointments &amp; Queue</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'orders'} ? ' active'" th:href="@{/ui/orders}">Unified Orders &amp; Labs</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'pharmacy'} ? ' active'" th:href="@{/ui/pharmacy}">Pharmacy &amp; FEFO Stock</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'billing'} ? ' active'" th:href="@{/ui/billing}">Billing &amp; Ledger</a></li>
+    </ul>
+
+    <div class="nav-section">Governance &amp; Trust</div>
+    <ul class="nav-list">
+        <li><a class="nav-link" th:classappend="${activeNav == 'governance'} ? ' active'" th:href="@{/ui/governance}">Tenant &amp; Feature Flags</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'audit'} ? ' active'" th:href="@{/ui/audit}">Audit Log Explorer</a></li>
+        <li><a class="nav-link" th:href="@{/swagger-ui.html}" target="_blank">OpenAPI / FHIR Docs</a></li>
+    </ul>
+</aside>
+
+<header class="topbar" th:fragment="topbar(pageTitle, facility)">
+    <div class="breadcrumb">
+        <span class="breadcrumb-muted">Hospital / </span>
+        <span th:text="${pageTitle}">Overview</span>
+    </div>
+    <div class="topbar-meta">
+        <span class="mono" th:if="${facility != null}" th:text="${facility.countryIso + ' · ' + facility.currencyCode + ' · ' + facility.timezoneId}">CM · XAF</span>
+        <span class="status-tag status-ok" th:if="${facility != null}" th:text="${facility.lifecycleStatus}">ACTIVE</span>
+    </div>
+</header>
+
+<div th:fragment="flashes">
+    <div class="alert alert-ok" th:if="${notice != null}" th:text="${notice}"></div>
+    <div class="alert alert-error" th:if="${error != null}" th:text="${error}"></div>
+</div>
+</body>
+</html>

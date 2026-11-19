@@ -83,6 +83,13 @@ public class OidcAndSmartSecurityAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    public com.opeshealth.healthcore.security.crypto.ProductionSecretsStartupValidator productionSecretsStartupValidator(
+            org.springframework.core.env.Environment environment) {
+        return new com.opeshealth.healthcore.security.crypto.ProductionSecretsStartupValidator(environment);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(name = "healthCoreJwtAuthenticationConverter")
     public Converter<Jwt, AbstractAuthenticationToken> healthCoreJwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();

@@ -66,6 +66,16 @@ public class DicomPacsProxyService {
         this.dlqRepo = dlqRepo;
     }
 
+    private static final java.util.regex.Pattern DICOM_UID_PATTERN =
+            java.util.regex.Pattern.compile("^(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*))*$");
+
+    public static void validateDicomUid(String uid, String fieldName) {
+        if (uid == null || uid.isBlank() || uid.length() > 64 || !DICOM_UID_PATTERN.matcher(uid).matches()) {
+            throw new IllegalArgumentException("Invalid DICOM UID for " + fieldName + ": '" + uid
+                    + "'. Must contain numeric dot-separated components without leading zeros (max 64 chars).");
+        }
+    }
+
     /** Indexes study metadata locally and forwards binary DICOM frame via STOW-RS when configured. */
     @Transactional
     @ClinicalAudit(action = "DICOM_STOW_RS_PROXY", resourceType = "DicomStudy")
@@ -83,6 +93,13 @@ public class DicomPacsProxyService {
         if (facilityId != null && !facilityId.equals(activeFacility)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Cross-tenant DICOM STOW-RS denied: facility header does not match authenticated tenant.");
+        }
+        validateDicomUid(studyInstanceUid, "StudyInstanceUID");
+        if (patientId == null) {
+            throw new IllegalArgumentException("patientId is required for DICOM STOW-RS.");
+        }
+        if (dicomBytes == null || dicomBytes.length == 0) {
+            throw new IllegalArgumentException("Non-empty binary DICOM payload is required for STOW-RS.");
         }
         if (!pacsEnabled || pacsBaseUrl == null || pacsBaseUrl.isBlank()) {
             throw new UnsupportedOperationException(
@@ -111,7 +128,7 @@ public class DicomPacsProxyService {
                             : "application/dicom");
             applyAuth(req);
             HttpResponse<String> resp = httpClient.send(
-                    req.POST(HttpRequest.BodyPublishers.ofByteArray(dicomBytes != null ? dicomBytes : new byte[0])).build(),
+                    req.POST(HttpRequest.BodyPublishers.ofByteArray(dicomBytes)).build(),
                     HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 throw new IllegalStateException("PACS STOW-RS HTTP " + resp.statusCode());
@@ -121,6 +138,7 @@ public class DicomPacsProxyService {
                     "pacsHttpStatus", resp.statusCode(),
                     "studyId", saved.getId(),
                     "studyInstanceUid", saved.getStudyInstanceUid(),
+                    "bytesStored", dicomBytes.length,
                     "wadoRsUrl", resolvedWado
             );
         } catch (Exception ex) {
@@ -132,15 +150,27 @@ public class DicomPacsProxyService {
     private Map<String, Object> stowFallback(
             UUID facilityId, UUID patientId, String studyInstanceUid, String modality,
             String studyDescription, String contentType, byte[] dicomBytes, Throwable ex) {
+        // Never swallow validation, authorization, or unsupported-configuration errors into a fake DLQ receipt.
+        if (ex instanceof org.springframework.security.access.AccessDeniedException ade) {
+            throw ade;
+        }
+        if (ex instanceof IllegalArgumentException iae) {
+            throw iae;
+        }
+        if (ex instanceof UnsupportedOperationException uoe) {
+            throw uoe;
+        }
+        UUID activeFacility = HieInteropService.requireTenantFacilityId();
         HieDlqMessageEntity dlq = new HieDlqMessageEntity();
         dlq.setProtocol("DICOM");
         dlq.setExternalMessageId(studyInstanceUid);
-        dlq.setRawPayload("{\"facilityId\":\"" + facilityId + "\",\"patientId\":\"" + patientId
+        dlq.setRawPayload("{\"facilityId\":\"" + activeFacility + "\",\"patientId\":\"" + patientId
                 + "\",\"bytes\":" + (dicomBytes != null ? dicomBytes.length : 0) + "}");
         dlq.setErrorDetail(ex.getMessage());
         dlqRepo.save(dlq);
         return Map.of(
                 "status", "QUARANTINED_TO_DLQ",
+                "facilityId", activeFacility,
                 "studyInstanceUid", studyInstanceUid,
                 "reason", Objects.toString(ex.getMessage(), "PACS unavailable")
         );
@@ -151,6 +181,13 @@ public class DicomPacsProxyService {
     @Bulkhead(name = "hieOutbound")
     public ResponseEntity<byte[]> retrieveWadoBinary(String studyUid, String seriesUid, String sopUid) {
         UUID activeFacility = HieInteropService.requireTenantFacilityId();
+        validateDicomUid(studyUid, "StudyInstanceUID");
+        if (seriesUid != null && !seriesUid.isBlank()) {
+            validateDicomUid(seriesUid, "SeriesInstanceUID");
+        }
+        if (sopUid != null && !sopUid.isBlank()) {
+            validateDicomUid(sopUid, "SOPInstanceUID");
+        }
         Optional<DicomStudyEntity> studyOpt = dicomRepo.findFirstByFacilityIdAndStudyInstanceUid(activeFacility, studyUid);
         if (studyOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -187,35 +224,47 @@ public class DicomPacsProxyService {
         }
     }
 
-    /** Executes QIDO-RS study search upstream on PACS or falls back to local DICOM registry. */
+    /** Executes tenant-scoped QIDO-RS study search against the facility's authorized DICOM registry (and enriches via PACS when enabled). */
     @Transactional(readOnly = true)
     @CircuitBreaker(name = "pacsProxy")
     public Object queryQidoStudies(UUID patientId, String modality) {
-        if (pacsEnabled && pacsBaseUrl != null && !pacsBaseUrl.isBlank()) {
-            try {
-                StringBuilder q = new StringBuilder(normalizedBase()).append("/studies?");
-                if (patientId != null) q.append("PatientID=").append(encode(patientId.toString())).append('&');
-                if (modality != null && !modality.isBlank()) q.append("Modality=").append(encode(modality));
-                HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(q.toString()))
-                        .timeout(Duration.ofSeconds(12))
-                        .header("Accept", "application/dicom+json");
-                applyAuth(req);
-                HttpResponse<String> resp = httpClient.send(req.GET().build(), HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                    return ResponseEntity.ok()
-                            .contentType(MediaType.parseMediaType("application/dicom+json"))
-                            .body(resp.body());
-                }
-            } catch (Exception ignored) {
-                // Fall back to local HIE DICOM registry
-            }
-        }
         UUID activeFacility = HieInteropService.requireTenantFacilityId();
         List<DicomStudyEntity> local = patientId != null
                 ? dicomRepo.findByFacilityIdAndPatientIdOrderByStudyDateDesc(activeFacility, patientId)
                 : dicomRepo.findByFacilityIdOrderByStudyDateDesc(activeFacility);
         if (modality != null && !modality.isBlank()) {
             local = local.stream().filter(s -> modality.equalsIgnoreCase(s.getModality())).toList();
+        }
+        // Only query upstream PACS for studies explicitly owned by this facility tenant (never leak cross-tenant PACS studies).
+        if (pacsEnabled && pacsBaseUrl != null && !pacsBaseUrl.isBlank() && !local.isEmpty()) {
+            try {
+                String uidList = local.stream()
+                        .map(DicomStudyEntity::getStudyInstanceUid)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .limit(50)
+                        .reduce((a, b) -> a + "," + b)
+                        .orElse("");
+                if (!uidList.isBlank()) {
+                    StringBuilder q = new StringBuilder(normalizedBase())
+                            .append("/studies?StudyInstanceUID=").append(encode(uidList));
+                    if (modality != null && !modality.isBlank()) {
+                        q.append("&Modality=").append(encode(modality));
+                    }
+                    HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(q.toString()))
+                            .timeout(Duration.ofSeconds(12))
+                            .header("Accept", "application/dicom+json");
+                    applyAuth(req);
+                    HttpResponse<String> resp = httpClient.send(req.GET().build(), HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                        return ResponseEntity.ok()
+                                .contentType(MediaType.parseMediaType("application/dicom+json"))
+                                .body(resp.body());
+                    }
+                }
+            } catch (Exception ignored) {
+                // Fall back to tenant-scoped local DICOM registry
+            }
         }
         return local;
     }
@@ -266,15 +315,15 @@ public class DicomPacsProxyService {
         }
 
         @GetMapping("/studies/{studyUid}")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_dicom:index')")
-        @Operation(summary = "Retrieve WADO-RS study binary / metadata receipt")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
+        @Operation(summary = "Retrieve tenant-scoped WADO-RS study binary")
         public ResponseEntity<byte[]> wadoStudy(@PathVariable String studyUid) {
             return proxy.retrieveWadoBinary(studyUid, null, null);
         }
 
         @GetMapping("/studies/{studyUid}/series/{seriesUid}/instances/{sopUid}")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_dicom:index')")
-        @Operation(summary = "Retrieve WADO-RS single DICOM SOP instance")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
+        @Operation(summary = "Retrieve tenant-scoped WADO-RS single DICOM SOP instance")
         public ResponseEntity<byte[]> wadoInstance(
                 @PathVariable String studyUid,
                 @PathVariable String seriesUid,
@@ -283,8 +332,8 @@ public class DicomPacsProxyService {
         }
 
         @GetMapping("/qido")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_dicom:index')")
-        @Operation(summary = "Query QIDO-RS studies across upstream PACS with local fallback")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
+        @Operation(summary = "Query tenant-scoped QIDO-RS studies across upstream PACS or local metadata registry")
         public Object qidoQuery(
                 @RequestParam(required = false) UUID patientId,
                 @RequestParam(required = false) String modality) {

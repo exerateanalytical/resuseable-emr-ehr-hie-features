@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="patient-portal-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_portal_accounts">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="identity_subject" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="preferred_locale" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="contact_email" type="varchar(160)"/>
+            <column name="contact_phone" type="varchar(64)"/>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_portal_accounts" columnNames="facility_id,identity_subject" constraintName="uq_portal_acct_fac_subj"/>
+
+        <createTable tableName="hc_portal_proxy_grants">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="proxy_subject" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="relationship" type="varchar(48)"><constraints nullable="false"/></column>
+            <column name="allowed_scopes_csv" type="varchar(250)"><constraints nullable="false"/></column>
+            <column name="expires_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="revoked" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="granted_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_portal_message_threads">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="subject" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="care_team_department" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_by_subject" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_portal_messages">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="thread_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="sender_subject" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="sender_role" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="body" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="read_at" type="${ts_type}"/>
+            <column name="sent_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

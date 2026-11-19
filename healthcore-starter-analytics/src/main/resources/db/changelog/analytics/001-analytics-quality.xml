@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="analytics-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_analytics_quality_measures">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="measure_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="measure_title" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="reporting_period" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="numerator_count" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="denominator_count" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="exclusion_count" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="compliance_rate_pct" type="double" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="data_lineage_source" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="calculated_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="calculated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_analytics_quality_measures" indexName="idx_analytics_cqm_fac_period">
+            <column name="facility_id"/><column name="measure_code"/><column name="reporting_period"/>
+        </createIndex>
+
+        <createTable tableName="hc_analytics_cohort_exports">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="cohort_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="filter_criteria_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="export_purpose" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="deidentified_flag" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="minimum_cell_suppression" type="int" defaultValueNumeric="5"><constraints nullable="false"/></column>
+            <column name="matched_patient_count" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="approval_status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="requested_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="approved_by" type="varchar(120)"/>
+            <column name="lineage_sha256" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="requested_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="approved_at" type="${ts_type}"/>
+        </createTable>
+        <createIndex tableName="hc_analytics_cohort_exports" indexName="idx_analytics_cohort_fac_status">
+            <column name="facility_id"/><column name="approval_status"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

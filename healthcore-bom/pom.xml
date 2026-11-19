@@ -28,7 +28,6 @@
         <hapi-fhir.version>8.0.0</hapi-fhir.version>
         <hapi-hl7v2.version>2.5.1</hapi-hl7v2.version>
         <liquibase.version>4.31.1</liquibase.version>
-        <flyway.version>11.3.4</flyway.version>
         <resilience4j.version>2.3.0</resilience4j.version>
         <bucket4j.version>8.14.0</bucket4j.version>
         <caffeine.version>3.2.0</caffeine.version>
@@ -203,6 +202,41 @@
                 <artifactId>healthcore-starter-clinical-ai</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-tenant-governance</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-scheduling</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-orders-results</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-patient-portal</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-radiology</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-emergency-nursing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-analytics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Healthcare Standards: HL7 FHIR R4 + HL7 v2 -->
             <dependency>
@@ -221,31 +255,11 @@
                 <version>${hapi-hl7v2.version}</version>
             </dependency>
 
-            <!-- Multi-DB JDBC Drivers, Liquibase & Flyway -->
+            <!-- Multi-DB JDBC Drivers & Sole Canonical Migration Engine (Liquibase) -->
             <dependency>
                 <groupId>org.liquibase</groupId>
                 <artifactId>liquibase-core</artifactId>
                 <version>${liquibase.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-core</artifactId>
-                <version>${flyway.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-database-postgresql</artifactId>
-                <version>${flyway.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-mysql</artifactId>
-                <version>${flyway.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-sqlserver</artifactId>
-                <version>${flyway.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.postgresql</groupId>

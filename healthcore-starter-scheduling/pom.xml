@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Enterprise Scheduling, Queues & Resource Calendars Starter
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>healthcore-starter-scheduling</artifactId>
+    <name>Opes HealthCore Starter — Scheduling, Resource Calendars &amp; Queues</name>
+    <description>
+        Provider, room, clinic, and equipment calendars, appointment types, conflict and
+        overbooking detection, recurring appointment series, outpatient check-in queues,
+        waitlists, and FHIR R4 Schedule/Appointment projections.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ca.uhn.hapi.fhir</groupId>
+            <artifactId>hapi-fhir-structures-r4</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

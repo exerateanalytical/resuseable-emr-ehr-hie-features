@@ -38,17 +38,6 @@ spring:
     # Liquibase is the sole canonical multi-RDBMS schema migration owner (PostgreSQL, MSSQL, MySQL).
     enabled: ${HEALTHCORE_LIQUIBASE_ENABLED:true}
     change-log: classpath:db/changelog/db.changelog-master.xml
-  flyway:
-    # Disabled by default to prevent dual-tool migration conflicts against the same schema.
-    # Enable ONLY if explicitly replacing Liquibase (HEALTHCORE_LIQUIBASE_ENABLED=false HEALTHCORE_FLYWAY_ENABLED=true).
-    enabled: ${HEALTHCORE_FLYWAY_ENABLED:false}
-    baseline-on-migrate: true
-    baseline-version: 0
-    baseline-description: "Opes HealthCore multi-RDBMS baseline"
-    validate-on-migrate: true
-    out-of-order: false
-    table: flyway_schema_history
-    locations: classpath:db/migration/{vendor}
   graphql:
     http:
       path: /graphql
@@ -206,8 +195,6 @@ spring:
     username: ${HEALTHCORE_DB_USER:healthcore_app}
     password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
     driver-class-name: org.postgresql.Driver
-  flyway:
-    locations: classpath:db/migration/postgresql
 
 ---
 spring:
@@ -219,8 +206,6 @@ spring:
     username: ${HEALTHCORE_DB_USER:sa}
     password: ${HEALTHCORE_DB_PASSWORD:OpesHealth!2026Strong}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-  flyway:
-    locations: classpath:db/migration/sqlserver
 
 ---
 # Windows Server Active Directory Integrated Authentication (Kerberos / NTLM)
@@ -231,8 +216,6 @@ spring:
   datasource:
     url: ${HEALTHCORE_DB_URL:jdbc:sqlserver://localhost:1433;databaseName=healthcore;integratedSecurity=true;encrypt=true;trustServerCertificate=true}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-  flyway:
-    locations: classpath:db/migration/sqlserver
 
 ---
 spring:
@@ -244,8 +227,6 @@ spring:
     username: ${HEALTHCORE_DB_USER:healthcore_app}
     password: ${HEALTHCORE_DB_PASSWORD:change_me_in_prod}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  flyway:
-    locations: classpath:db/migration/mysql
 
 ---
 spring:

@@ -54,6 +54,7 @@ public class UhcBillingService {
     }
     public interface LedgerEntryRepository extends JpaRepository<LedgerEntryEntity, UUID> {
         List<LedgerEntryEntity> findByJournalBatchId(UUID journalBatchId);
+        List<LedgerEntryEntity> findByAccountIdOrderByPostedAtAsc(UUID accountId);
     }
     public interface CbhiPolicyRepository extends JpaRepository<CbhiPolicyEntity, UUID> {
         Optional<CbhiPolicyEntity> findByPolicyNumberAndActiveTrue(String policyNumber);
@@ -536,6 +537,50 @@ public class UhcBillingService {
         }
     }
 
+    public record AccountReconciliationReport(
+            UUID facilityId,
+            UUID patientId,
+            UUID accountId,
+            String currency,
+            long accountBalanceMinor,
+            long totalDebitsMinor,
+            long totalCreditsMinor,
+            boolean doubleEntryBalanced,
+            int entryCount,
+            List<LedgerEntryEntity> movements
+    ) {}
+
+    /**
+     * Generates a complete double-entry reconciliation report explaining every movement on a patient's account
+     * and verifying debit/credit equilibrium across all journal batches.
+     */
+    @Transactional(readOnly = true)
+    public AccountReconciliationReport generateAccountReconciliationReport(UUID facilityId, UUID patientId) {
+        PatientAccountEntity account = accountRepo.findByFacilityIdAndPatientId(facilityId, patientId)
+                .orElseThrow(() -> new NoSuchElementException("Patient billing account not found for facility=" + facilityId + " patient=" + patientId));
+        List<LedgerEntryEntity> entries = ledgerRepo.findByAccountIdOrderByPostedAtAsc(account.getId());
+        long totalDebits = entries.stream()
+                .filter(e -> "DEBIT".equalsIgnoreCase(e.getEntryType()))
+                .mapToLong(LedgerEntryEntity::getAmountMinor)
+                .sum();
+        long totalCredits = entries.stream()
+                .filter(e -> "CREDIT".equalsIgnoreCase(e.getEntryType()))
+                .mapToLong(LedgerEntryEntity::getAmountMinor)
+                .sum();
+        return new AccountReconciliationReport(
+                facilityId,
+                patientId,
+                account.getId(),
+                account.getCurrency(),
+                account.getBalanceMinor(),
+                totalDebits,
+                totalCredits,
+                totalDebits == totalCredits,
+                entries.size(),
+                entries
+        );
+    }
+
     private void emitOutbox(String type, UUID id, String evtType, String json) {
         TransactionalOutboxEntity e = new TransactionalOutboxEntity();
         e.setIdempotencyKey(type + ":" + evtType + ":" + id + ":" + e.getId());
@@ -614,6 +659,15 @@ public class UhcBillingService {
                 @PathVariable UUID journalBatchId,
                 @RequestParam String reason) {
             return service.reverseJournalBatch(journalBatchId, reason);
+        }
+
+        @GetMapping("/api/v1/uhc/accounts/{patientId}/reconciliation")
+        @PreAuthorize("hasAuthority('PERM_billing:invoice') or hasAuthority('PERM_audit:read')")
+        @Operation(summary = "Generate balanced double-entry reconciliation report explaining every patient account movement")
+        public AccountReconciliationReport reconciliationReport(
+                @RequestParam UUID facilityId,
+                @PathVariable UUID patientId) {
+            return service.generateAccountReconciliationReport(facilityId, patientId);
         }
 
         @PostMapping("/api/v1/uhc/claims/adjudicate")

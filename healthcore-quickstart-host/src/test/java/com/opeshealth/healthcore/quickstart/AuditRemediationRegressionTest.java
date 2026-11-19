@@ -57,7 +57,7 @@ import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.PractitionerCred
 import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.CredentialRepository;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
-import com.opeshealth.healthcore.persistence.tenancy.FacilityContext;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.pharmacylis.domain.PharmacyLisEntities.MedicationBatchEntity;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.MedicationBatchRepository;
@@ -135,6 +135,7 @@ class AuditRemediationRegressionTest {
                 HieInteropService.FhirHieController.class,
                 HieInteropService.InteroperabilityIheController.class,
                 HieInteropService.Hl7AstmDicomController.class,
+                DicomPacsProxyService.DicomPacsController.class,
                 HospitalOpsService.WorkforceRosterController.class,
                 OfflineSyncService.OfflineSyncController.class,
                 WorkflowOrchestrationService.WorkflowGatewayController.class,

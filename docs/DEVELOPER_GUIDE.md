@@ -22,7 +22,7 @@ This handbook provides copy-pasteable Maven recipes, architecture blueprints, se
 
 ## 2. Quick-Start Maven BOM Recipes by Application Archetype
 
-All projects import the centralized `healthcore-bom` first so Spring Boot 4.0, HAPI FHIR R4, Flyway/Liquibase, Resilience4j, and JDBC driver versions stay aligned.
+All projects import the centralized `healthcore-bom` first so Spring Boot 4.0, HAPI FHIR R4, Liquibase, Resilience4j, and JDBC driver versions stay aligned.
 
 ```xml
 <dependencyManagement>
@@ -81,14 +81,14 @@ Include all modules from **Recipe A**, plus:
 
 ## 3. Multi-RDBMS Configuration & Running Locally
 
-Opes HealthCore natively supports **PostgreSQL 16+**, **MySQL 8.4+**, and **SQL Server 2022+** with automated Flyway/Liquibase schema migrations.
+Opes HealthCore natively supports **PostgreSQL 16+**, **MySQL 8.4+**, and **SQL Server 2022+** with **Liquibase** as the sole canonical schema migration owner.
 
 ```bash
 # Start PostgreSQL 16 + Keycloak 26
 docker compose up -d
 
-# Run on PostgreSQL 16 (Default Port 3000)
-mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=postgres,keycloak
+# Run on PostgreSQL 16 with dev-seed demonstration hospital + Reference Hospital UI (Port 3000)
+mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=postgres,keycloak,dev-seed
 
 # Run on MySQL 8.4
 mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=mysql,keycloak
@@ -99,6 +99,8 @@ mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=ms
 
 Interactive OpenAPI 3.1 Swagger UI is served at:
 `http://localhost:3000/swagger-ui.html`
+Pure Java Reference Hospital Workstation UI is served at:
+`http://localhost:3000/ui/overview`
 
 ---
 
@@ -235,7 +237,7 @@ Add the `healthcore-mobile-kmp:healthcore-mobile-sdk` dependency to your Android
 
 ## 7. Production Deployment & Go-Live Checklist
 
-- [ ] **Database & RLS**: Run Flyway/Liquibase migrations and apply PostgreSQL RLS policies (`enable-rls-policies.sql`) before opening clinical traffic.
+- [ ] **Database & RLS**: Run Liquibase migrations (`db.changelog-master.xml`) and apply PostgreSQL RLS policies (`enable-rls-policies.sql`) before opening clinical traffic.
 - [ ] **Identity & mTLS**: Point `spring.security.oauth2.resourceserver.jwt.issuer-uri` to production Keycloak/OIDC and enable `mtls` profile for HIE gateway traffic.
 - [ ] **Signing Keys**: Rotate RS256 / Ed25519 signing keys into HSM/KMS and publish `/.well-known/jwks.json` for IPS and Digital Health Certificate verification.
 - [ ] **Rate Limiting & DLQ Monitoring**: Configure Bucket4j quotas per tenant archetype (`TenantGovernanceController`) and monitor `/api/v1/ops/dlq/summary` alerts.

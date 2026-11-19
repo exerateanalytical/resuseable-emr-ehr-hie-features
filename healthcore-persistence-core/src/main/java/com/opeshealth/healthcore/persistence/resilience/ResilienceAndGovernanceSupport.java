@@ -103,18 +103,31 @@ public final class ResilienceAndGovernanceSupport {
 
         @Around("@annotation(org.springframework.transaction.annotation.Transactional) || within(@org.springframework.transaction.annotation.Transactional *)")
         public Object bindPostgresFacilityTenant(ProceedingJoinPoint pjp) throws Throwable {
-            if (postgresDialect) {
-                Optional<UUID> facilityId = tenantSupplier.currentFacilityId();
-                if (facilityId.isPresent()) {
-                    // Third arg 'true' scopes set_config strictly to the current PostgreSQL transaction.
+            if (!postgresDialect) {
+                return pjp.proceed();
+            }
+            Optional<UUID> facilityId = tenantSupplier.currentFacilityId();
+            String boundValue = facilityId.map(UUID::toString).orElse("");
+            // Third arg 'true' scopes set_config strictly to the current PostgreSQL transaction.
+            // Binding '' when absent enforces fail-closed RLS behavior on pooled connections.
+            jdbcTemplate.queryForObject(
+                    "SELECT set_config('app.current_facility_id', ?, true)",
+                    String.class,
+                    boundValue
+            );
+            try {
+                return pjp.proceed();
+            } finally {
+                // Explicitly clear session GUC after execution so pooled connections never inherit prior tenant state.
+                try {
                     jdbcTemplate.queryForObject(
-                            "SELECT set_config('app.current_facility_id', ?, true)",
-                            String.class,
-                            facilityId.get().toString()
+                            "SELECT set_config('app.current_facility_id', '', true)",
+                            String.class
                     );
+                } catch (Exception ignored) {
+                    // Transaction may already be marked rollback-only; PostgreSQL transaction-local GUC resets automatically on rollback.
                 }
             }
-            return pjp.proceed();
         }
     }
 

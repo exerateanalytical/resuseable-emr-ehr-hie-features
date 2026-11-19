@@ -93,11 +93,14 @@ public class InteroperabilityIheStarter {
                 throw new IllegalArgumentException("IHE MHD ITI-65 requires a valid contentAttachment.contentType mimeType");
             }
 
+            UUID activeFacilityId = HieInteropService.requireTenantFacilityId();
+            HieInteropService.enforcePayloadFacilityMatchesTenant(submission.facilityId(), activeFacilityId);
+
             String payload = submission.documentPayloadContent() != null ? submission.documentPayloadContent() : "";
             String sha256 = computeSha256Hex(payload);
 
             IheDocumentEntity doc = new IheDocumentEntity();
-            doc.setFacilityId(submission.facilityId() != null ? submission.facilityId() : new UUID(0L, 1L));
+            doc.setFacilityId(activeFacilityId);
             doc.setPatientId(submission.patientId());
             doc.setClassCode(submission.classCode() != null && !submission.classCode().isBlank()
                     ? submission.classCode().trim()
@@ -146,8 +149,8 @@ public class InteroperabilityIheStarter {
         }
 
         @PostMapping("/mhd/validate-and-publish")
-        @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign')")
-        @Operation(summary = "Validate IHE MHD ITI-65 DocumentReference metadata, compute SHA-256 digest, and persist")
+        @PreAuthorize("hasAuthority('PERM_patient:read') and (hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign'))")
+        @Operation(summary = "Validate IHE MHD ITI-65 DocumentReference metadata, compute SHA-256 digest, and persist (tenant-scoped)")
         public IheDocumentEntity publishMhdDocument(@RequestBody IheMhdPublishSubmission submission) {
             return iheProfileRegistryService.validateAndPublishMhdDocument(submission);
         }

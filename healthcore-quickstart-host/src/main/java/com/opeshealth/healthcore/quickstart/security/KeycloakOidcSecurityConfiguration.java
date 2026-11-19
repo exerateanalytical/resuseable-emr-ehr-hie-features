@@ -202,14 +202,36 @@ public class KeycloakOidcSecurityConfiguration {
     }
 
     @Bean
+    @org.springframework.core.annotation.Order(1)
+    public SecurityFilterChain workstationUiSecurityFilterChain(
+            HttpSecurity http,
+            org.springframework.core.env.Environment environment) throws Exception {
+        boolean devSeedActive = Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> p.equalsIgnoreCase("dev-seed"));
+        return http
+                .securityMatcher("/ui/**", "/css/**")
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/css/**").permitAll();
+                    if (devSeedActive) {
+                        auth.requestMatchers("/ui/**").permitAll();
+                    } else {
+                        auth.requestMatchers("/ui/**").authenticated();
+                    }
+                })
+                .build();
+    }
+
+    @Bean
+    @org.springframework.core.annotation.Order(2)
     public SecurityFilterChain keycloakSecurityFilterChain(
             HttpSecurity http,
             JwtDecoder keycloakJwtDecoder,
             Converter<Jwt, AbstractAuthenticationToken> healthCoreJwtAuthenticationConverter,
             FacilityTenantInterceptor facilityTenantInterceptor,
+            org.springframework.beans.factory.ObjectProvider<com.opeshealth.healthcore.governance.service.TenantGovernanceService.TenantGovernanceGuardFilter> governanceGuardProvider,
             FhirApiRateLimitFilter fhirApiRateLimitFilter,
             CorsConfigurationSource keycloakCorsConfigurationSource) throws Exception {
-        return http
+        http
                 .cors(cors -> cors.configurationSource(keycloakCorsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -231,7 +253,12 @@ public class KeycloakOidcSecurityConfiguration {
                         .decoder(keycloakJwtDecoder)
                         .jwtAuthenticationConverter(healthCoreJwtAuthenticationConverter)))
                 .addFilterAfter(facilityTenantInterceptor, BearerTokenAuthenticationFilter.class)
-                .addFilterAfter(fhirApiRateLimitFilter, FacilityTenantInterceptor.class)
-                .build();
+                .addFilterAfter(fhirApiRateLimitFilter, FacilityTenantInterceptor.class);
+
+        var guard = governanceGuardProvider.getIfAvailable();
+        if (guard != null) {
+            http.addFilterAfter(guard, FacilityTenantInterceptor.class);
+        }
+        return http.build();
     }
 }

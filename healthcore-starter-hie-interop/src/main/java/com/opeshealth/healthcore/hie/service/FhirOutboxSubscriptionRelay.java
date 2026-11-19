@@ -12,6 +12,7 @@ package com.opeshealth.healthcore.hie.service;
 import com.opeshealth.healthcore.hie.domain.HieEntities.FhirSubscriptionEntity;
 import com.opeshealth.healthcore.hie.service.HieInteropService.FhirSubscriptionRepository;
 import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,12 +21,15 @@ import org.springframework.context.event.EventListener;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Automatically subscribes to domain events emitted by {@code OutboxRelayService}
  * (e.g. {@code PatientRegisteredEvent}, {@code LabResultVerifiedEvent},
  * {@code ColdChainExcursionEvent}, {@code OutbreakThresholdExceededEvent}) and pushes
- * HMAC-signed REST-Hook notifications to all matching ACTIVE FHIR Subscriptions.
+ * HMAC-signed REST-Hook notifications strictly to matching ACTIVE FHIR Subscriptions
+ * belonging to the same {@code facility_id} tenant.
  */
 public class FhirOutboxSubscriptionRelay {
 
@@ -46,29 +50,42 @@ public class FhirOutboxSubscriptionRelay {
 
     @EventListener
     public void onDomainEvent(HealthCoreDomainEvent event) {
-        if (!relayEnabled || event == null) {
+        if (!relayEnabled || event == null || event.facilityId() == null) {
             return;
         }
-        List<FhirSubscriptionEntity> activeSubs = subscriptionRepo.findByStatus("ACTIVE");
+        UUID eventFacilityId = event.facilityId();
+        List<FhirSubscriptionEntity> activeSubs = subscriptionRepo.findByFacilityId(eventFacilityId).stream()
+                .filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus()))
+                .toList();
         if (activeSubs.isEmpty()) {
             return;
         }
         String envelopeJson = buildFhirEventEnvelope(event);
-        for (FhirSubscriptionEntity sub : activeSubs) {
-            if (matchesSubscription(sub, event)) {
-                try {
-                    hieService.dispatchSignedWebhook(sub.getId(), envelopeJson);
-                } catch (Exception ex) {
-                    log.warn("FHIR subscription relay {} failed for event {}: {}",
-                            sub.getId(), event.eventType(), ex.getMessage());
+        Optional<UUID> previousFacility = FacilityContext.getFacilityId();
+        try {
+            FacilityContext.setFacilityId(eventFacilityId);
+            for (FhirSubscriptionEntity sub : activeSubs) {
+                if (matchesSubscription(sub, event)) {
+                    try {
+                        hieService.dispatchSignedWebhook(sub.getId(), envelopeJson);
+                    } catch (Exception ex) {
+                        log.warn("FHIR subscription relay {} failed for event {}: {}",
+                                sub.getId(), event.eventType(), ex.getMessage());
+                    }
                 }
+            }
+        } finally {
+            if (previousFacility.isPresent()) {
+                FacilityContext.setFacilityId(previousFacility.get());
+            } else {
+                FacilityContext.clear();
             }
         }
     }
 
     public boolean matchesSubscription(FhirSubscriptionEntity sub, HealthCoreDomainEvent event) {
-        if (sub.getFacilityId() != null && event.facilityId() != null
-                && !Objects.equals(sub.getFacilityId(), event.facilityId())) {
+        if (sub == null || event == null || sub.getFacilityId() == null || event.facilityId() == null
+                || !Objects.equals(sub.getFacilityId(), event.facilityId())) {
             return false;
         }
         String criteria = Objects.toString(sub.getCriteria(), "*").trim().toLowerCase(Locale.ROOT);

@@ -44,7 +44,11 @@
 | `healthcore-starter-templates-dashboards` | **608 bilingual (EN/FR) authentic hospital templates**, `QuestionnaireResponse`, OpenHTMLtoPDF PDF/A, **7 live SQL CQRS dashboards**, Apache POI XLSX + CSV bulk import/export, Cascading Facility Onboarding, concrete PG/MSSQL/MySQL backup & PITR/Edge DR |
 | `healthcore-starter-api-product` | OpenAPI 3.1 contract, API keys, sliding-window rate limiter (`429 Retry-After`), HMAC webhook signer |
 | `healthcore-starter-clinical-ai` | Server-side Gemini Clinical AI gateway (`gemini-4-hydrogen`, `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `gemini-embedding-2`, `gemini-decision-1`), heuristic PHI risk-reduction pre-filter, durable JPA-backed tenant kill-switch, clinician attestation drafts, and fail-closed SHA-256 hash-chained audit logs |
-| `healthcore-quickstart-host` | Reference Spring Boot 4.0 + PostgreSQL 16+ backend host, `pg_trgm` GIN & partial index changelog, `enable-rls-policies.sql`, Keycloak realm, Logback PHI redaction, Windows WinSW service, ArchUnit & Testcontainers multi-DB suite |
+| `healthcore-starter-tenant-governance` | Multi-tenant organization/facility/department hierarchy, facility onboarding/read-only/suspension/offboarding lifecycle enforcement (`TenantGovernanceGuardFilter`), durable feature flags & kill switches, and time-bound cross-facility access grants |
+| `healthcore-starter-scheduling` | Provider/room/equipment/clinic calendars, appointment types, overlap & overbooking conflict detection (`409`), recurring series, outpatient check-in queues, waitlists, and FHIR R4 `Schedule`/`Appointment` projections |
+| `healthcore-starter-orders-results` | Unified common clinical order engine (lab, imaging, medication, procedure, referral), reusable order sets, specimen accessioning, immutable result amendment lineage, mandatory critical-value closed-loop acknowledgment, non-recursive reflex rules, and FHIR R4 `ServiceRequest`/`DiagnosticReport` projections |
+| `healthcore-starter-patient-portal` | Patient-scoped and proxy-authorized portal APIs for appointments, verified-only (`FINAL`/`AMENDED`) lab results, multilingual locale preferences, and secure patient-to-care-team messaging |
+| `healthcore-quickstart-host` | Reference Spring Boot 4.0 + PostgreSQL 16+ host with Pure Java Spring MVC + Thymeleaf Reference Hospital Workstation (`/ui/overview`), `dev-seed` demonstration hospital seeder, Liquibase multi-RDBMS master changelog, `enable-rls-policies.sql`, Keycloak realm, Logback PHI redaction, ArchUnit & Testcontainers multi-DB suite |
 | `healthcore-mobile-kmp` | Pure Kotlin + Compose Multiplatform Android (SQLCipher/WorkManager/Camera QR) + iPhone/iPadOS (Keychain/Apple Pencil/BGTaskScheduler) companion foundation |
 
 ### Granular Composable Standalone Starters
@@ -69,8 +73,8 @@ Pick only the exact slices your facility or SaaS product requires:
 
 ## Scope, Integration Defaults & Compliance Notices
 
-### 1. Backend SDK & API Suite (No Web Frontend UI Included)
-This repository provides **Java 25 / Spring Boot 4.0 backend starters**, an **OpenAPI 3.1 Swagger UI** (`/swagger-ui.html`), and a **Kotlin/Compose Multiplatform mobile foundation** (`healthcore-mobile-kmp`). It does **not** include a browser-based hospital web application UI; teams pair these APIs with their own web or mobile client.
+### 1. Pure Java Reference Hospital Workstation & Backend SDK
+This repository provides **Java 25 / Spring Boot 4.0 reusable starters**, an **OpenAPI 3.1 Swagger UI** (`/swagger-ui.html`), a **Pure Java Spring MVC + Thymeleaf Reference Hospital Workstation** (`/ui/overview`, zero TypeScript/Node.js) wired to real starter services, and a **Kotlin/Compose Multiplatform mobile foundation** (`healthcore-mobile-kmp`). Launch with `-Dspring-boot.run.profiles=postgres,keycloak,dev-seed` to seed the demonstration hospital (`Douala Reference Hospital`) cleanly outside production.
 
 ### 2. Optional Integrations Disabled by Default
 Core persistence, RBAC/ABAC security, auditing, and clinical REST/FHIR APIs work out of the box with a relational database and OIDC provider. The following external integrations are **optional extension points disabled by default** in `application.yml` until explicitly configured and enabled:
@@ -86,8 +90,8 @@ Core persistence, RBAC/ABAC security, auditing, and clinical REST/FHIR APIs work
 - **Clinical Rules Validation**: Deterministic RCP NEWS2 Scale 1 scoring, ABO/RhD PRBC/FFP blood compatibility checks, 5-Rights eMAR verification, and CPOE CDSS guardrails require independent clinical domain sign-off and local formulary/terminology configuration before live patient care.
 
 ### 4. Schema Migration Ownership & Externalized Secrets
-- **Liquibase is the sole default schema migration owner** (`spring.liquibase.enabled: true`, `spring.flyway.enabled: false`) across PostgreSQL, MSSQL, and MySQL. Do not enable Flyway concurrently against the same database schema.
-- All signing secrets (`HEALTHCORE_HIE_WEBHOOK_SECRET`, `HEALTHCORE_UHC_QR_SIGNING_SECRET`, `HEALTHCORE_UHC_MOMO_WEBHOOK_SECRET`, `HEALTHCORE_PII_AES_KEY_B64`, `HEALTHCORE_PII_HMAC_KEY_B64`) are externalized (see `.env.example`) and fail closed when absent.
+- **Liquibase is the sole authoritative schema migration owner** (`spring.liquibase.enabled: true`) across PostgreSQL 16+, MSSQL 2022+, and MySQL 8.4+. Legacy Flyway dependencies, configuration, and SQL folders have been removed to guarantee a single deterministic schema history.
+- All signing secrets (`HEALTHCORE_HIE_WEBHOOK_SECRET`, `HEALTHCORE_UHC_QR_SIGNING_SECRET`, `HEALTHCORE_UHC_MOMO_WEBHOOK_SECRET`, `HEALTHCORE_PII_AES_KEY_B64`, `HEALTHCORE_PII_HMAC_KEY_B64`) are externalized (see `.env.example`) and enforced at boot by `ProductionSecretsStartupValidator` whenever `prod` or `production` profiles are active (which also aborts boot if `dev-seed` is accidentally enabled).
 
 ---
 
@@ -107,10 +111,11 @@ mvn clean test
 # 3. Run Testcontainers Multi-DB Liquibase Parity Suite (PostgreSQL + MSSQL + MySQL)
 mvn test -Dgroups=multidb-it
 
-# 4. Launch Quickstart Host (Port 3000)
-mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=postgres,keycloak
+# 4. Launch Quickstart Host with Reference Hospital UI + Demo Hospital Seed (Port 3000 -> http://localhost:3000/ui/overview)
+mvn -pl healthcore-quickstart-host spring-boot:run -Dspring-boot.run.profiles=postgres,keycloak,dev-seed
 
 # Optional profiles:
+#   -Dspring-boot.run.profiles=postgres,keycloak           (Production-like without demo seed)
 #   -Dspring-boot.run.profiles=mssql,keycloak              (Windows SQL Server)
 #   -Dspring-boot.run.profiles=mssql-integrated,keycloak   (Windows AD Integrated Auth)
 #   -Dspring-boot.run.profiles=mysql,keycloak              (MySQL 8.4)

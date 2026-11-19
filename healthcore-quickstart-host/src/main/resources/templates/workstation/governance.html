@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Facility Departments &amp; Capacity</h2>
+                    </div>
+                    <div th:if="${#lists.isEmpty(departments)}" class="empty-state">
+                        No departments configured for this facility.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(departments)}">
+                        <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Department</th>
+                            <th>Type</th>
+                            <th class="num">Beds</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="d : ${departments}">
+                            <td class="mono" th:text="${d.departmentCode}">WARD-A</td>
+                            <td th:text="${d.name}">Medical Ward A</td>
+                            <td class="mono" th:text="${d.departmentType}">INPATIENT_WARD</td>
+                            <td class="mono num" th:text="${d.bedCapacity}">24</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Durable Feature Flags &amp; Kill Switches</h2>
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(flags)}">
+                        <thead>
+                        <tr>
+                            <th>Flag Key</th>
+                            <th>Enabled</th>
+                            <th>Kill Switch</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="f : ${flags}">
+                            <td class="mono" th:text="${f.flagKey}">orders.reflex.engine</td>
+                            <td>
+                                <span class="status-tag" th:classappend="${f.enabled and !f.killSwitch} ? ' status-ok' : ' status-warn'"
+                                      th:text="${f.enabled ? 'TRUE' : 'FALSE'}">TRUE</span>
+                            </td>
+                            <td>
+                                <span class="status-tag" th:classappend="${f.killSwitch} ? ' status-crit'"
+                                      th:text="${f.killSwitch ? 'ACTIVE_KILL' : 'OFF'}">OFF</span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <div class="panel-body">
+                        <form th:action="@{/ui/governance/flags}" method="post" class="form-grid">
+                            <div class="form-field full">
+                                <label>Flag Key</label>
+                                <input type="text" name="flagKey" required placeholder="clinical.ai.coding"/>
+                            </div>
+                            <div class="form-field">
+                                <label>Enabled</label>
+                                <select name="enabled">
+                                    <option value="true">True</option>
+                                    <option value="false">False</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label>Kill Switch Override</label>
+                                <select name="killSwitch">
+                                    <option value="false">Off</option>
+                                    <option value="true">Activate Kill Switch</option>
+                                </select>
+                            </div>
+                            <div class="form-field full">
+                                <button type="submit" class="btn btn-primary">Save Flag Policy</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

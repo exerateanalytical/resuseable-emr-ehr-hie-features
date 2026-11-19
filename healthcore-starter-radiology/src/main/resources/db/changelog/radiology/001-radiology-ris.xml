@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="radiology-ris-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_ris_modality_worklist">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="accession_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="study_instance_uid" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="modality" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="procedure_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="procedure_description" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="body_site" type="varchar(120)"/>
+            <column name="clinical_indication" type="varchar(500)"/>
+            <column name="scheduled_station_ae" type="varchar(64)"/>
+            <column name="ordering_clinician_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="stat_urgent" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="mpps_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="performing_technologist_id" type="varchar(120)"/>
+            <column name="series_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="instance_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="scheduled_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="started_at" type="${ts_type}"/>
+            <column name="completed_at" type="${ts_type}"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_ris_modality_worklist" columnNames="facility_id,accession_number" constraintName="uq_ris_mwl_facility_accession"/>
+        <createIndex tableName="hc_ris_modality_worklist" indexName="idx_ris_mwl_facility_status">
+            <column name="facility_id"/><column name="mpps_status"/><column name="stat_urgent"/>
+        </createIndex>
+
+        <createTable tableName="hc_ris_diagnostic_reports">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="worklist_item_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="accession_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="study_instance_uid" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="report_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="findings_text" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="impression_text" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="radiologist_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="critical_finding" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="critical_category" type="varchar(64)"/>
+            <column name="critical_acknowledged" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="acknowledged_by" type="varchar(120)"/>
+            <column name="readback_notes" type="varchar(500)"/>
+            <column name="acknowledged_at" type="${ts_type}"/>
+            <column name="supersedes_report_id" type="${uuid_type}"/>
+            <column name="signed_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_ris_diagnostic_reports" indexName="idx_ris_reports_facility_critical">
+            <column name="facility_id"/><column name="critical_finding"/><column name="critical_acknowledged"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

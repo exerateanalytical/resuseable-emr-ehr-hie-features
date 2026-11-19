@@ -10,6 +10,7 @@
 package com.opeshealth.healthcore.hie.autoconfigure;
 
 import com.opeshealth.healthcore.hie.domain.HieEntities;
+import com.opeshealth.healthcore.hie.security.HieInteropSecurityConfiguration;
 import com.opeshealth.healthcore.hie.service.DicomPacsProxyService;
 import com.opeshealth.healthcore.hie.service.DicomPacsProxyService.DicomPacsController;
 import com.opeshealth.healthcore.hie.service.FhirOutboxSubscriptionRelay;
@@ -27,6 +28,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +36,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 
 @AutoConfiguration
+@Import(HieInteropSecurityConfiguration.class)
 @EntityScan(basePackageClasses = HieEntities.class)
 @EnableJpaRepositories(basePackageClasses = HieInteropService.class)
 public class HieInteropAutoConfiguration {

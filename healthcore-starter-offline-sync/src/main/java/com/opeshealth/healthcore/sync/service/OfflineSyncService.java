@@ -10,8 +10,8 @@
 package com.opeshealth.healthcore.sync.service;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
-import com.opeshealth.healthcore.persistence.tenancy.FacilityContext;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock.Ed25519QrHealthCardSigner;
 import io.swagger.v3.oas.annotations.Operation;
@@ -162,6 +162,7 @@ public class OfflineSyncService {
     private final SyncConflictRepository conflictRepo;
     private final HybridLogicalClock hlc;
     private final Ed25519QrHealthCardSigner qrSigner;
+    private OfflineDeviceGovernanceService deviceGovernanceService;
 
     public OfflineSyncService(
             SyncDeltaRepository deltaRepo,
@@ -174,6 +175,10 @@ public class OfflineSyncService {
         this.conflictRepo = conflictRepo;
         this.hlc = hlc;
         this.qrSigner = qrSigner;
+    }
+
+    public void setDeviceGovernanceService(OfflineDeviceGovernanceService deviceGovernanceService) {
+        this.deviceGovernanceService = deviceGovernanceService;
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +203,9 @@ public class OfflineSyncService {
         int quarantined = 0;
 
         for (IncomingMutation m : mutations) {
+            if (deviceGovernanceService != null) {
+                deviceGovernanceService.assertDeviceAuthorizedForSync(facilityId, m.originNodeId());
+            }
             Optional<SyncDeltaRecordEntity> latest = deltaRepo
                     .findTopByFacilityIdAndEntityTypeAndEntityIdOrderBySyncSeqDesc(facilityId, m.entityType(), m.entityId());
 
@@ -256,7 +264,7 @@ public class OfflineSyncService {
     public Map<String, Object> resolveConflict(UUID conflictId, String resolution, String resolvedBy) {
         SyncConflictEntity conflict = conflictRepo.findById(conflictId)
                 .orElseThrow(() -> new NoSuchElementException("Sync conflict not found: " + conflictId));
-        UUID activeFacility = FacilityContext.getFacilityId();
+        UUID activeFacility = FacilityContext.getFacilityId().orElse(null);
         if (activeFacility != null && !activeFacility.equals(conflict.getFacilityId())) {
             throw new AccessDeniedException("Cross-tenant conflict resolution denied for conflict " + conflictId);
         }
@@ -321,10 +329,9 @@ public class OfflineSyncService {
         }
 
         private static UUID requireMatchingFacility(UUID requestedFacilityId) {
-            UUID active = FacilityContext.getFacilityId();
-            if (active == null) {
-                throw new AccessDeniedException("Tenant facility context is required for offline sync operations.");
-            }
+            UUID active = FacilityContext.getFacilityId()
+                    .orElseThrow(() -> new AccessDeniedException(
+                            "Tenant facility context is required for offline sync operations."));
             if (requestedFacilityId != null && !active.equals(requestedFacilityId)) {
                 throw new AccessDeniedException("Cross-tenant sync access denied: requested facility does not match active tenant.");
             }

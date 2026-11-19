@@ -86,6 +86,13 @@
         <module>healthcore-starter-interoperability-ihe</module>
         <module>healthcore-starter-workflow-engine</module>
         <module>healthcore-starter-clinical-ai</module>
+        <module>healthcore-starter-tenant-governance</module>
+        <module>healthcore-starter-scheduling</module>
+        <module>healthcore-starter-orders-results</module>
+        <module>healthcore-starter-patient-portal</module>
+        <module>healthcore-starter-radiology</module>
+        <module>healthcore-starter-emergency-nursing</module>
+        <module>healthcore-starter-analytics</module>
         <module>healthcore-quickstart-host</module>
     </modules>
 

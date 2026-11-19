@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Registered Patients (MPI)</div>
+                    <div class="kpi-value" th:text="${patientCount}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Scheduled Appointments</div>
+                    <div class="kpi-value" th:text="${appointmentCount}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Unified Clinical Orders</div>
+                    <div class="kpi-value" th:text="${orderCount}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Critical Results Awaiting Ack</div>
+                    <div class="kpi-value" th:classappend="${criticalCount > 0} ? ' critical'" th:text="${criticalCount}">0</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Critical Results — Closed-Loop Acknowledgment Queue</h2>
+                        <a class="btn btn-secondary btn-sm" th:href="@{/ui/orders}">Open Orders &amp; Labs</a>
+                    </div>
+                    <div th:if="${#lists.isEmpty(criticalQueue)}" class="empty-state">
+                        No unacknowledged critical results pending clinician review.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(criticalQueue)}">
+                        <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Test</th>
+                            <th class="num">Value</th>
+                            <th>Flag</th>
+                            <th>Action</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="r : ${criticalQueue}">
+                            <td class="mono" th:text="${r.resultCode}">2823-3</td>
+                            <td th:text="${r.resultDisplay}">Serum Potassium</td>
+                            <td class="mono num" th:text="${(r.numericValue != null ? r.numericValue : r.textValue) + ' ' + (r.unit != null ? r.unit : '')}">6.4 mmol/L</td>
+                            <td><span class="status-tag status-crit" th:text="${r.abnormalFlag}">CRITICAL_HIGH</span></td>
+                            <td>
+                                <form th:action="@{/ui/orders/results/{id}/ack-critical(id=${r.id})}" method="post">
+                                    <button type="submit" class="btn btn-danger btn-sm">Acknowledge</button>
+                                </form>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Audit Chain &amp; Recent Queue</h2>
+                        <a class="btn btn-secondary btn-sm" th:href="@{/ui/audit}">Verify Ledger</a>
+                    </div>
+                    <div class="panel-body" th:if="${auditVerification != null}">
+                        <div class="inline-actions" style="justify-content: space-between; margin-bottom: 12px;">
+                            <span>SHA-256 Audit Chain Integrity</span>
+                            <span class="status-tag" th:classappend="${auditVerification.valid} ? ' status-ok' : ' status-crit'"
+                                  th:text="${auditVerification.valid ? 'VERIFIED (' + auditVerification.verifiedCount + ' rows)' : 'BROKEN'}">VERIFIED</span>
+                        </div>
+                    </div>
+                    <div th:if="${#lists.isEmpty(recentAppointments)}" class="empty-state">
+                        No scheduled appointments recorded yet.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(recentAppointments)}">
+                        <thead>
+                        <tr>
+                            <th>Dept</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th class="num">Token</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="a : ${recentAppointments}">
+                            <td class="mono" th:text="${a.departmentCode}">OPD-MED</td>
+                            <td th:text="${a.practitionerRef}">dr.ekane</td>
+                            <td><span class="status-tag" th:classappend="${a.status.name() == 'CHECKED_IN'} ? ' status-ok'" th:text="${a.status}">BOOKED</span></td>
+                            <td class="mono num" th:text="${a.queueTokenNumber != null ? '#' + a.queueTokenNumber : '—'}">—</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

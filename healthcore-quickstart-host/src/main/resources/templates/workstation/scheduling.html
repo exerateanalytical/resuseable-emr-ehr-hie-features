@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Scheduled Appointments &amp; Outpatient Queue</h2>
+                    </div>
+                    <div th:if="${#lists.isEmpty(appointments)}" class="empty-state">
+                        No appointments scheduled yet. Book an appointment from the panel on the right.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(appointments)}">
+                        <thead>
+                        <tr>
+                            <th>Start (UTC)</th>
+                            <th>Department</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th class="num">Queue</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="a : ${appointments}">
+                            <td class="mono" th:text="${a.scheduledStart}">2026-11-19T10:00Z</td>
+                            <td class="mono" th:text="${a.departmentCode}">OPD-MED</td>
+                            <td th:text="${a.practitionerRef}">dr.ekane</td>
+                            <td>
+                                <span class="status-tag"
+                                      th:classappend="${a.status.name() == 'CHECKED_IN'} ? ' status-ok' : (${a.status.name() == 'CANCELLED'} ? ' status-crit' : ' status-warn')"
+                                      th:text="${a.status}">BOOKED</span>
+                            </td>
+                            <td class="mono num" th:text="${a.queueTokenNumber != null ? '#' + a.queueTokenNumber : '—'}">—</td>
+                            <td>
+                                <div class="inline-actions">
+                                    <form th:if="${a.status.name() == 'BOOKED'}" th:action="@{/ui/scheduling/{id}/check-in(id=${a.id})}" method="post">
+                                        <button type="submit" class="btn btn-primary btn-sm">Check In</button>
+                                    </form>
+                                    <form th:if="${a.status.name() == 'BOOKED' or a.status.name() == 'CHECKED_IN'}" th:action="@{/ui/scheduling/{id}/cancel(id=${a.id})}" method="post">
+                                        <button type="submit" class="btn btn-secondary btn-sm">Cancel</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Book Outpatient Appointment</h2>
+                    </div>
+                    <div class="panel-body">
+                        <form th:action="@{/ui/scheduling/book}" method="post" class="form-grid">
+                            <div class="form-field full">
+                                <label>Provider / Resource Calendar</label>
+                                <select name="calendarId" required>
+                                    <option th:each="c : ${calendars}" th:value="${c.id}" th:text="${c.displayName + ' (' + c.departmentCode + ')'}"></option>
+                                </select>
+                            </div>
+                            <div class="form-field full">
+                                <label>Patient</label>
+                                <select name="patientId" required>
+                                    <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label>Type Code</label>
+                                <input type="text" name="appointmentTypeCode" value="CONSULT"/>
+                            </div>
+                            <div class="form-field">
+                                <label>Duration (min)</label>
+                                <input type="number" name="durationMinutes" value="20" min="10" max="120"/>
+                            </div>
+                            <div class="form-field full">
+                                <label>Visit Reason</label>
+                                <input type="text" name="visitReason" placeholder="Follow-up clinical consultation"/>
+                            </div>
+                            <div class="form-field full">
+                                <button type="submit" class="btn btn-primary">Book Appointment</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

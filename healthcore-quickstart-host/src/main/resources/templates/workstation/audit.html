@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="alert" th:if="${verification != null}"
+                 th:classappend="${verification.valid} ? ' alert-ok' : ' alert-error'">
+                <strong>SHA-256 Hash-Chain Verification:</strong>
+                <span th:text="${verification.valid ? 'VALID — Verified ' + verification.verifiedCount + ' sequential entries with zero tampering.' : 'FAILED — ' + verification.brokenAtSequenceOrNull}"></span>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Immutable Clinical Audit Ledger (Latest 50 Events)</h2>
+                </div>
+                <div th:if="${#lists.isEmpty(auditLogs)}" class="empty-state">
+                    No audit entries recorded for this facility yet.
+                </div>
+                <table class="data-table" th:if="${!#lists.isEmpty(auditLogs)}">
+                    <thead>
+                    <tr>
+                        <th class="num">Seq</th>
+                        <th>Timestamp (UTC)</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                        <th>Resource</th>
+                        <th>Outcome</th>
+                        <th>SHA-256 Prefix</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="log : ${auditLogs}">
+                        <td class="mono num" th:text="${log.sequenceNumber}">1</td>
+                        <td class="mono" th:text="${log.occurredAt}">2026-11-19T10:00Z</td>
+                        <td th:text="${log.actorId}">dr.ekane</td>
+                        <td class="mono" th:text="${log.action}">MPI_REGISTER_PATIENT</td>
+                        <td class="mono" th:text="${log.resourceType}">Patient</td>
+                        <td>
+                            <span class="status-tag" th:classappend="${log.outcome == 'SUCCESS'} ? ' status-ok' : ' status-crit'" th:text="${log.outcome}">SUCCESS</span>
+                        </td>
+                        <td class="mono" th:text="${#strings.abbreviate(log.entryHash, 16)}">a1b2c3...</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+</div>
+</body>
+</html>

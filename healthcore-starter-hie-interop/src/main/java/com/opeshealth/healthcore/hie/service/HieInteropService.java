@@ -15,6 +15,7 @@ import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.util.Terser;
 import com.opeshealth.healthcore.hie.domain.HieEntities.*;
+import com.opeshealth.healthcore.hie.security.HieInteropSecurityConfiguration;
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientAggregateEntity;
 import com.opeshealth.healthcore.mpi.fhir.FhirPatientController;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
@@ -36,6 +37,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -147,13 +150,39 @@ public class HieInteropService {
     }
 
     /**
-     * Resolves and enforces the caller's active facility tenant from {@link FacilityContext}.
-     * Fails closed with {@link AccessDeniedException} when tenant context is missing.
+     * Resolves and enforces the caller's active facility tenant from {@link FacilityContext} and
+     * cross-checks it against the verified JWT {@code facility_id} claim (when present in
+     * {@link SecurityContextHolder}). Fails closed with {@link AccessDeniedException} when tenant
+     * context is missing or does not match the caller's assigned organization.
      */
     public static UUID requireTenantFacilityId() {
-        return FacilityContext.getFacilityId()
+        UUID contextFacility = FacilityContext.getFacilityId()
                 .orElseThrow(() -> new AccessDeniedException(
                         "Missing active facility tenant context; cross-tenant HIE access is prohibited."));
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Optional<UUID> jwtFacility = HieInteropSecurityConfiguration.extractAssignedFacilityId(auth);
+        if (jwtFacility.isPresent() && !jwtFacility.get().equals(contextFacility)) {
+            throw new AccessDeniedException(
+                    "Cross-organization access denied: active FacilityContext does not match JWT facility_id claim.");
+        }
+        return contextFacility;
+    }
+
+    /**
+     * Tenant-scoped IHE PIXm ({@code $ihe-pix}) identifier cross-reference lookup for a patient UUID.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> ihePixmLookup(UUID patientId, String targetSystem) {
+        UUID facilityId = requireTenantFacilityId();
+        PatientAggregateEntity patient = patientRepo.findByIdAndFacilityId(patientId, facilityId)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "Patient not found within active facility tenant: " + patientId));
+        String system = (targetSystem != null && !targetSystem.isBlank()) ? targetSystem.trim() : "urn:opes:mrn";
+        List<Map<String, Object>> targets = List.of(Map.of(
+                "name", "targetId",
+                "valueIdentifier", Map.of("system", system, "value", patient.getMrn()),
+                "resourceId", "Patient/" + patient.getId()));
+        return Map.of("resourceType", "Parameters", "parameter", targets);
     }
 
     /**
@@ -884,7 +913,7 @@ public class HieInteropService {
                 .replace("'", "&apos;");
     }
 
-    private static void enforcePayloadFacilityMatchesTenant(UUID payloadFacilityId, UUID activeFacilityId) {
+    public static void enforcePayloadFacilityMatchesTenant(UUID payloadFacilityId, UUID activeFacilityId) {
         if (payloadFacilityId != null && !payloadFacilityId.equals(activeFacilityId)) {
             throw new AccessDeniedException(
                     "Cross-tenant write denied: payload facilityId does not match authenticated tenant context.");
@@ -903,8 +932,10 @@ public class HieInteropService {
         }
 
         @GetMapping(value = "/fhir/r4/metadata", produces = "application/fhir+json")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
         @Operation(summary = "Return HL7 FHIR R4 CapabilityStatement for Opes HealthCore HIE Gateway")
         public String capabilityStatement() {
+            requireTenantFacilityId();
             return service.generateCapabilityStatementJson();
         }
 
@@ -916,14 +947,14 @@ public class HieInteropService {
         }
 
         @GetMapping(value = "/fhir/r4/Patient/$export", produces = "application/fhir+ndjson")
-        @PreAuthorize("hasAuthority('PERM_audit:export') or hasAuthority('PERM_system:admin')")
+        @PreAuthorize("hasAuthority('PERM_patient:read') and (hasAuthority('PERM_audit:export') or hasAuthority('PERM_system:admin'))")
         @Operation(summary = "Export tenant-scoped bulk Patient resources as FHIR NDJSON")
         public String bulkExport() {
             return service.exportPatientsNdjson();
         }
 
         @PostMapping(value = "/fhir/r4", consumes = {"application/fhir+json", "application/json"}, produces = "application/fhir+json")
-        @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign')")
+        @PreAuthorize("hasAuthority('PERM_patient:read') and (hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign'))")
         @Operation(summary = "Process validated HL7 FHIR R4 Transaction or Batch Bundle (Patient POST/PUT, DocumentReference POST)")
         public String processBundle(@RequestBody String bundleJson) {
             return service.processFhirTransactionBundle(bundleJson);
@@ -1005,7 +1036,7 @@ public class HieInteropService {
         }
 
         @PostMapping("/fhir/r4/DocumentReference")
-        @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign')")
+        @PreAuthorize("hasAuthority('PERM_patient:read') and (hasAuthority('PERM_patient:write') or hasAuthority('PERM_encounter:sign'))")
         @Operation(summary = "IHE MHD Register tenant-scoped DocumentReference metadata")
         public IheDocumentEntity createDocument(@RequestBody IheDocumentEntity doc) {
             UUID facilityId = requireTenantFacilityId();
@@ -1026,7 +1057,7 @@ public class HieInteropService {
         }
 
         @GetMapping(value = "/fhir/r4/Organization", produces = "application/fhir+json")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_facility:manage')")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
         @Operation(summary = "IHE mCSD Tenant-Scoped Organization Directory backed by persisted facility data")
         public Map<String, Object> mcsdOrganizations() {
             if (service != null) {
@@ -1037,7 +1068,7 @@ public class HieInteropService {
         }
 
         @GetMapping(value = "/fhir/r4/Location", produces = "application/fhir+json")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_facility:manage')")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
         @Operation(summary = "IHE mCSD Tenant-Scoped Physical Care Location Directory backed by persisted ward data")
         public Map<String, Object> mcsdLocations() {
             if (service != null) {
@@ -1070,6 +1101,7 @@ public class HieInteropService {
         @PreAuthorize("hasAuthority('PERM_lab:result:enter') or hasAuthority('PERM_lab:verify')")
         @Operation(summary = "Parse ASTM E1394 laboratory analyzer result lines")
         public List<Map<String, String>> parseAstm(@RequestBody String astm) {
+            requireTenantFacilityId();
             return service.parseAstmE1394(astm);
         }
 
@@ -1096,7 +1128,7 @@ public class HieInteropService {
         }
 
         @GetMapping("/api/v1/hie/dicom/studies")
-        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_dicom:index')")
+        @PreAuthorize("hasAuthority('PERM_patient:read')")
         @Operation(summary = "Query tenant-scoped DICOM study metadata registry for a patient")
         public List<DicomStudyEntity> queryDicom(@RequestParam UUID patientId) {
             UUID facilityId = requireTenantFacilityId();

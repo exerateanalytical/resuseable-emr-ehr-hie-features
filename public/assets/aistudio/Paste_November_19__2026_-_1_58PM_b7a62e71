@@ -1,0 +1,1015 @@
+{
+  "task": "Transform the reusable healthcare repository into an industry-grade, modular Hospital Information System platform",
+  "repository": "exerateanalytical/resuseable-emr-ehr-hie-features",
+  "objective": {
+    "goal": "Enable developers to assemble a secure, complete, configurable hospital system in days rather than rebuilding core clinical, administrative, billing, and interoperability infrastructure.",
+    "principles": [
+      "Fix existing security and clinical-safety gaps before adding features",
+      "Every advertised module must have working implementation and tests",
+      "Every patient operation must be tenant, facility, patient, and permission scoped",
+      "No external API or standards claim unless conformance is tested",
+      "All clinical actions require auditability and explicit human accountability",
+      "Development features must never be enabled in production",
+      "No mock, fake, hardcoded, or demo response may be presented as a real integration",
+      "Country-specific policies and standards must be configurable",
+      "A production deployment must be reproducible from a clean database"
+    ]
+  },
+  "targetArchitecture": {
+    "backend": "Java 25 and Spring Boot",
+    "databases": [
+      "PostgreSQL",
+      "Microsoft SQL Server",
+      "MySQL"
+    ],
+    "migrationStrategy": "One authoritative migration system",
+    "identity": "Keycloak or a configurable OIDC/OAuth2 provider",
+    "standards": [
+      "FHIR R4",
+      "HL7 V2",
+      "IHE profiles",
+      "DICOMweb",
+      "CDA R2",
+      "X12",
+      "SNOMED CT",
+      "ICD-10",
+      "ICD-11",
+      "LOINC",
+      "RxNorm",
+      "ATC",
+      "UCUM"
+    ],
+    "interoperability": [
+      "Transactional outbox",
+      "Inbound idempotency",
+      "Dead-letter queue",
+      "Retry and replay",
+      "Circuit breakers",
+      "Correlation identifiers",
+      "Partner-specific mappings",
+      "Conformance testing"
+    ]
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Platform Foundation and Security",
+      "durationGuidance": "Highest priority; no clinical deployment before completion",
+      "status": "required",
+      "objectives": [
+        "Establish a secure multi-tenant and multi-facility foundation",
+        "Make database migration, deployment, and audit behavior deterministic",
+        "Prevent unauthorized access and unsafe demo configuration",
+        "Create the first complete, working reference application"
+      ],
+      "modulesToBuildNow": [
+        {
+          "name": "Tenant and Facility Governance",
+          "priority": "P0",
+          "description": "Manage organizations, facilities, departments, locations, tenants, service profiles, and facility hierarchy.",
+          "requiredCapabilities": [
+            "Facility onboarding and lifecycle",
+            "Tenant isolation context on every request",
+            "Facility-level feature configuration",
+            "Facility-level localization",
+            "Department and location hierarchy",
+            "Kill-switches stored durably",
+            "Facility suspension and read-only mode"
+          ],
+          "securityRequirements": [
+            "Server-side tenant resolution",
+            "Explicit cross-facility access grants",
+            "No trust in a client-submitted facility value",
+            "Hibernate tenant filters and database-enforced isolation",
+            "PostgreSQL RLS enabled when PostgreSQL is selected",
+            "Cross-tenant integration tests"
+          ]
+        },
+        {
+          "name": "Identity, RBAC, and ABAC",
+          "priority": "P0",
+          "description": "Centralize identity, roles, permissions, patient consent, sensitivity compartments, and emergency access.",
+          "requiredCapabilities": [
+            "OIDC/OAuth2 integration",
+            "SCIM or equivalent workforce provisioning",
+            "Practitioner registration",
+            "Facility-scoped and patient-scoped roles",
+            "Least-privilege permission checks",
+            "Sensitivity tags",
+            "Break-the-glass with justification",
+            "Consent directives",
+            "Delegation and impersonation controls",
+            "Provider credential expiry enforcement"
+          ],
+          "securityRequirements": [
+            "Fail closed for missing credentials",
+            "Remove authenticated-user alternatives on patient APIs",
+            "Break-glass access must be audited",
+            "No permissive credential mode in production",
+            "Session, token, replay, and refresh-token tests"
+          ]
+        },
+        {
+          "name": "Durable Clinical Audit",
+          "priority": "P0",
+          "description": "Provide immutable, searchable audit records for clinical, administrative, security, export, and AI events.",
+          "requiredCapabilities": [
+            "Hash-chained audit ledger",
+            "Actor, facility, patient, resource, action, outcome and reason",
+            "Correlation and trace identifiers",
+            "Privacy-compliant audit reports",
+            "Audit verification endpoint",
+            "Append-only storage",
+            "Retention policy",
+            "Tamper detection",
+            "Mandatory audit failure behavior"
+          ],
+          "securityRequirements": [
+            "Raw PHI must not be stored in audit descriptions",
+            "Audit writes must be atomic with critical operations where required",
+            "Audit-store failure must block or durably queue mandatory operations",
+            "Audit privileges must be separated from ordinary clinical privileges"
+          ]
+        },
+        {
+          "name": "Database Migration and Deployment Core",
+          "priority": "P0",
+          "description": "Create a deterministic database lifecycle for every supported database.",
+          "requiredCapabilities": [
+            "One authoritative migration system",
+            "Clean database install",
+            "Upgrade migrations",
+            "Rollback and forward-fix policy",
+            "Seed-data profiles",
+            "Schema compatibility reports",
+            "Database backup and restore documentation",
+            "Containerized production configuration"
+          ],
+          "acceptanceCriteria": [
+            "Build passes on PostgreSQL",
+            "Build passes on MySQL",
+            "Build passes on SQL Server",
+            "No Liquibase and Flyway ownership conflicts",
+            "Hibernate validate mode succeeds after migrations",
+            "Restoring a backup and rerunning migrations is tested"
+          ]
+        },
+        {
+          "name": "Secrets and Configuration Management",
+          "priority": "P0",
+          "description": "Remove hardcoded and development secrets from runtime code.",
+          "requiredCapabilities": [
+            "Environment or secret-manager integration",
+            "Required secrets fail fast at startup",
+            "Key rotation",
+            "Separate development, test, staging and production profiles",
+            "Encrypted configuration",
+            "Webhook secret management",
+            "Signing-key management"
+          ],
+          "prohibitedValues": [
+            "Hardcoded database passwords",
+            "Hardcoded HMAC secrets",
+            "Hardcoded webhook secrets",
+            "Hardcoded offline-QR signing keys",
+            "Default TLS private keys",
+            "Hardcoded API keys"
+          ]
+        },
+        {
+          "name": "API Platform Core",
+          "priority": "P0",
+          "description": "Provide consistent REST, FHIR, GraphQL, OpenAPI, error, pagination, and versioning behavior.",
+          "requiredCapabilities": [
+            "OpenAPI 3.1",
+            "Stable API versioning",
+            "Standard error model",
+            "Consistent pagination",
+            "Bulk-operation limits",
+            "Rate limiting",
+            "Idempotency keys",
+            "Request size limits",
+            "CORS policy",
+            "Correlation identifiers",
+            "Content negotiation",
+            "Generated SDKs"
+          ]
+        },
+        {
+          "name": "Reference Hospital Application",
+          "priority": "P0",
+          "description": "Provide a working end-to-end application proving the platform can be assembled.",
+          "requiredCapabilities": [
+            "Complete web UI",
+            "Patient registration",
+            "Appointment",
+            "Encounter",
+            "Clinical note",
+            "Bed assignment",
+            "Lab order and result",
+            "Medication request and dispense",
+            "Invoice",
+            "Role-based navigation",
+            "Seeded demonstration hospital"
+          ],
+          "acceptanceCriteria": [
+            "A developer can start the complete reference app locally",
+            "Setup instructions have been executed in a clean environment",
+            "At least one complete outpatient and inpatient workflow is functional",
+            "No endpoint relies on nonfunctional placeholder UI"
+          ]
+        }
+      ],
+      "exitCriteria": [
+        "All P0 security findings fixed",
+        "Full Maven build passes",
+        "Unit, integration, migration and cross-tenant tests pass",
+        "PostgreSQL RLS or equivalent isolation is verified",
+        "Missing credentials and missing patient context fail closed",
+        "No documented module claim exceeds implementation"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Core Clinical and Patient Administration MVP",
+      "status": "required",
+      "modulesToBuildNow": [
+        {
+          "name": "Master Patient Index",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Patient creation and update",
+            "MRN generation",
+            "Demographics",
+            "National and external identifiers",
+            "Encrypted identifiers",
+            "Blind indexes",
+            "Duplicate detection",
+            "Merge and unmerge",
+            "Merge cascade",
+            "Golden record resolution",
+            "Facility-scoped search",
+            "Audit history"
+          ],
+          "acceptanceCriteria": [
+            "Cross-facility matching is configurable",
+            "Duplicate merge is reversible",
+            "Source and survivor identities remain traceable",
+            "Patient merge cannot orphan clinical records",
+            "Encryption and blind-index behavior is tested"
+          ]
+        },
+        {
+          "name": "Appointments and Scheduling",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Provider, room, equipment and clinic calendars",
+            "Appointment types",
+            "Waitlists",
+            "Check-in and no-show",
+            "Cancellations and rescheduling",
+            "Recurring appointments",
+            "Overbooking policy",
+            "Reminders",
+            "Queue management",
+            "Resource conflict detection"
+          ]
+        },
+        {
+          "name": "Encounters and ADT",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Outpatient and inpatient encounters",
+            "Emergency visits",
+            "Admission",
+            "Transfer",
+            "Discharge",
+            "Departures",
+            "Visit status",
+            "Bed and room assignment",
+            "Ward census",
+            "Encounter provenance",
+            "Closed-loop care plans"
+          ]
+        },
+        {
+          "name": "Clinical Documentation",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "SOAP and structured notes",
+            "Amendments and addenda",
+            "Immutable note revisions",
+            "Sign and co-sign",
+            "License validation",
+            "Templates",
+            "Voice-to-text integration",
+            "Document classification",
+            "Clinical note search",
+            "Version and export history"
+          ],
+          "safetyRequirements": [
+            "AI drafts must remain pending until clinician approval",
+            "Signed notes must not silently mutate",
+            "Every correction must preserve provenance"
+          ]
+        },
+        {
+          "name": "Orders and Results",
+          "priority": "P0",
+          "description": "Create one common order engine for medication, laboratory, imaging, procedure and referral orders.",
+          "requiredCapabilities": [
+            "Order lifecycle",
+            "Orderset support",
+            "Priority and schedule",
+            "Acknowledgment",
+            "Collection and accession",
+            "Result entry",
+            "Verification",
+            "Correction",
+            "Cancel",
+            "Amend",
+            "Critical-result acknowledgment",
+            "Reflex testing",
+            "Result notifications",
+            "Provenance",
+            "Specimen tracking"
+          ]
+        },
+        {
+          "name": "Terminology and Clinical Coding",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "LOINC",
+            "SNOMED CT",
+            "ICD-10",
+            "ICD-11",
+            "RxNorm",
+            "ATC",
+            "UCUM",
+            "Local coding extensions",
+            "Concept maps",
+            "Value sets",
+            "Import tooling",
+            "Version management",
+            "CDS Hooks"
+          ]
+        },
+        {
+          "name": "Care Plans and Nursing Tasks",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Care-plan templates",
+            "Goal tracking",
+            "Task assignment",
+            "Nurse roster",
+            "Handover",
+            "Medication administration",
+            "Intake and output",
+            "Observations",
+            "Escalations",
+            "Discharge-readiness checklist"
+          ]
+        },
+        {
+          "name": "Patient Portal",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Appointments",
+            "Visit summaries",
+            "Results",
+            "Medication lists",
+            "Billing",
+            "Consent",
+            "Secure messaging",
+            "Document access",
+            "Proxy access",
+            "Multilingual interface",
+            "Accessibility"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Hospital Operations",
+      "status": "required",
+      "modulesToBuildNow": [
+        {
+          "name": "Pharmacy",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Medication formulary",
+            "Stock lots",
+            "FEFO",
+            "Expiry quarantine",
+            "Controlled-drug dual witness",
+            "Dispense",
+            "Return",
+            "Partial fill",
+            "Recall",
+            "Inventory ledger",
+            "Barcode verification",
+            "Medication reconciliation",
+            "Concurrency-safe stock updates"
+          ]
+        },
+        {
+          "name": "Laboratory Information System",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Specimen accession",
+            "Barcode support",
+            "Analyzer interface",
+            "ASTM and HL7",
+            "Westgard QC",
+            "Reflex testing",
+            "Panic-value workflow",
+            "Result verification",
+            "Amendment",
+            "Instrument audit trail"
+          ]
+        },
+        {
+          "name": "Radiology and Imaging",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Modality worklist",
+            "Radiology order",
+            "Exam scheduling",
+            "PACS integration",
+            "DICOMweb",
+            "DICOM metadata",
+            "Result reporting",
+            "Critical-finding escalation",
+            "Image availability tracking"
+          ]
+        },
+        {
+          "name": "Operating Theater",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Theater scheduling",
+            "Procedure teams",
+            "Preoperative checklist",
+            "WHO safety checklist",
+            "Anaesthesia",
+            "Implants",
+            "PACU",
+            "Aldrete assessment",
+            "Postoperative note",
+            "Supply usage"
+          ]
+        },
+        {
+          "name": "Blood Bank",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Donor registration",
+            "Screening",
+            "ISBT-128",
+            "Crossmatch",
+            "Compatibility",
+            "Blood component inventory",
+            "Expiry",
+            "Two-person issue",
+            "Bedside verification",
+            "Adverse reaction reporting",
+            "Hemovigilance"
+          ]
+        },
+        {
+          "name": "Biomedical and Cold Chain",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Equipment registry",
+            "Calibration",
+            "Preventive maintenance",
+            "Incident records",
+            "Temperature telemetry",
+            "Excursion alerts",
+            "MQTT integration",
+            "Escalation",
+            "Asset disposition"
+          ]
+        },
+        {
+          "name": "CRVS and Mortuary",
+          "priority": "P2",
+          "requiredCapabilities": [
+            "Birth registration",
+            "Death registration",
+            "Cause-of-death certificate",
+            "Mortuary custody",
+            "Release authorization",
+            "Next-of-kin",
+            "Civil registry integration"
+          ]
+        },
+        {
+          "name": "Emergency and Triage",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Emergency registration",
+            "Triage",
+            "ESI or local equivalent",
+            "Red-flag rules",
+            "Ambulance handoff",
+            "Bed management",
+            "Rapid order sets",
+            "Real-time queue",
+            "Transfer and referral"
+          ],
+          "clinicalReviewRequired": true
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Revenue Cycle and Public Health",
+      "modulesToBuildNow": [
+        {
+          "name": "Tariffs and Charge Capture",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Service catalogue",
+            "Tariff schedule",
+            "Package and bundle pricing",
+            "Currency and minor units",
+            "Discounts",
+            "Authorization",
+            "Co-pay",
+            "Reversals",
+            "Department and facility pricing"
+          ]
+        },
+        {
+          "name": "Billing and Double-Entry Ledger",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Patient account",
+            "Balanced debit-credit postings",
+            "Invoice",
+            "Receipt",
+            "Refund",
+            "Credit note",
+            "Adjustment",
+            "Write-off",
+            "Multi-currency",
+            "Tax",
+            "Audit history",
+            "Idempotent posting"
+          ]
+        },
+        {
+          "name": "Insurance and Payer",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Coverage and policy",
+            "Eligibility",
+            "Preauthorization",
+            "Claim submission",
+            "ClaimResponse",
+            "Remittance",
+            "Denial handling",
+            "Appeal",
+            "OpenIMIS or local adapters",
+            "Payment gateway adapters"
+          ],
+          "acceptanceCriteria": [
+            "No payment API is simulated as real settlement",
+            "Callbacks require signature verification",
+            "Replay is safely ignored",
+            "Transactions reconcile to the ledger"
+          ]
+        },
+        {
+          "name": "Healthcare Coding",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "ICD and CPT-compatible extension",
+            "Diagnosis capture",
+            "Procedure capture",
+            "DRG or local grouping",
+            "Coding review",
+            "Claim scrub",
+            "Compliance findings",
+            "Audit trail"
+          ]
+        },
+        {
+          "name": "Public Health and Disease Surveillance",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Case reporting",
+            "IDSR",
+            "Contact tracing",
+            "Outbreak alerts",
+            "Immunization",
+            "Maternal and child health",
+            "DHIS2 adapters",
+            "Aggregate and patient-level exports"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Interoperability and Integration",
+      "modulesToBuildNow": [
+        {
+          "name": "FHIR R4 Server",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Real CRUD and search",
+            "Conditional requests",
+            "Transaction and batch",
+            "Versioning",
+            "Accurate CapabilityStatement",
+            "SMART on FHIR",
+            "Bulk export",
+            "IPS",
+            "Subscriptions",
+            "Consent enforcement"
+          ],
+          "acceptanceCriteria": [
+            "Every declared operation has a working test",
+            "No random success responses",
+            "Transaction rollback is demonstrated",
+            "Conformance is tested with a FHIR validator"
+          ]
+        },
+        {
+          "name": "HL7 V2 Gateway",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "ADT",
+            "ORM",
+            "ORU",
+            "SIU",
+            "DFT",
+            "ACK/NAK",
+            "MSH-10 deduplication",
+            "MLLP",
+            "Type-specific mapping",
+            "Channel state",
+            "Dead-letter queue"
+          ]
+        },
+        {
+          "name": "IHE Integration",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "PIXm",
+            "PDQm",
+            "MHD",
+            "mCSD",
+            "XCPD",
+            "XCA",
+            "Consistent profile configuration"
+          ],
+          "acceptanceCriteria": [
+            "No hardcoded directory results",
+            "Profile tests use real fixtures",
+            "Vendor interoperability is documented",
+            "Unsupported profiles are not advertised"
+          ]
+        },
+        {
+          "name": "DICOM Integration",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "PACS proxy",
+            "QIDO-RS",
+            "WADO-RS",
+            "STOW-RS",
+            "Dicom metadata",
+            "DICOM UID validation",
+            "PACS health monitoring"
+          ],
+          "acceptanceCriteria": [
+            "STOW stores or forwards real DICOM instances",
+            "WADO returns real retrievable objects",
+            "DICOM multipart behavior is tested",
+            "No metadata-only simulation is called STOW"
+          ]
+        },
+        {
+          "name": "Integration Operations",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Partner configuration",
+            "Transforms and terminology maps",
+            "Retries",
+            "Rate limits",
+            "Circuit breakers",
+            "Inbound/outbound idempotency",
+            "Dead-letter queue",
+            "Replay",
+            "Audit trail",
+            "Endpoint monitoring"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 6,
+      "name": "Offline, Mobile and Edge Operations",
+      "modulesToBuildNow": [
+        {
+          "name": "Offline Synchronization",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Hybrid logical or server ordering",
+            "Delta sync",
+            "Patch or field-level merge",
+            "Three-way merge",
+            "Conflict quarantine",
+            "Idempotent push",
+            "Resume",
+            "Clinician conflict resolution",
+            "Offline media",
+            "Encryption at rest",
+            "Device revocation"
+          ]
+        },
+        {
+          "name": "Mobile Applications",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Android",
+            "iPhone",
+            "iPad",
+            "Offline chart access",
+            "Vitals",
+            "Triage",
+            "Medication scan",
+            "Handover",
+            "Clinical notes",
+            "Secure local storage",
+            "Remote wipe",
+            "Certificate validation"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 7,
+      "name": "Governed Clinical AI",
+      "modulesToBuildNow": [
+        {
+          "name": "AI Safety Gateway",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Durable tenant AI policy",
+            "Kill switch",
+            "Human-in-the-loop attestation",
+            "Draft persistence",
+            "Clinician identity",
+            "Prompt and output hashing",
+            "No raw PHI in audit",
+            "Model allow-list",
+            "Strict API-key handling",
+            "Failure propagation",
+            "Regional data-residence policy"
+          ]
+        },
+        {
+          "name": "PHI Redaction",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Known-context redaction",
+            "Pattern-based redaction",
+            "Model input/output validation",
+            "Rehydration only through authorized service",
+            "Leak detection",
+            "Privacy review",
+            "Documented limitations"
+          ],
+          "acceptanceCriteria": [
+            "Not represented as guaranteed HIPAA Safe Harbor compliance",
+            "No direct identifiers sent to unapproved external providers",
+            "Redaction maps are protected and ephemeral"
+          ]
+        },
+        {
+          "name": "Clinical AI Applications",
+          "priority": "P2",
+          "requiredCapabilities": [
+            "Ambient scribe",
+            "Clinical summarization",
+            "Coding assistance",
+            "Medication reconciliation assistance",
+            "Clinical decision support",
+            "Patient discharge coaching",
+            "Semantic search",
+            "Risk prediction",
+            "Capacity forecasting"
+          ],
+          "safetyRequirements": [
+            "No autonomous clinical diagnosis or prescribing",
+            "No direct patient release without clinician approval",
+            "Clinician attestation required",
+            "Independent model evaluation",
+            "Deterministic fallback and safe failure",
+            "Model and prompt version in every audit record"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 8,
+      "name": "Analytics, Quality and Reporting",
+      "modulesToBuildNow": [
+        {
+          "name": "Operational Dashboards",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Occupancy",
+            "Emergency waits",
+            "Bed turnover",
+            "Pharmacy stock",
+            "Lab turnaround",
+            "Claims status",
+            "Staffing",
+            "Appointment utilization"
+          ]
+        },
+        {
+          "name": "Clinical Quality Measures",
+          "priority": "P1",
+          "requiredCapabilities": [
+            "Measure specifications",
+            "Population logic",
+            "Denominator and exclusion",
+            "Stratification",
+            "Measure export",
+            "Cohort audit",
+            "FHIR Measure support"
+          ]
+        },
+        {
+          "name": "OMOP or Alternative Research Export",
+          "priority": "P2",
+          "requiredCapabilities": [
+            "Schema mapping",
+            "Consent",
+            "De-identification",
+            "Cohort export",
+            "Lineage",
+            "Reproducible export"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 9,
+      "name": "Assurance and Production Readiness",
+      "modulesToBuildNow": [
+        {
+          "name": "Automated Testing",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Unit tests",
+            "Service tests",
+            "Repository tests",
+            "REST contract tests",
+            "Security tests",
+            "Tenant isolation tests",
+            "Multi-database tests",
+            "FHIR validation",
+            "HL7 fixtures",
+            "DICOM fixtures",
+            "Concurrency tests",
+            "Migration upgrade tests"
+          ]
+        },
+        {
+          "name": "Observability",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Structured logs",
+            "Metrics",
+            "Tracing",
+            "Health checks",
+            "Audit verification",
+            "Dead-letter alerts",
+            "Database monitoring",
+            "Privacy-safe error messages"
+          ]
+        },
+        {
+          "name": "Platform Operations",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "CI/CD",
+            "Container release",
+            "Backup",
+            "Restore",
+            "Disaster recovery",
+            "Dependency scanning",
+            "Secret scanning",
+            "Penetration testing",
+            "Release signing",
+            "Upgrade plan",
+            "Rollback plan"
+          ]
+        },
+        {
+          "name": "Clinical and Regulatory Assurance",
+          "priority": "P0",
+          "requiredCapabilities": [
+            "Clinical safety management",
+            "Hazard analysis",
+            "Privacy impact assessment",
+            "Security risk assessment",
+            "Clinical review",
+            "Versioned policies",
+            "Validation report",
+            "Known limitations",
+            "Incident process",
+            "Post-market surveillance"
+          ]
+        }
+      ]
+    }
+  ],
+  "recommendedBuildOrder": [
+    "Platform Foundation and Security",
+    "Reference Hospital Application",
+    "Master Patient Index",
+    "Appointments",
+    "Encounters and ADT",
+    "Clinical Documentation",
+    "Orders and Results",
+    "Medication and Pharmacy",
+    "Laboratory",
+    "Radiology",
+    "Care Plans and Nursing",
+    "Billing and Tariffs",
+    "FHIR R4 and HL7 V2",
+    "Insurance and Payers",
+    "Interoperability Operations",
+    "Inpatient Hospital Operations",
+    "Offline and Mobile",
+    "Governed Clinical AI",
+    "Analytics",
+    "Production Assurance"
+  ],
+  "modulesNotToBuildBeforeTheCoreIsStable": [
+    "AI-only hospital platform",
+    "Robotic or autonomous care",
+    "National HIE claims without real interoperability tests",
+    "PACS claims without real DICOM integration",
+    "Direct patient-facing clinical advice without governance",
+    "Certified EMR/EHR claims",
+    "Double-entry billing claims",
+    "HIPAA or GDPR compliance claims",
+    "Complete hospital certification claims",
+    "Complete FHIR-server claims"
+  ],
+  "agentInstructions": {
+    "firstInstruction": "Treat this JSON as an implementation specification and create an implementation plan before modifying code.",
+    "forEveryModule": [
+      "Create a domain model",
+      "Create database migrations",
+      "Create JPA or repository abstractions",
+      "Create REST and FHIR APIs where applicable",
+      "Create security policies",
+      "Create audit events",
+      "Create unit tests",
+      "Create integration tests",
+      "Create API documentation",
+      "Create UI or clearly document the absence of UI",
+      "Document supported and unsupported behavior",
+      "Do not use mock success responses"
+    ],
+    "requiredBeforeMerge": [
+      "Full build passes",
+      "New migration passes on all applicable databases",
+      "Authorization tests pass",
+      "Tenant isolation tests pass",
+      "Audit tests pass",
+      "No secrets exist in source",
+      "No TODO or placeholder implementation remains in the delivered module",
+      "README claims match implementation",
+      "Clinical algorithms have explicit validation status",
+      "Independent domain review is recorded"
+    ],
+    "outputRequirements": [
+      "Produce a module-by-module implementation list",
+      "Produce exact file changes",
+      "Produce database migration changes",
+      "Produce API contracts",
+      "Produce test plans",
+      "Produce a known-limits section",
+      "Produce a phase completion report",
+      "Do not silently alter scope to increase feature count"
+    ]
+  },
+  "successDefinition": {
+    "immediate": "A new developer can assemble a working outpatient and inpatient application using documented modules.",
+    "nearTerm": "The platform provides real, tested implementations for patient identity, clinical workflows, lab, pharmacy, billing, interoperability, and audit.",
+    "longTerm": "The platform passes independent security, privacy, clinical safety, standards, and operational assurance reviews.",
+    "industryStandard": "Capabilities are standards-conformant and independently tested, but certification, safety, and legal compliance are never inferred solely from source code."
+  }
+}
