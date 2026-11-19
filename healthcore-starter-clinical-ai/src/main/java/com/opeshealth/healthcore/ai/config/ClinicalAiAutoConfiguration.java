@@ -15,6 +15,7 @@ import com.opeshealth.healthcore.ai.cds.ClinicalDecisionEngine;
 import com.opeshealth.healthcore.ai.client.GeminiClinicalApiClient;
 import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
 import com.opeshealth.healthcore.ai.summarizer.ClinicalSummarizer;
@@ -119,6 +120,21 @@ public class ClinicalAiAutoConfiguration {
                 geminiClinicalApiClient,
                 phiRedactionGateway,
                 clinicalAiGovernanceService
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ClinicalCapacityPredictor clinicalCapacityPredictor(
+            GeminiClinicalApiClient geminiClinicalApiClient,
+            PhiRedactionGateway phiRedactionGateway,
+            ClinicalAiGovernanceService clinicalAiGovernanceService,
+            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider) {
+        return new ClinicalCapacityPredictor(
+                geminiClinicalApiClient,
+                phiRedactionGateway,
+                clinicalAiGovernanceService,
+                clinicalAuditServiceProvider.getIfAvailable()
         );
     }
 }

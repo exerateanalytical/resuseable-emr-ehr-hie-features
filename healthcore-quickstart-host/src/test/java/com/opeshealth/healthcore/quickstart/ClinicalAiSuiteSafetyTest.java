@@ -35,6 +35,17 @@ import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.Attes
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.ClinicalAiDraftRecord;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.DraftAttestationStatus;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService.TenantAiGovernanceMetrics;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.CapacityAuditEvent;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.CapacityForecastRequest;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.CapacityHorizon;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.CareUnitType;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.DeterministicCapacityMetrics;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.FacilityCapacityBaseline;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.HistoricalAdmissionWindow;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.RedactedCapacityContext;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.ShiftStaffingRecommendation;
+import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor.SurgeLevel;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine.BiomarkerTrend;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine.ForecastHorizon;
@@ -1005,6 +1016,114 @@ class ClinicalAiSuiteSafetyTest {
                             List.of(longitudinalBundle), List.of("Forgets evening dose"), true, "Kore")));
             assertEquals(503, ex.getHttpStatus());
             assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
+        }
+    }
+
+    @Test
+    void clinicalCapacityPredictorForecastsBaselineStaffingRedactsPhiAndLogsAuditTrail() {
+        ClinicalAiProperties props = new ClinicalAiProperties();
+        props.setApiKey("");
+        GeminiClinicalApiClient client = new GeminiClinicalApiClient(props);
+        PhiRedactionGateway redactor = new PhiRedactionGateway();
+        ClinicalAiGovernanceService governance = new ClinicalAiGovernanceService();
+
+        List<String> recordedAuditActions = new java.util.ArrayList<>();
+        ClinicalCapacityPredictor predictor = new ClinicalCapacityPredictor(client, redactor, governance);
+        predictor.registerAuditListener(evt -> recordedAuditActions.add(evt.action() + ":" + evt.outcome()));
+
+        UUID facilityId = UUID.randomUUID();
+        FacilityCapacityBaseline baseline = new FacilityCapacityBaseline(
+                40, 3, 6, 2, 4, 4.0,
+                List.of("Seasonal malaria surge", "Regional highway mass-casualty alert involving Patient: Henri Mballa MRN CM-99210")
+        );
+        List<HistoricalAdmissionWindow> windows = List.of(
+                new HistoricalAdmissionWindow("2026-11-16T08:00:00Z", "MONDAY", "DAY", 24, 9, 7, 3, 38.0, 6, 82.0),
+                new HistoricalAdmissionWindow("2026-11-16T16:00:00Z", "MONDAY", "EVENING", 28, 11, 6, 5, 48.0, 8, 86.0),
+                new HistoricalAdmissionWindow("2026-11-17T08:00:00Z", "TUESDAY", "DAY", 34, 14, 8, 8, 62.0, 11, 93.0),
+                new HistoricalAdmissionWindow("2026-11-17T16:00:00Z", "TUESDAY", "EVENING", 38, 16, 7, 11, 74.0, 13, 96.0)
+        );
+        String fhirEncounterBundle = """
+                {
+                  "resourceType": "Bundle",
+                  "type": "searchset",
+                  "entry": [
+                    {
+                      "resource": {
+                        "resourceType": "Patient",
+                        "gender": "male",
+                        "birthDate": "1984-03-11",
+                        "name": [{"family": "Mballa", "given": ["Henri"]}],
+                        "identifier": [{"value": "CM-99210"}]
+                      }
+                    },
+                    {
+                      "resource": {
+                        "resourceType": "Encounter",
+                        "status": "in-progress",
+                        "class": {"code": "EMER"}
+                      }
+                    }
+                  ]
+                }
+                """;
+
+        CapacityForecastRequest req = new CapacityForecastRequest(
+                facilityId,
+                "CHARGE-NURSE-01",
+                CareUnitType.EMERGENCY_DEPARTMENT,
+                CapacityHorizon.NEXT_72_HOURS,
+                baseline,
+                windows,
+                List.of(fhirEncounterBundle)
+        );
+
+        RedactedCapacityContext ctx = predictor.analyzeCapacityBaselineWithAudit(req);
+        String redactedText = ctx.redactedPayload().redactedText();
+
+        // Mandatory HIPAA Safe-Harbor redaction across operational notes & FHIR bundles
+        assertFalse(redactedText.contains("Henri Mballa"));
+        assertFalse(redactedText.contains("CM-99210"));
+        assertTrue(redactedText.contains("Seasonal malaria surge"));
+
+        // Verify deterministic surge detection, positive arrival slope, and nurse staffing deltas
+        DeterministicCapacityMetrics metrics = ctx.deterministicMetrics();
+        assertEquals(4, metrics.windowsAnalyzed());
+        assertEquals(1, metrics.fhirEncountersIngested());
+        assertTrue(metrics.arrivalTrendSlopePercent() > 30.0);
+        assertEquals(SurgeLevel.RED_CRITICAL_DIVERSION, metrics.surgeLevel());
+        assertEquals(3, metrics.shiftStaffingBaselines().size());
+        ShiftStaffingRecommendation eveningShift = metrics.shiftStaffingBaselines().stream()
+                .filter(s -> "EVENING".equals(s.shiftName()))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(eveningShift.recommendedRns() > baseline.currentRnsOnDuty());
+        assertTrue(eveningShift.additionalRnsNeeded() > 0);
+
+        // Verify audit trail recorded the baseline analysis event with SHA-256 input digest
+        List<CapacityAuditEvent> trailAfterBaseline = predictor.getAuditTrailForFacility(facilityId);
+        assertEquals(1, trailAfterBaseline.size());
+        assertEquals("CLINICAL_AI_CAPACITY_BASELINE_ANALYZED", trailAfterBaseline.get(0).action());
+        assertEquals(64, trailAfterBaseline.get(0).inputDigestSha256().length());
+
+        // Verify tenant kill-switch blocks forecasting AND appends a DENIED audit event
+        UUID blockedFac = UUID.randomUUID();
+        governance.setTenantAiEnabled(blockedFac, false);
+        assertThrows(IllegalStateException.class, () ->
+                predictor.forecastPatientFlowAndStaffing(new CapacityForecastRequest(
+                        blockedFac, "CHARGE-NURSE-01", CareUnitType.EMERGENCY_DEPARTMENT,
+                        CapacityHorizon.NEXT_24_HOURS, baseline, windows, List.of())));
+        assertTrue(predictor.getAuditTrailForFacility(blockedFac).stream()
+                .anyMatch(e -> "CLINICAL_AI_CAPACITY_FORECAST_DENIED".equals(e.action())
+                        && "DENIED".equals(e.outcome())));
+
+        // Verify missing GEMINI_API_KEY propagates HTTP 503 AND records REQUESTED + FAILED audit trail events
+        if (System.getenv("GEMINI_API_KEY") == null || System.getenv("GEMINI_API_KEY").isBlank()) {
+            GeminiApiException ex = assertThrows(GeminiApiException.class, () ->
+                    predictor.forecastPatientFlowAndStaffing(req));
+            assertEquals(503, ex.getHttpStatus());
+            assertEquals("GEMINI_API_KEY_NOT_CONFIGURED", ex.getErrorCode());
+            assertTrue(recordedAuditActions.contains("CLINICAL_AI_CAPACITY_FORECAST_REQUESTED:IN_PROGRESS"));
+            assertTrue(recordedAuditActions.contains("CLINICAL_AI_CAPACITY_FORECAST_FAILED:FAILURE"));
         }
     }
 }
