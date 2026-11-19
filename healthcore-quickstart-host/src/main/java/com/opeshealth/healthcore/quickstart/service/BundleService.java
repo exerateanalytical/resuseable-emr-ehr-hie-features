@@ -152,6 +152,7 @@ public class BundleService {
     private final PlatformTransactionManager transactionManager;
     private final CdsHooksService cdsHooksService;
     private final OutboxRelayService.OutboxRepository outboxRepo;
+    private final FhirAuditLoggingService fhirAuditLoggingService;
     private final FhirBundleValidatorService validatorService;
 
     public BundleService(
@@ -159,27 +160,7 @@ public class BundleService {
             PractitionerService practitionerService,
             EncounterService encounterService,
             ObservationService observationService) {
-        this(patientService, practitionerService, encounterService, observationService, null, null, null);
-    }
-
-    @Autowired
-    public BundleService(
-            PatientService patientService,
-            PractitionerService practitionerService,
-            EncounterService encounterService,
-            ObservationService observationService,
-            ObjectProvider<PlatformTransactionManager> txManagerProvider,
-            ObjectProvider<CdsHooksService> cdsHooksServiceProvider,
-            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider) {
-        this(
-                patientService,
-                practitionerService,
-                encounterService,
-                observationService,
-                txManagerProvider != null ? txManagerProvider.getIfAvailable() : null,
-                cdsHooksServiceProvider != null ? cdsHooksServiceProvider.getIfAvailable() : null,
-                outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null
-        );
+        this(patientService, practitionerService, encounterService, observationService, null, null, null, null);
     }
 
     public BundleService(
@@ -190,6 +171,41 @@ public class BundleService {
             PlatformTransactionManager transactionManager,
             CdsHooksService cdsHooksService,
             OutboxRelayService.OutboxRepository outboxRepo) {
+        this(patientService, practitionerService, encounterService, observationService,
+                transactionManager, cdsHooksService, outboxRepo, null);
+    }
+
+    @Autowired
+    public BundleService(
+            PatientService patientService,
+            PractitionerService practitionerService,
+            EncounterService encounterService,
+            ObservationService observationService,
+            ObjectProvider<PlatformTransactionManager> txManagerProvider,
+            ObjectProvider<CdsHooksService> cdsHooksServiceProvider,
+            ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider,
+            ObjectProvider<FhirAuditLoggingService> auditLoggingServiceProvider) {
+        this(
+                patientService,
+                practitionerService,
+                encounterService,
+                observationService,
+                txManagerProvider != null ? txManagerProvider.getIfAvailable() : null,
+                cdsHooksServiceProvider != null ? cdsHooksServiceProvider.getIfAvailable() : null,
+                outboxRepoProvider != null ? outboxRepoProvider.getIfAvailable() : null,
+                auditLoggingServiceProvider != null ? auditLoggingServiceProvider.getIfAvailable() : null
+        );
+    }
+
+    public BundleService(
+            PatientService patientService,
+            PractitionerService practitionerService,
+            EncounterService encounterService,
+            ObservationService observationService,
+            PlatformTransactionManager transactionManager,
+            CdsHooksService cdsHooksService,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            FhirAuditLoggingService fhirAuditLoggingService) {
         this.patientService = Objects.requireNonNull(patientService, "PatientService is required");
         this.practitionerService = Objects.requireNonNull(practitionerService, "PractitionerService is required");
         this.encounterService = Objects.requireNonNull(encounterService, "EncounterService is required");
@@ -197,6 +213,7 @@ public class BundleService {
         this.transactionManager = transactionManager;
         this.cdsHooksService = cdsHooksService;
         this.outboxRepo = outboxRepo;
+        this.fhirAuditLoggingService = fhirAuditLoggingService;
         this.validatorService = new FhirBundleValidatorService(FHIR_R4);
     }
 
@@ -412,14 +429,81 @@ public class BundleService {
             rawUrl = replaceUrnPlaceholdersInUrl(rawUrl, urnMap);
         }
         ParsedRequestUrl parsedUrl = parseRequestUrl(rawUrl);
+        String entryAction = "HIPAA_BUNDLE_ENTRY_" + verb.toCode();
 
-        return switch (verb) {
-            case POST -> handlePost(facilityId, parsedUrl, entry.getResource(), req, urnMap, resolvePlaceholders, cdsQueue);
-            case PUT -> handlePut(parsedUrl, entry.getResource(), req, urnMap, resolvePlaceholders, cdsQueue);
-            case GET -> handleGet(facilityId, parsedUrl);
-            case DELETE -> handleDelete(parsedUrl);
-            default -> throw new IllegalArgumentException("Unsupported Bundle request.method: " + verb.toCode());
-        };
+        try {
+            BundleEntryComponent resp = switch (verb) {
+                case POST -> handlePost(facilityId, parsedUrl, entry.getResource(), req, urnMap, resolvePlaceholders, cdsQueue);
+                case PUT -> handlePut(parsedUrl, entry.getResource(), req, urnMap, resolvePlaceholders, cdsQueue);
+                case GET -> handleGet(facilityId, parsedUrl);
+                case DELETE -> handleDelete(parsedUrl);
+                default -> throw new IllegalArgumentException("Unsupported Bundle request.method: " + verb.toCode());
+            };
+            recordBundleEntryAudit(facilityId, entryAction, parsedUrl, resp, "SUCCESS", null);
+            return resp;
+        } catch (RuntimeException ex) {
+            recordBundleEntryAudit(facilityId, entryAction, parsedUrl, null, "FAILURE",
+                    ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            throw ex;
+        }
+    }
+
+    private void recordBundleEntryAudit(
+            UUID facilityId,
+            String action,
+            ParsedRequestUrl parsedUrl,
+            BundleEntryComponent resp,
+            String outcome,
+            String reason) {
+        if (fhirAuditLoggingService == null) {
+            return;
+        }
+        try {
+            String resolvedId = parsedUrl.resourceId() != null ? parsedUrl.resourceId().toString() : null;
+            UUID patientId = null;
+            if (resp != null && resp.hasResource()) {
+                Resource res = resp.getResource();
+                if (resolvedId == null && res.hasIdElement() && !isBlank(res.getIdElement().getIdPart()) && !(res instanceof Bundle)) {
+                    resolvedId = res.getIdElement().getIdPart();
+                }
+                if (res instanceof Patient pat && pat.hasIdElement()) {
+                    patientId = tryParseUuid(pat.getIdElement().getIdPart());
+                } else if (res instanceof Encounter enc && enc.hasSubject()) {
+                    patientId = extractReferenceUuid(enc.getSubject().getReference());
+                } else if (res instanceof Observation obs && obs.hasSubject()) {
+                    patientId = extractReferenceUuid(obs.getSubject().getReference());
+                }
+            }
+            if (patientId == null && "Patient".equals(parsedUrl.resourceType()) && parsedUrl.resourceId() != null) {
+                patientId = parsedUrl.resourceId();
+            }
+            fhirAuditLoggingService.recordFhirResourceAccess(
+                    action,
+                    parsedUrl.resourceType(),
+                    resolvedId,
+                    patientId,
+                    outcome,
+                    reason
+            );
+        } catch (Exception ignored) {
+            // Do not disrupt clinical bundle transaction if secondary entry audit callback fails
+        }
+    }
+
+    private static UUID extractReferenceUuid(String ref) {
+        if (isBlank(ref)) return null;
+        int slash = ref.lastIndexOf('/');
+        String idPart = slash >= 0 && slash + 1 < ref.length() ? ref.substring(slash + 1) : ref;
+        return tryParseUuid(idPart);
+    }
+
+    private static UUID tryParseUuid(String raw) {
+        if (isBlank(raw)) return null;
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private BundleEntryComponent handlePost(

@@ -198,6 +198,7 @@ public class FhirApiRateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/practitioners")
                 || path.startsWith("/api/v1/encounters")
                 || path.startsWith("/api/v1/observations")
+                || path.startsWith("/api/v1/audit-events")
                 || path.startsWith("/api/v1/cds-services")
                 || path.startsWith("/cds-services")
                 || path.startsWith("/api/v1/mpi")

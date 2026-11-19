@@ -105,6 +105,7 @@ public class FhirOpenApiConfiguration {
                 .addSchemas("FhirEncounterResource", buildFhirEncounterSchema())
                 .addSchemas("FhirObservationResource", buildFhirObservationSchema())
                 .addSchemas("FhirBundleResource", buildFhirBundleSchema())
+                .addSchemas("FhirAuditEventResource", buildFhirAuditEventSchema())
                 .addSchemas("FhirOperationOutcome", buildFhirOperationOutcomeSchema())
                 .addSchemas("ApiErrorResponse", buildApiErrorResponseSchema());
 
@@ -112,10 +113,10 @@ public class FhirOpenApiConfiguration {
                 .info(new Info()
                         .title("Opes HealthCore HL7 FHIR R4 & CDS Hooks 2.0 API")
                         .version("1.0.0")
-                        .description("Enterprise HL7 FHIR R4 (Patient, Practitioner, Encounter, Observation, Bundle Batch/Transaction), "
+                        .description("Enterprise HL7 FHIR R4 (Patient, Practitioner, Encounter, Observation, Bundle Batch/Transaction, AuditEvent), "
                                 + "CDS Hooks 2.0 Clinical Decision Support, and GraphQL Healthcare Interoperability API. "
                                 + "All clinical endpoints enforce HAPI FHIR R4 structural validation, Bucket4j token-bucket rate limiting, "
-                                + "and SHA-256 tamper-evident audit logging.")
+                                + "and HIPAA/GDPR SHA-256 tamper-evident audit logging.")
                         .contact(new Contact()
                                 .name("Jude Nshome — Opes Health Systems")
                                 .email("nshome@opesware.com")
@@ -135,6 +136,7 @@ public class FhirOpenApiConfiguration {
                         new Tag().name("FHIR R4 Encounter").description("HL7 FHIR R4 Encounter lifecycle CRUD, status transitions, and CDS Hooks 2.0 evaluation"),
                         new Tag().name("FHIR R4 Observation").description("HL7 FHIR R4 Observation (vital signs & laboratory results) CRUD, LOINC/UCUM validation, and search"),
                         new Tag().name("FHIR R4 Bundle (Batch & Transaction)").description("HL7 FHIR R4 Bundle processor supporting atomic transactions (urn:uuid resolution) and isolated batch operations"),
+                        new Tag().name("FHIR R4 AuditEvent & HIPAA/GDPR Compliance").description("Tamper-evident SHA-256 hash-chained FHIR R4 AuditEvent search, chain integrity verification, and HIPAA § 164.528 / GDPR Art. 15 patient access disclosure reports"),
                         new Tag().name("CDS Hooks 2.0 Clinical Decision Support").description("HL7 CDS Hooks 2.0 Discovery, Hook Execution (patient-view, encounter-start, encounter-discharge, observation-review), and Feedback endpoints")
                 ))
                 .addSecurityItem(new SecurityRequirement()
@@ -156,6 +158,7 @@ public class FhirOpenApiConfiguration {
                         "/api/v1/observations/**",
                         "/api/v1/fhir/**",
                         "/api/v1/bundles/**",
+                        "/api/v1/audit-events/**",
                         "/api/v1/cds-services/**",
                         "/cds-services/**"
                 )
@@ -307,6 +310,22 @@ public class FhirOpenApiConfiguration {
                                 .addProperty("status", new StringSchema().description("HTTP status line e.g. '201 Created' or '200 OK'"))
                                 .addProperty("location", new StringSchema())
                                 .addProperty("etag", new StringSchema()))));
+    }
+
+    private static Schema<?> buildFhirAuditEventSchema() {
+        return new ObjectSchema()
+                .description("HL7 FHIR R4 AuditEvent resource persisted in hc_audit_logs with SHA-256 hash chaining")
+                .addProperty("resourceType", new StringSchema()._default("AuditEvent").description("Fixed value 'AuditEvent'"))
+                .addProperty("id", new StringSchema().description("AuditEvent UUIDv7 primary key"))
+                .addProperty("type", new ObjectSchema().description("AuditEvent type Coding (rest)"))
+                .addProperty("subtype", new ArraySchema().items(new ObjectSchema().description("FHIR restful interaction & HIPAA/GDPR action code")))
+                .addProperty("action", new StringSchema().description("C | R | U | D | E"))
+                .addProperty("recorded", new StringSchema().description("ISO-8601 instant when the FHIR resource access occurred"))
+                .addProperty("outcome", new StringSchema().description("0 (Success) | 4 (Minor Failure) | 8 (Serious Failure)"))
+                .addProperty("outcomeDesc", new StringSchema().description("PHI-redacted outcome diagnostic message"))
+                .addProperty("agent", new ArraySchema().items(new ObjectSchema().description("Authenticated clinician/system actor, role, and network IP")))
+                .addProperty("source", new ObjectSchema().description("Facility site key and Opes HealthCore SHA-256 audit observer"))
+                .addProperty("entity", new ArraySchema().items(new ObjectSchema().description("Audited FHIR resource reference, Patient subject, sequenceNumber, prevHash, entryHash, and correlationId")));
     }
 
     private static Schema<?> buildFhirOperationOutcomeSchema() {

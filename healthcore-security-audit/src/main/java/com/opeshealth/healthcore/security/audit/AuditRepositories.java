@@ -59,5 +59,42 @@ public interface AuditRepositories {
          */
         Page<AuditLogEntity> findByFacilityKeyAndPatientIdOrderBySequenceNumberDesc(
                 String facilityKey, UUID patientId, Pageable pageable);
+
+        /**
+         * Full ordered history of all FHIR resource access events for a specific patient
+         * (HIPAA § 164.528 Accounting of Disclosures / GDPR Article 15 Right of Access).
+         */
+        List<AuditLogEntity> findByFacilityKeyAndPatientIdOrderBySequenceNumberDesc(
+                String facilityKey, UUID patientId);
+
+        /**
+         * Fetches audit entries for a specific FHIR resource type within a facility.
+         */
+        List<AuditLogEntity> findByFacilityKeyAndResourceTypeOrderBySequenceNumberDesc(
+                String facilityKey, String resourceType);
+
+        /**
+         * Fetches audit entries for a specific FHIR resource instance (e.g., Patient/uuid).
+         */
+        List<AuditLogEntity> findByFacilityKeyAndResourceTypeAndResourceIdOrderBySequenceNumberDesc(
+                String facilityKey, String resourceType, String resourceId);
+
+        /**
+         * Fetches audit entries initiated by a specific clinician, staff member, or client actor.
+         */
+        List<AuditLogEntity> findByFacilityKeyAndActorIdOrderBySequenceNumberDesc(
+                String facilityKey, String actorId);
+
+        /**
+         * Fetches audit entries filtered by execution outcome (SUCCESS / FAILURE).
+         */
+        List<AuditLogEntity> findByFacilityKeyAndOutcomeOrderBySequenceNumberDesc(
+                String facilityKey, String outcome);
+
+        /**
+         * Fetches audit entries within a timestamp window for compliance auditing.
+         */
+        List<AuditLogEntity> findByFacilityKeyAndOccurredAtBetweenOrderBySequenceNumberDesc(
+                String facilityKey, java.time.Instant fromInclusive, java.time.Instant toInclusive);
     }
 }

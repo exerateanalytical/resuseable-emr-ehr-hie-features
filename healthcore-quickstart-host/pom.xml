@@ -41,6 +41,23 @@
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-api-product</artifactId></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-workflow-engine</artifactId></dependency>
 
+        <!-- 15 Specialized Granular Clinical, Operational & Interoperability Starters -->
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-pharmacy-inventory</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-lis-diagnostics</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-blood-bank</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-surgery-ot</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-telemedicine</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-biomedical-coldchain</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-crvs-mortuary</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-workforce-roster</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-deidentification-research</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-chw-homecare</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-programs-immunization</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-disease-surveillance</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-fhir-hie</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-hl7-astm-dicom</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-interoperability-ihe</artifactId></dependency>
+
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-graphql</artifactId></dependency>
         <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId></dependency>

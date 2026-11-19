@@ -14,6 +14,9 @@ import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlTypes.GqlEncounter;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlTypes.GqlObservation;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlTypes.GqlPatient;
+import com.opeshealth.healthcore.quickstart.service.CdsHooksService.CdsHookRequest;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.FhirAccessAuditCommand;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 import com.opeshealth.healthcore.security.audit.PhiRedactionConverter;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
@@ -46,13 +49,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Aspect-oriented HIPAA audit interceptor capturing timestamp, authenticated user ID,
+ * Aspect-oriented HIPAA &amp; GDPR audit interceptor capturing timestamp, authenticated user ID,
  * action, resource identifier, facility scope, correlation ID, source IP, and outcome
- * for every incoming API invocation targeting {@link PatientController}.
+ * for every incoming API invocation targeting FHIR REST, Bundle, CDS Hooks 2.0, and GraphQL endpoints.
  *
- * <p>Persists tamper-evident SHA-256 hash-chained entries via {@link ClinicalAuditService}
- * when available and scrubs any accidental PHI from diagnostic failure details via
- * {@link PhiRedactionConverter}.</p>
+ * <p>Delegates to {@link FhirAuditLoggingService} (and {@link ClinicalAuditService}) to persist
+ * tamper-evident SHA-256 hash-chained entries to the database and scrubs any accidental PHI
+ * from diagnostic failure details via {@link PhiRedactionConverter}.</p>
  */
 @Aspect
 @Component
@@ -81,23 +84,47 @@ public class PatientAuditAspect {
     ) {}
 
     private final ClinicalAuditService clinicalAuditService;
+    private final FhirAuditLoggingService fhirAuditLoggingService;
     private final List<Consumer<HipaaPatientAuditRecord>> auditListeners = new CopyOnWriteArrayList<>();
 
-    @Autowired
     public PatientAuditAspect(ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider) {
-        this.clinicalAuditService = clinicalAuditServiceProvider != null
-                ? clinicalAuditServiceProvider.getIfAvailable()
-                : null;
+        this(
+                clinicalAuditServiceProvider != null ? clinicalAuditServiceProvider.getIfAvailable() : null,
+                null
+        );
+    }
+
+    @Autowired
+    public PatientAuditAspect(
+            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider,
+            ObjectProvider<FhirAuditLoggingService> fhirAuditLoggingServiceProvider) {
+        this(
+                clinicalAuditServiceProvider != null ? clinicalAuditServiceProvider.getIfAvailable() : null,
+                fhirAuditLoggingServiceProvider != null ? fhirAuditLoggingServiceProvider.getIfAvailable() : null
+        );
     }
 
     public PatientAuditAspect(ClinicalAuditService clinicalAuditService) {
+        this(clinicalAuditService, new FhirAuditLoggingService(clinicalAuditService));
+    }
+
+    public PatientAuditAspect(
+            ClinicalAuditService clinicalAuditService,
+            FhirAuditLoggingService fhirAuditLoggingService) {
         this.clinicalAuditService = clinicalAuditService;
+        this.fhirAuditLoggingService = fhirAuditLoggingService != null
+                ? fhirAuditLoggingService
+                : (clinicalAuditService != null ? new FhirAuditLoggingService(clinicalAuditService) : null);
     }
 
     public void registerListener(Consumer<HipaaPatientAuditRecord> listener) {
         if (listener != null) {
             auditListeners.add(listener);
         }
+    }
+
+    public FhirAuditLoggingService getFhirAuditLoggingService() {
+        return fhirAuditLoggingService;
     }
 
     @Pointcut("within(com.opeshealth.healthcore.quickstart.web.PatientController) && execution(public * *(..))")
@@ -115,10 +142,13 @@ public class PatientAuditAspect {
     @Pointcut("within(com.opeshealth.healthcore.quickstart.web.BundleController) && execution(public * *(..))")
     public void bundleControllerEndpoints() {}
 
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.CdsHooksV2Controller) && execution(public * *(..))")
+    public void cdsHooksControllerEndpoints() {}
+
     @Pointcut("within(com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController) && execution(public * *(..))")
     public void graphqlControllerEndpoints() {}
 
-    @Pointcut("(patientControllerEndpoints() || practitionerControllerEndpoints() || observationControllerEndpoints() || encounterControllerEndpoints() || bundleControllerEndpoints() || graphqlControllerEndpoints())")
+    @Pointcut("(patientControllerEndpoints() || practitionerControllerEndpoints() || observationControllerEndpoints() || encounterControllerEndpoints() || bundleControllerEndpoints() || cdsHooksControllerEndpoints() || graphqlControllerEndpoints())")
     public void auditedFhirControllerEndpoints() {}
 
     @Around("auditedFhirControllerEndpoints()")
@@ -139,6 +169,7 @@ public class PatientAuditAspect {
             case "Observation" -> "/api/v1/observations";
             case "Encounter" -> "/api/v1/encounters";
             case "Bundle" -> "/api/v1/bundles";
+            case "CDSHooks" -> "/api/v1/cds-services";
             case "GraphQL" -> "/graphql";
             default -> "/api/v1/patients";
         };
@@ -165,8 +196,10 @@ public class PatientAuditAspect {
             throw ex;
         } finally {
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
-            String resourceId = resolvedResourceId != null ? resolvedResourceId.toString() : null;
-            UUID patientId = resolvePatientId(resourceType, resolvedResourceId, result);
+            String resourceId = resolvedResourceId != null
+                    ? resolvedResourceId.toString()
+                    : extractStringResourceId(resourceType, pjp.getArgs(), result);
+            UUID patientId = resolvePatientId(resourceType, resolvedResourceId, pjp.getArgs(), result);
 
             HipaaPatientAuditRecord record = new HipaaPatientAuditRecord(
                     timestamp,
@@ -212,9 +245,34 @@ public class PatientAuditAspect {
             }
         }
 
+        if (fhirAuditLoggingService != null) {
+            try {
+                fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
+                        record.facilityKey(),
+                        record.userId(),
+                        record.actorRole(),
+                        record.action(),
+                        record.resourceType(),
+                        record.resourceId(),
+                        record.patientId(),
+                        record.httpMethod(),
+                        record.requestUri(),
+                        record.sourceIp(),
+                        record.correlationId(),
+                        record.outcome(),
+                        record.durationMs(),
+                        record.detail()
+                ));
+                return;
+            } catch (Exception ex) {
+                log.warn("Unable to persist FhirAuditLoggingService entry for action={} correlationId={}: {}",
+                        record.action(), record.correlationId(), ex.getMessage());
+            }
+        }
+
         if (clinicalAuditService != null) {
             try {
-                clinicalAuditService.recordEvent(
+                clinicalAuditService.recordEventWithCorrelation(
                         record.facilityKey(),
                         record.userId(),
                         record.actorRole(),
@@ -224,7 +282,8 @@ public class PatientAuditAspect {
                         record.patientId(),
                         record.outcome(),
                         record.detail(),
-                        record.sourceIp()
+                        record.sourceIp(),
+                        record.correlationId()
                 );
             } catch (Exception ex) {
                 log.warn("Unable to persist ClinicalAuditService entry for action={} correlationId={}: {}",
@@ -252,6 +311,10 @@ public class PatientAuditAspect {
                 || (declaring != null && BundleController.class.isAssignableFrom(declaring))) {
             return "Bundle";
         }
+        if (target instanceof CdsHooksV2Controller
+                || (declaring != null && CdsHooksV2Controller.class.isAssignableFrom(declaring))) {
+            return "CDSHooks";
+        }
         if (target instanceof FhirGraphQlController
                 || (declaring != null && FhirGraphQlController.class.isAssignableFrom(declaring))) {
             return "GraphQL";
@@ -259,7 +322,30 @@ public class PatientAuditAspect {
         return "Patient";
     }
 
-    private static UUID resolvePatientId(String resourceType, UUID resolvedResourceId, Object result) {
+    private static String extractStringResourceId(String resourceType, Object[] args, Object result) {
+        if ("GraphQL".equals(resourceType)) {
+            if (result instanceof GqlPatient pat && pat.id() != null) return pat.id();
+            if (result instanceof GqlEncounter enc && enc.id() != null) return enc.id();
+            if (result instanceof GqlObservation obs && obs.id() != null) return obs.id();
+            if (args != null) {
+                for (Object arg : args) {
+                    if (arg instanceof GqlPatient pat && pat.id() != null) return pat.id();
+                    if (arg instanceof GqlEncounter enc && enc.id() != null) return enc.id();
+                    if (arg instanceof GqlObservation obs && obs.id() != null) return obs.id();
+                }
+            }
+        }
+        if ("CDSHooks".equals(resourceType) && args != null) {
+            for (Object arg : args) {
+                if (arg instanceof String s && !s.isBlank()) {
+                    return s.trim();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static UUID resolvePatientId(String resourceType, UUID resolvedResourceId, Object[] args, Object result) {
         if ("Patient".equals(resourceType)) {
             return resolvedResourceId;
         }
@@ -273,7 +359,30 @@ public class PatientAuditAspect {
             if (result instanceof GqlObservation obs && obs.subject() != null) {
                 return parseRefUuidQuietly(obs.subject().reference());
             }
+            if (args != null) {
+                for (Object arg : args) {
+                    if (arg instanceof GqlPatient pat && pat.id() != null) {
+                        return parseUuidQuietly(pat.id());
+                    }
+                    if (arg instanceof GqlEncounter enc && enc.subject() != null) {
+                        return parseRefUuidQuietly(enc.subject().reference());
+                    }
+                    if (arg instanceof GqlObservation obs && obs.subject() != null) {
+                        return parseRefUuidQuietly(obs.subject().reference());
+                    }
+                }
+            }
             return null;
+        }
+        if ("CDSHooks".equals(resourceType) && args != null) {
+            for (Object arg : args) {
+                if (arg instanceof CdsHookRequest hookReq && hookReq.context() != null) {
+                    Object patIdObj = hookReq.context().get("patientId");
+                    if (patIdObj != null) {
+                        return parseRefUuidQuietly(patIdObj.toString());
+                    }
+                }
+            }
         }
         if (("Observation".equals(resourceType) || "Encounter".equals(resourceType) || "Bundle".equals(resourceType))
                 && result instanceof ResponseEntity<?> response
@@ -292,10 +401,11 @@ public class PatientAuditAspect {
             case "Observation" -> "HIPAA_OBSERVATION_";
             case "Encounter" -> "HIPAA_ENCOUNTER_";
             case "Bundle" -> "HIPAA_BUNDLE_";
+            case "CDSHooks" -> "HIPAA_CDS_HOOKS_";
             case "GraphQL" -> "HIPAA_GRAPHQL_";
             default -> "HIPAA_PATIENT_";
         };
-        if ("GraphQL".equals(resourceType)) {
+        if ("GraphQL".equals(resourceType) || "CDSHooks".equals(resourceType)) {
             return prefix + methodName.toUpperCase(java.util.Locale.ROOT);
         }
         return switch (methodName) {
@@ -312,6 +422,9 @@ public class PatientAuditAspect {
     private static String resolveHttpMethodFallback(String resourceType, String methodName) {
         if ("GraphQL".equals(resourceType)) {
             return "POST";
+        }
+        if ("CDSHooks".equals(resourceType)) {
+            return "discoverServices".equals(methodName) ? "GET" : "POST";
         }
         return switch (methodName) {
             case "searchPatients", "getPatientById",

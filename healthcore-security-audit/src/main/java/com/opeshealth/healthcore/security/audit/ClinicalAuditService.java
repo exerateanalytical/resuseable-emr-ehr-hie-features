@@ -89,11 +89,54 @@ public class ClinicalAuditService {
             String outcome,
             String reason,
             String sourceIp) {
+        return recordEventWithCorrelation(
+                facilityKey,
+                actorId,
+                actorRole,
+                action,
+                resourceType,
+                resourceId,
+                patientId,
+                outcome,
+                reason,
+                sourceIp,
+                MDC.get(CorrelationAndPhiGuard.MDC_CORRELATION_ID)
+        );
+    }
 
-        AuditChainHeadEntity head = headRepository.findByFacilityKeyForUpdate(facilityKey)
+    /**
+     * Appends one tamper-evident row with an explicit correlation ID and automatic PHI redaction
+     * on the diagnostic reason field for HIPAA/GDPR compliance.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AuditLogEntity recordEventWithCorrelation(
+            String facilityKey,
+            String actorId,
+            String actorRole,
+            String action,
+            String resourceType,
+            String resourceId,
+            UUID patientId,
+            String outcome,
+            String reason,
+            String sourceIp,
+            String correlationId) {
+
+        String normalizedFacility = (facilityKey != null && !facilityKey.isBlank()) ? facilityKey.trim() : "GLOBAL";
+        String normalizedActor = (actorId != null && !actorId.isBlank()) ? actorId.trim() : "ANONYMOUS";
+        String normalizedOutcome = (outcome != null && !outcome.isBlank()) ? outcome.trim() : "SUCCESS";
+        String redactedReason = reason != null ? PhiRedactionConverter.redact(reason) : null;
+        if (redactedReason != null && redactedReason.length() > 500) {
+            redactedReason = redactedReason.substring(0, 500);
+        }
+        String resolvedCorrelation = (correlationId != null && !correlationId.isBlank())
+                ? correlationId.trim()
+                : MDC.get(CorrelationAndPhiGuard.MDC_CORRELATION_ID);
+
+        AuditChainHeadEntity head = headRepository.findByFacilityKeyForUpdate(normalizedFacility)
                 .orElseGet(() -> {
                     AuditChainHeadEntity created = new AuditChainHeadEntity();
-                    created.setFacilityKey(facilityKey);
+                    created.setFacilityKey(normalizedFacility);
                     created.setLastHash(GENESIS_HASH);
                     created.setSequenceNumber(0L);
                     return headRepository.saveAndFlush(created);
@@ -103,21 +146,22 @@ public class ClinicalAuditService {
         String prevHash = head.getLastHash();
 
         AuditLogEntity entry = new AuditLogEntity();
-        entry.setFacilityKey(facilityKey);
+        entry.setFacilityKey(normalizedFacility);
         entry.setSequenceNumber(nextSeq);
-        entry.setActorId(actorId);
+        entry.setActorId(normalizedActor);
         entry.setActorRole(actorRole);
         entry.setAction(action);
         entry.setResourceType(resourceType);
         entry.setResourceId(resourceId);
         entry.setPatientId(patientId);
-        entry.setOutcome(outcome);
-        entry.setReason(reason);
+        entry.setOutcome(normalizedOutcome);
+        entry.setReason(redactedReason);
         entry.setSourceIp(sourceIp);
-        entry.setCorrelationId(MDC.get(CorrelationAndPhiGuard.MDC_CORRELATION_ID));
+        entry.setCorrelationId(resolvedCorrelation);
         entry.setPrevHash(prevHash);
 
-        String entryHash = computeSha256(prevHash, facilityKey, nextSeq, actorId, action, resourceType, resourceId, outcome);
+        String entryHash = computeSha256(
+                prevHash, normalizedFacility, nextSeq, normalizedActor, action, resourceType, resourceId, normalizedOutcome);
         entry.setEntryHash(entryHash);
 
         head.setLastHash(entryHash);
@@ -125,6 +169,51 @@ public class ClinicalAuditService {
         headRepository.save(head);
 
         return logRepository.save(entry);
+    }
+
+    /**
+     * Looks up a single immutable audit ledger row by its UUIDv7 primary key.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<AuditLogEntity> findById(UUID id) {
+        return logRepository.findById(id);
+    }
+
+    /**
+     * Returns all persisted audit ledger entries for a facility ordered by sequence number ascending.
+     */
+    @Transactional(readOnly = true)
+    public List<AuditLogEntity> findFacilityLogs(String facilityKey) {
+        return logRepository.findByFacilityKeyOrderBySequenceNumberAsc(facilityKey);
+    }
+
+    /**
+     * Returns all persisted audit ledger entries for a specific patient in reverse chronological sequence
+     * (HIPAA § 164.528 Accounting of Disclosures / GDPR Article 15 Right of Access).
+     */
+    @Transactional(readOnly = true)
+    public List<AuditLogEntity> findPatientLogs(String facilityKey, UUID patientId) {
+        return logRepository.findByFacilityKeyAndPatientIdOrderBySequenceNumberDesc(facilityKey, patientId);
+    }
+
+    /**
+     * Returns persisted audit entries for a specific FHIR resource type (and optional resource ID).
+     */
+    @Transactional(readOnly = true)
+    public List<AuditLogEntity> findResourceLogs(String facilityKey, String resourceType, String resourceId) {
+        if (resourceId != null && !resourceId.isBlank()) {
+            return logRepository.findByFacilityKeyAndResourceTypeAndResourceIdOrderBySequenceNumberDesc(
+                    facilityKey, resourceType, resourceId);
+        }
+        return logRepository.findByFacilityKeyAndResourceTypeOrderBySequenceNumberDesc(facilityKey, resourceType);
+    }
+
+    /**
+     * Returns persisted audit entries initiated by a specific clinician or client actor.
+     */
+    @Transactional(readOnly = true)
+    public List<AuditLogEntity> findActorLogs(String facilityKey, String actorId) {
+        return logRepository.findByFacilityKeyAndActorIdOrderBySequenceNumberDesc(facilityKey, actorId);
     }
 
     /**

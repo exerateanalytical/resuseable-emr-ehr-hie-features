@@ -90,6 +90,11 @@ import com.opeshealth.healthcore.quickstart.service.CdsHooksService.CdsHookReque
 import com.opeshealth.healthcore.quickstart.service.CdsHooksService.CdsHookResponse;
 import com.opeshealth.healthcore.quickstart.service.CdsHooksService.ServiceDiscoveryResponse;
 import com.opeshealth.healthcore.quickstart.service.EncounterService;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.AuditSearchCriteria;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.FhirAccessAuditCommand;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.FhirResourceAccessEvent;
+import com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.HipaaGdprPatientComplianceReport;
 import com.opeshealth.healthcore.quickstart.service.ObservationService;
 import com.opeshealth.healthcore.quickstart.service.PractitionerService;
 import com.opeshealth.healthcore.quickstart.config.FhirOpenApiConfiguration;
@@ -98,15 +103,24 @@ import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfigu
 import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.RdbmsDialect;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlExceptionResolver;
+import com.opeshealth.healthcore.quickstart.web.AuditEventController;
 import com.opeshealth.healthcore.quickstart.web.BundleController;
 import com.opeshealth.healthcore.quickstart.web.CdsHooksV2Controller;
 import com.opeshealth.healthcore.quickstart.web.EncounterController;
 import com.opeshealth.healthcore.quickstart.web.HealthCoreApiExceptionAdvice;
 import com.opeshealth.healthcore.quickstart.web.ObservationController;
+import com.opeshealth.healthcore.security.audit.AuditChainHeadEntity;
+import com.opeshealth.healthcore.security.audit.AuditLogEntity;
+import com.opeshealth.healthcore.security.audit.AuditRepositories.AuditChainHeadRepository;
+import com.opeshealth.healthcore.security.audit.AuditRepositories.AuditLogRepository;
+import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
+import com.opeshealth.healthcore.security.audit.ClinicalAuditService.ChainVerificationResult;
+import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService;
 import com.opeshealth.healthcore.quickstart.web.PatientAuditAspect;
 import com.opeshealth.healthcore.quickstart.web.PatientController;
 import com.opeshealth.healthcore.quickstart.web.PractitionerController;
 import com.opeshealth.healthcore.service.PatientService;
+import com.opeshealth.healthcore.starters.*;
 import com.opeshealth.healthcore.workflow.spi.WorkflowSpi.*;
 import ca.uhn.fhir.validation.ValidationResult;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -2643,7 +2657,8 @@ class HealthCoreDomainSafetyTest {
                 ObservationController.class,
                 EncounterController.class,
                 BundleController.class,
-                CdsHooksV2Controller.class
+                CdsHooksV2Controller.class,
+                AuditEventController.class
         );
         for (Class<?> controllerClass : fhirControllers) {
             assertTrue(controllerClass.isAnnotationPresent(io.swagger.v3.oas.annotations.tags.Tag.class),
@@ -2701,6 +2716,257 @@ class HealthCoreDomainSafetyTest {
         assertEquals(pgSummary.discoveredTables(), mssqlSummary.discoveredTables());
         assertEquals(pgSummary.discoveredIndexes(), mysqlSummary.discoveredIndexes());
         assertEquals(pgSummary.discoveredIndexes(), mssqlSummary.discoveredIndexes());
+    }
+
+    @Test
+    void centralizedFhirAuditLoggingServicePersistsAllFhirAccessEventsAndGeneratesHipaaGdprReports() {
+        Map<String, AuditChainHeadEntity> headStore = new LinkedHashMap<>();
+        AuditChainHeadRepository headRepo = (AuditChainHeadRepository) Proxy.newProxyInstance(
+                AuditChainHeadRepository.class.getClassLoader(),
+                new Class<?>[]{AuditChainHeadRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "findByFacilityKeyForUpdate", "findById" -> Optional.ofNullable(headStore.get((String) a[0]));
+                    case "save", "saveAndFlush" -> {
+                        AuditChainHeadEntity h = (AuditChainHeadEntity) a[0];
+                        headStore.put(h.getFacilityKey(), h);
+                        yield h;
+                    }
+                    default -> null;
+                });
+
+        List<AuditLogEntity> logStore = new ArrayList<>();
+        AuditLogRepository logRepo = (AuditLogRepository) Proxy.newProxyInstance(
+                AuditLogRepository.class.getClassLoader(),
+                new Class<?>[]{AuditLogRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save", "saveAndFlush" -> {
+                        AuditLogEntity entry = (AuditLogEntity) a[0];
+                        logStore.add(entry);
+                        yield entry;
+                    }
+                    case "findById" -> logStore.stream().filter(e -> e.getId().equals(a[0])).findFirst();
+                    case "findByFacilityKeyOrderBySequenceNumberAsc" -> logStore.stream()
+                            .filter(e -> Objects.equals(e.getFacilityKey(), a[0]))
+                            .sorted(Comparator.comparingLong(AuditLogEntity::getSequenceNumber))
+                            .toList();
+                    case "findByFacilityKeyAndPatientIdOrderBySequenceNumberDesc" -> logStore.stream()
+                            .filter(e -> Objects.equals(e.getFacilityKey(), a[0]) && Objects.equals(e.getPatientId(), a[1]))
+                            .sorted(Comparator.comparingLong(AuditLogEntity::getSequenceNumber).reversed())
+                            .toList();
+                    default -> List.copyOf(logStore);
+                });
+
+        ClinicalAuditService clinicalAuditService = new ClinicalAuditService(headRepo, logRepo);
+        FhirAuditLoggingService fhirAuditService = new FhirAuditLoggingService(clinicalAuditService, logRepo);
+        AuditEventController auditController = new AuditEventController(fhirAuditService);
+
+        String facilityKey = "FAC-DOUALA-CENTRAL";
+        UUID patientId = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+        UUID observationId = UUID.randomUUID();
+
+        // 1. Record Patient CREATE, Encounter CREATE, Observation READ, and failed Patient UPDATE with PHI in error reason
+        FhirResourceAccessEvent evt1 = fhirAuditService.recordFhirAccess(new FhirAccessAuditCommand(
+                facilityKey, "dr.nshome", "ROLE_ATTENDING_PHYSICIAN",
+                "HIPAA_PATIENT_CREATE", "Patient", patientId.toString(), patientId,
+                "POST", "/api/v1/patients", "10.20.1.15", "corr-audit-001",
+                "SUCCESS", 18L, null
+        ));
+        FhirResourceAccessEvent evt2 = fhirAuditService.recordFhirAccess(new FhirAccessAuditCommand(
+                facilityKey, "dr.nshome", "ROLE_ATTENDING_PHYSICIAN",
+                "HIPAA_ENCOUNTER_CREATE", "Encounter", encounterId.toString(), patientId,
+                "POST", "/api/v1/encounters", "10.20.1.15", "corr-audit-002",
+                "SUCCESS", 24L, null
+        ));
+        FhirResourceAccessEvent evt3 = fhirAuditService.recordFhirAccess(new FhirAccessAuditCommand(
+                facilityKey, "nurse.mbarga", "ROLE_REGISTERED_NURSE",
+                "HIPAA_OBSERVATION_READ", "Observation", observationId.toString(), patientId,
+                "GET", "/api/v1/observations/" + observationId, "10.20.1.22", "corr-audit-003",
+                "SUCCESS", 9L, null
+        ));
+        FhirResourceAccessEvent evt4 = fhirAuditService.recordFhirAccess(new FhirAccessAuditCommand(
+                facilityKey, "dr.nshome", "ROLE_ATTENDING_PHYSICIAN",
+                "HIPAA_PATIENT_UPDATE", "Patient", patientId.toString(), patientId,
+                "PUT", "/api/v1/patients/" + patientId, "10.20.1.15", "corr-audit-004",
+                "FAILURE", 11L, "Validation failed for phone +237 677123456 and email patient.secret@hospital.cm"
+        ));
+
+        assertEquals(4, logStore.size());
+        assertEquals(1L, evt1.sequenceNumber());
+        assertEquals("0".repeat(64), evt1.prevHash());
+        assertEquals(evt1.entryHash(), evt2.prevHash());
+        assertEquals(evt2.entryHash(), evt3.prevHash());
+        assertEquals(evt3.entryHash(), evt4.prevHash());
+
+        // Verify PHI redaction scrubbed phone and email before database persistence
+        assertNotNull(evt4.reason());
+        assertTrue(!evt4.reason().contains("677123456"));
+        assertTrue(!evt4.reason().contains("patient.secret@hospital.cm"));
+        assertTrue(evt4.reason().contains("[REDACTED"));
+
+        // 2. Cryptographic SHA-256 chain integrity verification via controller
+        ResponseEntity<ChainVerificationResult> chainResp =
+                auditController.verifyFacilityAuditChain(facilityKey, null);
+        assertEquals(200, chainResp.getStatusCode().value());
+        assertNotNull(chainResp.getBody());
+        assertTrue(chainResp.getBody().valid());
+        assertEquals(4L, chainResp.getBody().verifiedCount());
+
+        // 3. Retrieve single HL7 FHIR R4 AuditEvent resource and Search Bundle via AuditEventController
+        ResponseEntity<String> singleResp = auditController.getAuditEventById(evt1.id());
+        assertEquals(200, singleResp.getStatusCode().value());
+        assertEquals("W/\"1\"", singleResp.getHeaders().getETag());
+        assertTrue(singleResp.getBody().contains("\"resourceType\": \"AuditEvent\""));
+        assertTrue(singleResp.getBody().contains(evt1.entryHash()));
+
+        ResponseEntity<String> searchResp = auditController.searchAuditEvents(
+                facilityKey, null, patientId, null, null, null, null, null, null, null, null, null, null, 0, 20);
+        assertEquals(200, searchResp.getStatusCode().value());
+        assertTrue(searchResp.getBody().contains("\"resourceType\": \"Bundle\""));
+        assertTrue(searchResp.getBody().contains("\"total\": 4"));
+
+        // 4. Generate HIPAA § 164.528 & GDPR Article 15 Patient Access Disclosure Report
+        ResponseEntity<HipaaGdprPatientComplianceReport> reportResp =
+                auditController.getPatientComplianceReport(patientId, facilityKey, null);
+        assertEquals(200, reportResp.getStatusCode().value());
+        HipaaGdprPatientComplianceReport report = reportResp.getBody();
+        assertNotNull(report);
+        assertEquals(patientId, report.patientId());
+        assertEquals(4, report.totalAccessEvents());
+        assertEquals(3, report.successfulAccessEvents());
+        assertEquals(1, report.failedOrDeniedAccessEvents());
+        assertTrue(report.cryptographicChainValid());
+        assertEquals(2, report.distinctActors().size());
+        assertEquals(2, report.accessesByResourceType().get("Patient"));
+        assertEquals(1, report.accessesByResourceType().get("Encounter"));
+        assertEquals(1, report.accessesByResourceType().get("Observation"));
+    }
+
+    @Test
+    void allFifteenSpecializedStarterModulesExecuteEndToEndDomainLogic() {
+        // 1. BloodBankStarter: ABO/RhD PRBC and FFP compatibility matrix + ISBT-128 barcode check
+        BloodBankStarter.CompatibilityEvaluation prbcUniversal =
+                new BloodBankStarter.CompatibilityEvaluation("O-", "A+", "PRBC", true, true, "OK");
+        assertTrue(prbcUniversal.compatible());
+        assertEquals("O-", BloodBankStarter.BloodBankHemovigilanceService.normalizeAboRh("o neg"));
+        assertThrows(IllegalArgumentException.class,
+                () -> BloodBankStarter.BloodBankHemovigilanceService.validateIsbt128Barcode("12"));
+
+        // 2. SurgeryOtStarter: Modified Aldrete PACU discharge scoring gate (>= 9/10 required)
+        List< com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.AnesthesiaPacuLogEntity > pacuStore = new ArrayList<>();
+        HospitalOpsService.AnesthesiaPacuRepository pacuRepo = (HospitalOpsService.AnesthesiaPacuRepository) Proxy.newProxyInstance(
+                HospitalOpsService.AnesthesiaPacuRepository.class.getClassLoader(),
+                new Class<?>[]{HospitalOpsService.AnesthesiaPacuRepository.class},
+                (p, m, a) -> "save".equals(m.getName()) ? a[0] : pacuStore);
+        HospitalOpsService.SurgicalScheduleRepository surgRepo = (HospitalOpsService.SurgicalScheduleRepository) Proxy.newProxyInstance(
+                HospitalOpsService.SurgicalScheduleRepository.class.getClassLoader(),
+                new Class<?>[]{HospitalOpsService.SurgicalScheduleRepository.class},
+                (p, m, a) -> "save".equals(m.getName()) ? a[0] : Optional.empty());
+        HospitalOpsService dummyOps = new HospitalOpsService(null, null, null, surgRepo, pacuRepo, null, null, null, null, null, null, null);
+        SurgeryOtStarter.SurgicalPerioperativeService surgService =
+                new SurgeryOtStarter.SurgicalPerioperativeService(dummyOps, surgRepo, pacuRepo);
+        SurgeryOtStarter.PacuDischargeDecision aldreteCleared = surgService.evaluateAndRecordPacuAldreteScore(
+                new SurgeryOtStarter.PacuAldreteAssessmentRequest(UUID.randomUUID(), 2, 2, 2, 2, 2, 150, "ASA_II"));
+        assertEquals(10, aldreteCleared.totalAldreteScore());
+        assertTrue(aldreteCleared.eligibleForWardDischarge());
+
+        // 3. TelemedicineStarter: 3G audio fallback & 2G store-and-forward bandwidth adaptation
+        Map<UUID, com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.TelemedicineSessionEntity> teleStore = new LinkedHashMap<>();
+        HospitalOpsService.TelemedicineRepository teleRepo = (HospitalOpsService.TelemedicineRepository) Proxy.newProxyInstance(
+                HospitalOpsService.TelemedicineRepository.class.getClassLoader(),
+                new Class<?>[]{HospitalOpsService.TelemedicineRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        var s = (com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.TelemedicineSessionEntity) a[0];
+                        teleStore.put(s.getId(), s);
+                        yield s;
+                    }
+                    case "findById" -> Optional.ofNullable(teleStore.get((UUID) a[0]));
+                    default -> new ArrayList<>(teleStore.values());
+                });
+        TelemedicineStarter.TelemedicineVirtualCareService teleService =
+                new TelemedicineStarter.TelemedicineVirtualCareService(teleRepo);
+        var provisionedSession = teleService.provisionVirtualSession(
+                new TelemedicineStarter.TelemedicineProvisionRequest(UUID.randomUUID(), UUID.randomUUID(), "dr.nshome", 1200));
+        var fallbackDecision = teleService.evaluateAndAdaptBandwidth(
+                provisionedSession.getId(), new TelemedicineStarter.NetworkTelemetryUpdate(120, 1.5, 220));
+        assertTrue(fallbackDecision.lowBandwidth3gFallbackActive());
+        assertEquals("ACTIVE_3G_AUDIO_FALLBACK", fallbackDecision.adaptedTransportMode());
+
+        // 4. BiomedicalColdChainStarter: WHO VVM freeze/heat excursion analysis
+        ColdChainTelemetryEntity freezeReading = new ColdChainTelemetryEntity();
+        freezeReading.setSensorId("SENS-EPI-01");
+        freezeReading.setTemperatureCelsius(new BigDecimal("-0.5"));
+        ColdChainRepository ccRepo = (ColdChainRepository) Proxy.newProxyInstance(
+                ColdChainRepository.class.getClassLoader(),
+                new Class<?>[]{ColdChainRepository.class},
+                (p, m, a) -> List.of(freezeReading));
+        HospitalOpsService.BiomedMaintenanceRepository bmRepo = (HospitalOpsService.BiomedMaintenanceRepository) Proxy.newProxyInstance(
+                HospitalOpsService.BiomedMaintenanceRepository.class.getClassLoader(),
+                new Class<?>[]{HospitalOpsService.BiomedMaintenanceRepository.class},
+                (p, m, a) -> List.of());
+        BiomedicalColdChainStarter.BiomedicalColdChainGovernanceService biomedService =
+                new BiomedicalColdChainStarter.BiomedicalColdChainGovernanceService(dummyOps, ccRepo, bmRepo);
+        var stability = biomedService.analyzeSensorThermalStability("SENS-EPI-01");
+        assertTrue(stability.vaccineLotQuarantineRequired());
+        assertEquals("FREEZE_COMPROMISED", stability.vvmStageEstimate());
+
+        // 5. CrvsMortuaryStarter: WHO MCCD rejects R99 garbage code as sole underlying cause
+        HospitalOpsService.CrvsRepository crvsRepo = (HospitalOpsService.CrvsRepository) Proxy.newProxyInstance(
+                HospitalOpsService.CrvsRepository.class.getClassLoader(),
+                new Class<?>[]{HospitalOpsService.CrvsRepository.class},
+                (p, m, a) -> "save".equals(m.getName()) ? a[0] : Optional.empty());
+        CrvsMortuaryStarter.CrvsAndMortuaryChainOfCustodyService crvsService =
+                new CrvsMortuaryStarter.CrvsAndMortuaryChainOfCustodyService(dummyOps, crvsRepo);
+        assertThrows(IllegalArgumentException.class, () -> crvsService.validateAndRegisterWhoMccdDeath(
+                new CrvsMortuaryStarter.WhoMccdDeathRegistrationRequest(
+                        UUID.randomUUID(), UUID.randomUUID(), "R99", null, null, "dr.nshome", "BAY-1")));
+
+        // 6. DeidentificationResearchStarter: HIPAA Safe Harbor & k-anonymity equivalence class suppression
+        DeidentificationResearchStarter.HipaaSafeHarborDeidentificationService deidService =
+                new DeidentificationResearchStarter.HipaaSafeHarborDeidentificationService(dummyOps);
+        var cohortRes = deidService.exportSafeHarborCohort(new DeidentificationResearchStarter.SafeHarborCohortExportRequest(
+                "PROTO-2026", "SALT-99", 2, List.of(
+                        new DeidentificationResearchStarter.ClinicalResearchSourceRow(UUID.randomUUID(), 1980, "female", "23701", "B50.9", "Call +237 699112233"),
+                        new DeidentificationResearchStarter.ClinicalResearchSourceRow(UUID.randomUUID(), 1980, "female", "23799", "B50.9", "Normal follow up"),
+                        new DeidentificationResearchStarter.ClinicalResearchSourceRow(UUID.randomUUID(), 1930, "male", "10100", "I10", "Unique outlier")
+                )));
+        assertEquals(2, cohortRes.exportedRecordCount());
+        assertEquals(1, cohortRes.suppressedForKAnonymityCount());
+        assertTrue(cohortRes.kAnonymitySatisfied());
+
+        // 7. Hl7AstmDicomStarter & LisDiagnosticsStarter: ASTM E1394 checksum + Westgard Multi-Rule QC
+        String checksum = Hl7AstmDicomStarter.ClinicalDeviceAndImagingGatewayService.computeAstmModulo256Checksum("1H|\\^&||| Mindray");
+        assertEquals(2, checksum.length());
+
+        PharmacyLisService dummyPharmLis = new PharmacyLisService(null, null, null, null, null, null);
+        PharmacyLisService.LabSpecimenRepository specRepo = (PharmacyLisService.LabSpecimenRepository) Proxy.newProxyInstance(
+                PharmacyLisService.LabSpecimenRepository.class.getClassLoader(),
+                new Class<?>[]{PharmacyLisService.LabSpecimenRepository.class},
+                (p, m, a) -> List.of());
+        PharmacyLisService.DiagnosticReportRepository repRepo = (PharmacyLisService.DiagnosticReportRepository) Proxy.newProxyInstance(
+                PharmacyLisService.DiagnosticReportRepository.class.getClassLoader(),
+                new Class<?>[]{PharmacyLisService.DiagnosticReportRepository.class},
+                (p, m, a) -> List.of());
+        LisDiagnosticsStarter.LisWestgardAndCriticalResultService westgardService =
+                new LisDiagnosticsStarter.LisWestgardAndCriticalResultService(dummyPharmLis, specRepo, repRepo);
+        var qcEval = westgardService.evaluateWestgardControlRun(new LisDiagnosticsStarter.WestgardControlRunRequest(
+                "COBAS-C311", "2345-7", new BigDecimal("100.0"), new BigDecimal("2.0"),
+                List.of(new BigDecimal("105.0"), new BigDecimal("105.2"))));
+        assertTrue(qcEval.rule22sRejected());
+        assertEquals("OUT_OF_CONTROL_REJECTED", qcEval.runStatus());
+
+        // 8. FhirHieStarter: Normative HL7 FHIR R4 CapabilityStatement generation
+        HieInteropService dummyHie = new HieInteropService(null, null, null, null, null, null);
+        HieInteropService.FhirSubscriptionRepository subRepo = (HieInteropService.FhirSubscriptionRepository) Proxy.newProxyInstance(
+                HieInteropService.FhirSubscriptionRepository.class.getClassLoader(),
+                new Class<?>[]{HieInteropService.FhirSubscriptionRepository.class},
+                (p, m, a) -> List.of());
+        FhirHieStarter.FhirHieExchangeGatewayService fhirHieService =
+                new FhirHieStarter.FhirHieExchangeGatewayService(dummyHie, subRepo);
+        String capJson = fhirHieService.buildFhirR4CapabilityStatementJson();
+        assertTrue(capJson.contains("\"resourceType\": \"CapabilityStatement\""));
+        assertTrue(capJson.contains("\"AuditEvent\""));
     }
 
     @SuppressWarnings("unused")
