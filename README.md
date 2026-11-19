@@ -43,9 +43,9 @@
 | `healthcore-starter-offline-sync` | Hybrid Logical Clock (`HLC`), `sync_seq` delta pull/push, clinical conflict queue, Ed25519 QR IPS Health Card |
 | `healthcore-starter-templates-dashboards` | **608 bilingual (EN/FR) authentic hospital templates**, `QuestionnaireResponse`, OpenHTMLtoPDF PDF/A, **7 live SQL CQRS dashboards**, Apache POI XLSX + CSV bulk import/export, Cascading Facility Onboarding, concrete PG/MSSQL/MySQL backup & PITR/Edge DR |
 | `healthcore-starter-api-product` | OpenAPI 3.1 contract, API keys, sliding-window rate limiter (`429 Retry-After`), HMAC webhook signer |
-| `healthcore-starter-clinical-ai` | Server-side Gemini Clinical AI gateway (`gemini-4-hydrogen`, `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `gemini-embedding-2`, `gemini-decision-1`), mandatory HIPAA Safe-Harbor 18-identifier PHI redaction, tenant kill-switch, and clinician attestation ledger |
-| `healthcore-quickstart-host` | Reference `<1 hour` Spring Boot 4.0 + PostgreSQL 16+ host, `pg_trgm` GIN & partial index changelog, `enable-rls-policies.sql`, Keycloak realm, Logback PHI redaction, Windows WinSW service, ArchUnit & Testcontainers multi-DB suite |
-| `healthcore-mobile-kmp` | Pure Kotlin + Compose Multiplatform Android (SQLCipher/WorkManager/Camera QR) + iPhone/iPadOS (Keychain/Apple Pencil/BGTaskScheduler) suite |
+| `healthcore-starter-clinical-ai` | Server-side Gemini Clinical AI gateway (`gemini-4-hydrogen`, `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `gemini-embedding-2`, `gemini-decision-1`), heuristic PHI risk-reduction pre-filter, durable JPA-backed tenant kill-switch, clinician attestation drafts, and fail-closed SHA-256 hash-chained audit logs |
+| `healthcore-quickstart-host` | Reference Spring Boot 4.0 + PostgreSQL 16+ backend host, `pg_trgm` GIN & partial index changelog, `enable-rls-policies.sql`, Keycloak realm, Logback PHI redaction, Windows WinSW service, ArchUnit & Testcontainers multi-DB suite |
+| `healthcore-mobile-kmp` | Pure Kotlin + Compose Multiplatform Android (SQLCipher/WorkManager/Camera QR) + iPhone/iPadOS (Keychain/Apple Pencil/BGTaskScheduler) companion foundation |
 
 ### Granular Composable Standalone Starters
 Pick only the exact slices your facility or SaaS product requires:
@@ -56,26 +56,52 @@ Pick only the exact slices your facility or SaaS product requires:
 - `healthcore-starter-telemedicine` (WebRTC & 3G-fallback virtual care)
 - `healthcore-starter-biomedical-coldchain` (2°C–8°C cold-chain MQTT webhook & Biomed PM calibration)
 - `healthcore-starter-crvs-mortuary` (Births, WHO MCCD Cause-of-Death & Mortuary chain-of-custody)
-- `healthcore-starter-workforce-roster` (Practitioner license expiry gate & shift rosters)
-- `healthcore-starter-deidentification-research` (HIPAA Safe-Harbor 18-identifier de-identification)
+- `healthcore-starter-workforce-roster` (Fail-closed practitioner license expiry gate & shift rosters)
+- `healthcore-starter-deidentification-research` (Structured/heuristic de-identification helpers — institutional privacy review still required)
 - `healthcore-starter-chw-homecare` (CHW households, ANC/iCCM/MUAC referrals & Home Care RPM)
 - `healthcore-starter-programs-immunization` (WHO EPI immunization & HIV ART/TB DOT/Hepatitis cascades)
 - `healthcore-starter-disease-surveillance` (IDSR CIF, outbreak watch, contact tracing & DHIS2 ADX)
-- `healthcore-starter-fhir-hie` (FHIR R4 IPS `$summary`, Bulk `$export`, Transaction Bundle, Subscriptions)
-- `healthcore-starter-hl7-astm-dicom` (HL7v2 MLLP TCP/HTTP, ASTM E1394, DICOMweb `QIDO/STOW/WADO-RS`, CDA R2)
-- `healthcore-starter-interoperability-ihe` (IHE PIXm, PDQm, MHD `DocumentReference`, mCSD `Organization`/`Location`)
+- `healthcore-starter-fhir-hie` (FHIR R4 CapabilityStatement, partial IPS `$summary`, Bulk NDJSON `$export`, Transaction/Batch Bundle, Subscriptions)
+- `healthcore-starter-hl7-astm-dicom` (HL7v2 ADT ingestion + MLLP TCP/HTTP, ASTM E1394 parser, DICOM study metadata registry + optional external PACS proxy, CDA R2)
+- `healthcore-starter-interoperability-ihe` (IHE PIXm, PDQm, MHD `DocumentReference`, DB-backed mCSD `Organization`/`Location`)
 
 ---
 
-## Build, Test & Run Locally (Requires JDK 25 + Maven 3.9+ + Docker)
+## Scope, Integration Defaults & Compliance Notices
 
-> **Note:** Build and container execution require an environment with **JDK 25**, **Maven 3.9+**, **Gradle 8.10+**, and **Docker** installed.
+### 1. Backend SDK & API Suite (No Web Frontend UI Included)
+This repository provides **Java 25 / Spring Boot 4.0 backend starters**, an **OpenAPI 3.1 Swagger UI** (`/swagger-ui.html`), and a **Kotlin/Compose Multiplatform mobile foundation** (`healthcore-mobile-kmp`). It does **not** include a browser-based hospital web application UI; teams pair these APIs with their own web or mobile client.
+
+### 2. Optional Integrations Disabled by Default
+Core persistence, RBAC/ABAC security, auditing, and clinical REST/FHIR APIs work out of the box with a relational database and OIDC provider. The following external integrations are **optional extension points disabled by default** in `application.yml` until explicitly configured and enabled:
+- **External PACS / Binary DICOMweb (`healthcore.hie.dicom.pacs-enabled=false`)**: Built-in `/api/v1/hie/dicom/studies` acts as a tenant-scoped DICOM study metadata registry. Binary STOW-RS / WADO-RS object storage fails with HTTP `501 Not Implemented` until an external Orthanc/DCM4CHEE DICOMweb server is configured.
+- **PostgreSQL RLS (`healthcore.postgres.rls.enabled=false`)**: Application-level tenant isolation (`FacilityContext` + mandatory tenant-scoped repository queries) is enforced by default; database-level PostgreSQL RLS requires running `enable-rls-policies.sql` with a non-superuser role and setting `enabled: true`.
+- **Event Brokers & External Feeds**: Apache Kafka (`healthcore.outbox.kafka.enabled=false`), RabbitMQ (`healthcore.outbox.rabbitmq.enabled=false`), Redis L2 Cache (`healthcore.cache.redis.enabled=false`), Cold-Chain MQTT (`healthcore.coldchain.mqtt.enabled=false`), DHIS2 Sync (`healthcore.dhis2.enabled=false`), External FHIR Terminology Sync (`healthcore.terminology.remote-sync.enabled=false`), and HL7v2 MLLP TCP listener (`healthcore.hie.mllp.enabled=false`).
+
+### 3. Standards Conformance & Clinical Safety Boundaries
+- **FHIR R4 CapabilityStatement & Transaction/Batch**: Advertises only implemented interactions (`Patient` search + `$summary`/`$export`/`$ihe-pix`, `DocumentReference` create/search, `Subscription` create, `Organization`/`Location` search). Transaction/Batch bundles execute real persistence for `POST`/`PUT` `Patient` and `POST` `DocumentReference` (rolling back atomically on `TRANSACTION` error and returning `501 Not Implemented` `OperationOutcome` for unsupported `BATCH` entries).
+- **IPS Summary (`$summary`)**: Assembles persisted tenant-scoped `Patient`, `DocumentReference`, and `ImagingStudy` resources and marks unpopulated clinical sections (Medications, Allergies, Problems) with FHIR `emptyReason: notasked` (`status: preliminary`). Full multi-module IPS clinical section validation against HL7 IPS profiles requires additional clinical profile conformance testing.
+- **HL7v2 Ingestion**: Tenant-scoped `ADT^A01`, `ADT^A04`, and `ADT^A08` messages map PID demographics into `PatientAggregateEntity` with `MSH-10` deduplication (`AA`). Unsupported HL7 message types (`ORU`, `ORM`, `SIU`, `DFT`, etc.) are explicitly rejected with `AR` and routed to the integration DLQ.
+- **Heuristic PHI Redaction Pre-Filter (`PhiRedactionGateway`)**: Context-aware + regex scrubbing reduces direct identifier exposure before AI calls, but **regex scrubbing alone is NOT a certified standalone HIPAA Safe Harbor (§ 164.514(b)(2)) de-identification guarantee** for arbitrary unstructured clinical text. Deployments must maintain a BAA, institutional privacy review, and clinician attestation.
+- **Clinical Rules Validation**: Deterministic RCP NEWS2 Scale 1 scoring, ABO/RhD PRBC/FFP blood compatibility checks, 5-Rights eMAR verification, and CPOE CDSS guardrails require independent clinical domain sign-off and local formulary/terminology configuration before live patient care.
+
+### 4. Schema Migration Ownership & Externalized Secrets
+- **Liquibase is the sole default schema migration owner** (`spring.liquibase.enabled: true`, `spring.flyway.enabled: false`) across PostgreSQL, MSSQL, and MySQL. Do not enable Flyway concurrently against the same database schema.
+- All signing secrets (`HEALTHCORE_HIE_WEBHOOK_SECRET`, `HEALTHCORE_UHC_QR_SIGNING_SECRET`, `HEALTHCORE_UHC_MOMO_WEBHOOK_SECRET`, `HEALTHCORE_PII_AES_KEY_B64`, `HEALTHCORE_PII_HMAC_KEY_B64`) are externalized (see `.env.example`) and fail closed when absent.
+
+---
+
+## Build, Test & CI Verification (Requires JDK 25 + Maven 3.9+ + Docker)
+
+Automated CI is defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) using **Temurin JDK 25** (`mvn -B -ntp clean verify -DskipITs=true`) plus static security guardrails.
+
+> **Note:** Local build and Testcontainers execution require an environment with **JDK 25**, **Maven 3.9+**, **Gradle 8.10+**, and **Docker** installed.
 
 ```bash
 # 1. Start PostgreSQL 16 + Keycloak 26 (or add --profile all-dbs for MSSQL 2022 & MySQL 8.4)
 docker compose up -d
 
-# 2. Run Unit & ArchUnit Governance Tests (Java 25 required)
+# 2. Run Unit, Regression & ArchUnit Governance Tests (Java 25 required)
 mvn clean test
 
 # 3. Run Testcontainers Multi-DB Liquibase Parity Suite (PostgreSQL + MSSQL + MySQL)
@@ -108,11 +134,11 @@ For step-by-step Maven BOM assembly recipes, multi-RDBMS setup, Keycloak/RLS sec
 - **Omnichannel Patient Messaging & Recall**: Bilingual EN/FR `SMS`/`WHATSAPP`/`USSD`/`PUSH` notifications & interactive feature-phone USSD menus (`/api/v1/messaging/**`)
 - **Longitudinal CarePlans & Care-Gap Closure**: Diabetes, Hypertension, HIV ART, TB DOT, Maternal ANC, and Heart Failure pathways (`/api/v1/care-plans/**`)
 - **Radiology Modality Worklist (DICOM MWL/MPPS) & Critical Findings Escalation**: Closed-loop radiology safety acknowledgment (`/api/v1/radiology/**`)
-- **Clinical Research, Dynamic eConsent & OMOP CDM v5.4 Export**: Trial eligibility cohort builder & HIPAA Safe-Harbor OMOP export (`/api/v1/research/**`)
+- **Clinical Research, Dynamic eConsent & OMOP CDM v5.4 Export**: Trial eligibility cohort builder & OMOP export helpers (`/api/v1/research/**`)
 - **Resumable Chunked Encrypted Offline Media Sync**: SHA-256-verified binary attachment uploads paired with KMP `DataSyncManager` (`/api/v1/sync/media/**`)
 - **Payer Clearinghouse & EDI X12 (`837`/`835`)**: Automated claim scrubbing, remittance reconciliation, FHIR `ExplanationOfBenefit`, and denial appeals (`/api/v1/clearinghouse/**`)
 - **Integration DLQ & Webhook/MLLP Replay**: Operational dead-letter inspection, single/bulk replay, and circuit-breaker health (`/api/v1/ops/dlq/**`)
 - **Multi-Tenant SaaS Onboarding & Feature-Flag Governance**: Self-service facility onboarding, module licensing, terminology version pinning, and per-tenant feature flags (`/api/v1/admin/tenants/**`)
-- **Clinical & Operational AI Suite (`healthcore-starter-clinical-ai`)**: Ambient Scribe & Voice-to-SOAP (`/api/v1/ai/scribe/**`), Automated Medical Coding (`/api/v1/ai/coding/**`), DS4P-Aware Chart & IPS Summarizer (`/api/v1/ai/summaries/**`), Multimodal Image Triage (`/api/v1/ai/vision/**`), Advisory Clinical Decision Support (`/api/v1/ai/cds/**`), Prior-Auth & Claim Denial Appeal Writer (`/api/v1/ai/revenue/**`), Calibrated `gemini-decision-1` Triage & Policy Engine (`/api/v1/ai/decisions/**`), Multilingual Text+Voice Discharge Coach (`/api/v1/ai/coach/**`), Semantic Chart & Trial Cohort Search (`/api/v1/ai/semantic/**`), and Safe-Harbor PHI Redaction + Clinician Attestation Governance (`/api/v1/ai/governance/**`)
+- **Clinical & Operational AI Suite (`healthcore-starter-clinical-ai`)**: Ambient Scribe & Voice-to-SOAP (`/api/v1/ai/scribe/**`), Automated Medical Coding (`/api/v1/ai/coding/**`), DS4P-Aware Chart & IPS Summarizer (`/api/v1/ai/summaries/**`), Multimodal Image Triage (`/api/v1/ai/vision/**`), Advisory Clinical Decision Support (`/api/v1/ai/cds/**`), Prior-Auth & Claim Denial Appeal Writer (`/api/v1/ai/revenue/**`), Calibrated `gemini-decision-1` Triage & Policy Engine (`/api/v1/ai/decisions/**`), Multilingual Text+Voice Discharge Coach (`/api/v1/ai/coach/**`), Semantic Chart & Trial Cohort Search (`/api/v1/ai/semantic/**`), and Heuristic PHI Redaction + Durable Clinician Attestation Governance (`/api/v1/ai/governance/**`)
 
 OpenAPI 3.1 Swagger UI is served at `http://localhost:3000/swagger-ui.html`.

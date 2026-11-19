@@ -432,7 +432,7 @@ public class WorkflowOrchestrationService {
 
         @GetMapping("/catalog")
         @Operation(summary = "List the 8 built-in reusable EMR/EHR/HIE/PIS/LIS/OT/CHW workflow templates")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_facility:manage')")
         public Collection<WorkflowTemplate> catalog() {
             return ReusableWorkflowCatalog.allTemplates().values();
         }
@@ -446,7 +446,7 @@ public class WorkflowOrchestrationService {
 
         @GetMapping("/definitions")
         @Operation(summary = "List active custom & seeded workflow definitions for the active facility")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_facility:manage')")
         public List<WorkflowDefinitionEntity> listDefinitions() {
             return service.listDefinitions(FacilityContext.requireFacilityId());
         }
@@ -483,7 +483,7 @@ public class WorkflowOrchestrationService {
 
         @GetMapping("/instances/active")
         @Operation(summary = "List active facility workflow instances ordered by nearest SLA deadline")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_facility:manage')")
         public List<WorkflowInstanceEntity> listActive() {
             return service.listActiveByFacility(FacilityContext.requireFacilityId());
         }

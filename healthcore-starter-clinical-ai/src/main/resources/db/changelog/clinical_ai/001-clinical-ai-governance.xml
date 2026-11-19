@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Durable Clinical AI Governance & Audit Schema
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="clinical-ai-001-durable-governance-and-audit" author="jude.nshome">
+        <createTable tableName="hc_clinical_ai_tenant_policies">
+            <column name="facility_id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="ai_enabled" type="${bool_type}" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="hc_clinical_ai_drafts">
+            <column name="draft_id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="facility_id" type="${uuid_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="capability" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model_id" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="redacted_prompt_sha256" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_sha256" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="redaction_counts_json" type="${clob_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_phi_redactions" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="structured_output_json" type="${clob_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="clinician_edited_json" type="${clob_type}"/>
+            <column name="prompt_tokens" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="latency_ms" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attested_by_practitioner_id" type="VARCHAR(128)"/>
+            <column name="attestation_reason" type="VARCHAR(1024)"/>
+            <column name="attested_at" type="${ts_type}"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="hc_clinical_ai_drafts" indexName="idx_hc_ai_drafts_fac_status">
+            <column name="facility_id"/>
+            <column name="status"/>
+            <column name="created_at"/>
+        </createIndex>
+
+        <createTable tableName="hc_clinical_ai_audit_entries">
+            <column name="entry_id" type="${uuid_type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="sequence_number" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="facility_id" type="${uuid_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="draft_id" type="${uuid_type}"/>
+            <column name="event_type" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="capability" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model_id" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actor_id" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attestation_status" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="outcome" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="redacted_input_sha256" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_sha256" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_phi_identifiers_redacted" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="redaction_counts_json" type="${clob_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="prompt_tokens" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="latency_ms" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sanitized_detail" type="${clob_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="recorded_at" type="${ts_type}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="previous_entry_hash" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_sha256_hash" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="hc_clinical_ai_audit_entries" indexName="ux_hc_ai_audit_fac_seq" unique="true">
+            <column name="facility_id"/>
+            <column name="sequence_number"/>
+        </createIndex>
+
+        <createIndex tableName="hc_clinical_ai_audit_entries" indexName="idx_hc_ai_audit_fac_time">
+            <column name="facility_id"/>
+            <column name="recorded_at"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

@@ -35,10 +35,13 @@ spring:
         order_inserts: true
         order_updates: true
   liquibase:
+    # Liquibase is the sole canonical multi-RDBMS schema migration owner (PostgreSQL, MSSQL, MySQL).
     enabled: ${HEALTHCORE_LIQUIBASE_ENABLED:true}
     change-log: classpath:db/changelog/db.changelog-master.xml
   flyway:
-    enabled: ${HEALTHCORE_FLYWAY_ENABLED:true}
+    # Disabled by default to prevent dual-tool migration conflicts against the same schema.
+    # Enable ONLY if explicitly replacing Liquibase (HEALTHCORE_LIQUIBASE_ENABLED=false HEALTHCORE_FLYWAY_ENABLED=true).
+    enabled: ${HEALTHCORE_FLYWAY_ENABLED:false}
     baseline-on-migrate: true
     baseline-version: 0
     baseline-description: "Opes HealthCore multi-RDBMS baseline"
@@ -99,6 +102,9 @@ healthcore:
       fhir-server-url: ${HEALTHCORE_FHIR_TERMINOLOGY_URL:}
       interval-ms: 86400000
   hie:
+    webhook:
+      # Must be supplied via environment/secret manager; empty fails closed.
+      signing-secret: ${HEALTHCORE_HIE_WEBHOOK_SECRET:}
     subscription-relay:
       enabled: true # Auto-relays Outbox domain events to matching ACTIVE FHIR Subscriptions
     dicom:
@@ -107,6 +113,16 @@ healthcore:
     mllp:
       enabled: false # Enable via -Dhealthcore.hie.mllp.enabled=true to bind HL7v2 TCP listener
       port: 2575
+  uhc:
+    offline-qr:
+      # Must be supplied via environment/secret manager; empty fails closed.
+      signing-secret: ${HEALTHCORE_UHC_QR_SIGNING_SECRET:}
+    momo:
+      # Must be supplied via environment/secret manager; empty fails closed.
+      webhook-secret: ${HEALTHCORE_UHC_MOMO_WEBHOOK_SECRET:}
+  workforce:
+    # Fail closed by default; cannot be enabled when 'prod' or 'production' Spring profile is active.
+    allow-unregistered-in-dev: ${HEALTHCORE_WORKFORCE_ALLOW_UNREGISTERED_IN_DEV:false}
   ai:
     enabled: ${HEALTHCORE_AI_ENABLED:true}
     api-key: ${GEMINI_API_KEY:}

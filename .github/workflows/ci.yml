@@ -1,0 +1,72 @@
+name: HealthCore JDK 25 Maven CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-unit-tests:
+    name: Build & Unit Tests (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Verify Maven build and unit/regression test suite
+        run: mvn -B -ntp clean verify -DskipITs=true
+
+      - name: Upload Surefire test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+
+  security-static-guardrails:
+    name: Static Security & Configuration Guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify no auth bypasses, hardcoded secrets, or swallowed AI audit failures
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys
+
+          errors = []
+          for p in pathlib.Path('.').rglob('*.java'):
+              if '/src/main/' not in p.as_posix():
+                  continue
+              text = p.read_text(encoding='utf-8')
+              if 'or isAuthenticated()' in text:
+                  errors.append(f'Auth bypass pattern found in {p}')
+              for forbidden_secret in [
+                  'opes-hie-webhook-secret',
+                  'opes-momo-dev-secret',
+                  'opes-uhc-offline-qr-key-v1',
+                  'opes-webhook-secret',
+              ]:
+                  if forbidden_secret in text:
+                      errors.append(f'Hardcoded fallback secret "{forbidden_secret}" found in {p}')
+              if p.name in {'ClinicalAiGovernanceService.java', 'ClinicalAuditLogger.java'} and 'catch (Exception ignored)' in text:
+                  errors.append(f'Swallowed audit exception found in {p}')
+
+          if errors:
+              print('\n'.join(errors), file=sys.stderr)
+              sys.exit(1)
+          print('All static security guardrails passed.')
+          PY

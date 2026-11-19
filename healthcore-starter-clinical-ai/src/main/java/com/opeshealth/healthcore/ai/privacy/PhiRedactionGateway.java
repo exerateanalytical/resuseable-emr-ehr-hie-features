@@ -1,6 +1,6 @@
 /*
  * =============================================================================
- * Opes HealthCore SDK — HIPAA Safe-Harbor 18-Identifier PHI Redaction Gateway
+ * Opes HealthCore SDK — Heuristic PHI Redaction Pre-Filter Gateway
  * Author / Architect : Jude Nshome — Opes Health Systems
  * Email              : nshome@opesware.com
  * Website            : https://www.opeshealthsystems.com
@@ -27,15 +27,21 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Deterministic, reversible HIPAA Safe-Harbor (§ 164.514(b)(2)) PHI De-Identification Gateway.
+ * Deterministic, reversible heuristic PHI risk-reduction pre-filter for outbound AI prompts.
  *
- * <p>Scrubs all direct personal identifiers (patient names, MRNs, phone numbers, email addresses,
- * national IDs / SSNs, full dates of birth, street addresses, URLs, IP addresses, insurance/account
- * numbers, and device serials) into scoped opaque tokens ({@code [PATIENT_NAME_1]}, {@code [MRN_1]},
- * etc.) before any clinical payload leaves the facility boundary toward an AI model.</p>
+ * <p><strong>Compliance Scope &amp; Limitations:</strong> This gateway applies structured context
+ * matching (known patient names, identifiers, and birth dates supplied from the EHR record) together
+ * with regular-expression rules for common direct identifiers (emails, phone numbers, SSNs, national
+ * IDs, MRNs, account/policy numbers, numeric and textual dates, honorific/labeled names, street
+ * addresses, URLs, and IPv4 addresses). <strong>Regex-based scrubbing alone does NOT guarantee full
+ * HIPAA Safe Harbor (§ 164.514(b)(2)) de-identification on arbitrary unstructured clinical prose</strong>
+ * (for example, nicknames, unusual spellings, small-town geographic references, rare occupation/event
+ * descriptions, or indirect quasi-identifiers). Deployments transmitting clinical payloads to external
+ * AI providers MUST maintain an appropriate Business Associate Agreement (BAA), institutional privacy
+ * governance, and human review.</p>
  *
  * <p>The reverse token map is ephemeral and request-scoped; only redacted SHA-256 hashes and
- * aggregate redaction counts are ever persisted to audit trails.</p>
+ * aggregate redaction counts are persisted to audit trails.</p>
  *
  * @author Jude Nshome — Opes Health Systems (nshome@opesware.com)
  */
@@ -44,7 +50,7 @@ public class PhiRedactionGateway {
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
     private static final Pattern PHONE_PATTERN = Pattern.compile(
-            "(?:\\+?\\d{1,3}[\\s.-]?)?(?:\\(\\d{2,4}\\)|\\d{2,4})[\\s.-]\\d{3,4}[\\s.-]\\d{3,4}\\b");
+            "(?:\\+?\\d{1,3}[\\s.-]?)?(?:\\(\\d{2,4}\\)|\\d{2,4})[\\s.-]\\d{3,4}[\\s.-]\\d{3,4}\\b|\\+\\d{10,15}\\b");
     private static final Pattern SSN_PATTERN = Pattern.compile(
             "\\b\\d{3}-\\d{2}-\\d{4}\\b");
     private static final Pattern NATIONAL_ID_PATTERN = Pattern.compile(
@@ -54,9 +60,13 @@ public class PhiRedactionGateway {
     private static final Pattern POLICY_OR_ACCOUNT_PATTERN = Pattern.compile(
             "(?i)\\b(?:POLICY|MEMBER|INSURANCE|ACCOUNT|ACCT)[\\s:#-]*([A-Z0-9-]{5,24})\\b");
     private static final Pattern DOB_LABELED_PATTERN = Pattern.compile(
-            "(?i)\\b(?:DOB|DATE OF BIRTH|BORN|BIRTHDATE)[\\s:#-]*(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4})\\b");
+            "(?i)\\b(?:DOB|DATE OF BIRTH|BORN|BIRTHDATE)[\\s:#-]*(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+(?:19|20)\\d{2}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+(?:19|20)\\d{2})\\b");
     private static final Pattern ISO_DATE_PATTERN = Pattern.compile(
             "\\b(?:19|20)\\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])\\b");
+    private static final Pattern SLASH_OR_DASH_DATE_PATTERN = Pattern.compile(
+            "\\b(?:0?[1-9]|[12]\\d|3[01])[/-](?:0?[1-9]|1[0-2])[/-](?:19|20)\\d{2}\\b|\\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\\d|3[01])[/-](?:19|20)\\d{2}\\b");
+    private static final Pattern TEXTUAL_DATE_PATTERN = Pattern.compile(
+            "(?i)\\b(?:\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?),?\\s+(?:19|20)\\d{2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2},?\\s+(?:19|20)\\d{2})\\b");
     private static final Pattern IPV4_PATTERN = Pattern.compile(
             "\\b(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\b");
     private static final Pattern URL_PATTERN = Pattern.compile(
@@ -65,6 +75,8 @@ public class PhiRedactionGateway {
             "(?i)\\b\\d{1,5}\\s+[A-Za-z0-9.'-]+(?:\\s+[A-Za-z0-9.'-]+){0,3}\\s+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Rue|Drive|Dr|Lane|Ln|Quartier)\\b\\.?");
     private static final Pattern LABELED_PERSON_NAME_PATTERN = Pattern.compile(
             "(?i)\\b(?:Patient\\s+Name|Patient|Name|Guardian|Next\\s+of\\s+Kin)\\s*:\\s*([A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+){1,2})");
+    private static final Pattern HONORIFIC_PERSON_NAME_PATTERN = Pattern.compile(
+            "\\b(?:Mr\\.|Mrs\\.|Ms\\.|Miss|Mme\\.?|M\\.)\\s+([A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)");
 
     public record RedactionContext(
             List<String> knownPatientNames,
@@ -125,7 +137,7 @@ public class PhiRedactionGateway {
                     payload.totalRedactions(),
                     payload.redactionCountsByCategory(),
                     payload.redactedSha256Hex(),
-                    "Safe-Harbor 18-identifier redaction completed"
+                    "Heuristic PHI risk-reduction pre-filter completed (not certified standalone HIPAA Safe Harbor)"
             ));
         }
         return payload;
@@ -142,7 +154,7 @@ public class PhiRedactionGateway {
                     payload.totalRedactions(),
                     payload.redactionCountsByCategory(),
                     payload.redactedSha256Hex(),
-                    "Safe-Harbor 18-identifier redaction completed"
+                    "Heuristic PHI risk-reduction pre-filter completed (not certified standalone HIPAA Safe Harbor)"
             ));
         }
         return payload;
@@ -185,8 +197,10 @@ public class PhiRedactionGateway {
                     placeholderToOriginal, originalToPlaceholder, categoryCounts);
         }
 
-        // 2. Pattern-based HIPAA Safe-Harbor 18-identifier scrubbing
+        // 2. Heuristic pattern-based direct-identifier scrubbing (risk-reduction pre-filter)
         sanitized = replacePatternGroup(sanitized, LABELED_PERSON_NAME_PATTERN, 1, "PATIENT_NAME",
+                placeholderToOriginal, originalToPlaceholder, categoryCounts);
+        sanitized = replacePatternGroup(sanitized, HONORIFIC_PERSON_NAME_PATTERN, 1, "PATIENT_NAME",
                 placeholderToOriginal, originalToPlaceholder, categoryCounts);
         sanitized = replacePattern(sanitized, EMAIL_PATTERN, "EMAIL",
                 placeholderToOriginal, originalToPlaceholder, categoryCounts);
@@ -209,6 +223,10 @@ public class PhiRedactionGateway {
         sanitized = replacePattern(sanitized, STREET_ADDRESS_PATTERN, "STREET_ADDRESS",
                 placeholderToOriginal, originalToPlaceholder, categoryCounts);
         sanitized = replacePattern(sanitized, ISO_DATE_PATTERN, "EXACT_DATE",
+                placeholderToOriginal, originalToPlaceholder, categoryCounts);
+        sanitized = replacePattern(sanitized, SLASH_OR_DASH_DATE_PATTERN, "EXACT_DATE",
+                placeholderToOriginal, originalToPlaceholder, categoryCounts);
+        sanitized = replacePattern(sanitized, TEXTUAL_DATE_PATTERN, "EXACT_DATE",
                 placeholderToOriginal, originalToPlaceholder, categoryCounts);
 
         int total = categoryCounts.values().stream().mapToInt(Integer::intValue).sum();

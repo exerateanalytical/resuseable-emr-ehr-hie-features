@@ -18,6 +18,9 @@ import com.opeshealth.healthcore.ai.coach.PatientHealthCoachEngine;
 import com.opeshealth.healthcore.ai.coding.ClinicalCodingEngine;
 import com.opeshealth.healthcore.ai.governance.ClinicalAiGovernanceService;
 import com.opeshealth.healthcore.ai.operations.ClinicalCapacityPredictor;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiAuditEntryRepository;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiDraftRepository;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.TenantAiPolicyRepository;
 import com.opeshealth.healthcore.ai.predictive.ClinicalPredictiveEngine;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
 import com.opeshealth.healthcore.ai.reconciliation.MedicationReconciliationEngine;
@@ -27,8 +30,10 @@ import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * Spring Boot 4.0 Auto-Configuration for {@code healthcore-starter-clinical-ai}.
@@ -37,13 +42,21 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @EnableConfigurationProperties(ClinicalAiProperties.class)
+@EntityScan(basePackages = "com.opeshealth.healthcore.ai.persistence")
+@EnableJpaRepositories(basePackages = "com.opeshealth.healthcore.ai.persistence", considerNestedRepositories = true)
 public class ClinicalAiAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
     public ClinicalAuditLogger clinicalAuditLogger(
-            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider) {
-        return new ClinicalAuditLogger(clinicalAuditServiceProvider.getIfAvailable());
+            ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider,
+            ObjectProvider<ClinicalAiAuditEntryRepository> auditEntryRepositoryProvider,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
+        return new ClinicalAuditLogger(
+                clinicalAuditServiceProvider.getIfAvailable(),
+                auditEntryRepositoryProvider.getIfAvailable(),
+                objectMapperProvider.getIfAvailable(ObjectMapper::new)
+        );
     }
 
     @Bean
@@ -65,10 +78,16 @@ public class ClinicalAiAutoConfiguration {
     @ConditionalOnMissingBean
     public ClinicalAiGovernanceService clinicalAiGovernanceService(
             ObjectProvider<ClinicalAuditService> clinicalAuditServiceProvider,
-            ClinicalAuditLogger clinicalAuditLogger) {
+            ClinicalAuditLogger clinicalAuditLogger,
+            ObjectProvider<ClinicalAiDraftRepository> draftRepositoryProvider,
+            ObjectProvider<TenantAiPolicyRepository> tenantPolicyRepositoryProvider,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
         return new ClinicalAiGovernanceService(
                 clinicalAuditServiceProvider.getIfAvailable(),
-                clinicalAuditLogger
+                clinicalAuditLogger,
+                draftRepositoryProvider.getIfAvailable(),
+                tenantPolicyRepositoryProvider.getIfAvailable(),
+                objectMapperProvider.getIfAvailable(ObjectMapper::new)
         );
     }
 

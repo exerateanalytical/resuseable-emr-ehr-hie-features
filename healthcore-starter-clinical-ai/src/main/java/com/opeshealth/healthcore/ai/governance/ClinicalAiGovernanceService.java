@@ -10,15 +10,23 @@
  */
 package com.opeshealth.healthcore.ai.governance;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger;
 import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.AiModelInteractionEvent;
 import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.ClinicianAttestationEvent;
 import com.opeshealth.healthcore.ai.audit.ClinicalAuditLogger.PhiRedactionAuditEvent;
+import com.opeshealth.healthcore.ai.audit.ClinicalAuditPersistenceException;
 import com.opeshealth.healthcore.ai.client.GeminiClinicalApiClient.TokenUsage;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiDraftEntity;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiDraftRepository;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.TenantAiPolicyEntity;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.TenantAiPolicyRepository;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,28 +116,45 @@ public class ClinicalAiGovernanceService {
             Map<String, Long> requestsByCapability
     ) {}
 
+    private static final TypeReference<Map<String, Integer>> COUNTS_TYPE = new TypeReference<>() {};
+
     private final ClinicalAuditService clinicalAuditService;
     private final ClinicalAuditLogger clinicalAuditLogger;
+    private final ClinicalAiDraftRepository draftRepository;
+    private final TenantAiPolicyRepository tenantPolicyRepository;
+    private final ObjectMapper objectMapper;
     private final Map<UUID, ClinicalAiDraftRecord> drafts = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> tenantAiFlags = new ConcurrentHashMap<>();
     private final Map<UUID, LongAdder> facilityLatencySumMs = new ConcurrentHashMap<>();
     private final Map<UUID, LongAdder> facilityRequestCount = new ConcurrentHashMap<>();
 
     public ClinicalAiGovernanceService() {
-        this(null, null);
+        this(null, null, null, null, null);
     }
 
     public ClinicalAiGovernanceService(ClinicalAuditService clinicalAuditService) {
-        this(clinicalAuditService, null);
+        this(clinicalAuditService, null, null, null, null);
     }
 
     public ClinicalAiGovernanceService(
             ClinicalAuditService clinicalAuditService,
             ClinicalAuditLogger clinicalAuditLogger) {
+        this(clinicalAuditService, clinicalAuditLogger, null, null, null);
+    }
+
+    public ClinicalAiGovernanceService(
+            ClinicalAuditService clinicalAuditService,
+            ClinicalAuditLogger clinicalAuditLogger,
+            ClinicalAiDraftRepository draftRepository,
+            TenantAiPolicyRepository tenantPolicyRepository,
+            ObjectMapper objectMapper) {
         this.clinicalAuditService = clinicalAuditService;
         this.clinicalAuditLogger = clinicalAuditLogger != null
                 ? clinicalAuditLogger
                 : new ClinicalAuditLogger(clinicalAuditService);
+        this.draftRepository = draftRepository;
+        this.tenantPolicyRepository = tenantPolicyRepository;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
     }
 
     public ClinicalAuditLogger getClinicalAuditLogger() {
@@ -138,9 +163,20 @@ public class ClinicalAiGovernanceService {
 
     /**
      * Enables or disables Clinical AI execution for a specific healthcare facility tenant.
+     * Persisted durably when {@link TenantAiPolicyRepository} is configured.
      */
     public boolean setTenantAiEnabled(UUID facilityId, boolean enabled) {
         UUID safeFac = facilityId != null ? facilityId : new UUID(0L, 0L);
+        if (tenantPolicyRepository != null) {
+            TenantAiPolicyEntity policy = tenantPolicyRepository.findById(safeFac).orElseGet(() -> {
+                TenantAiPolicyEntity created = new TenantAiPolicyEntity();
+                created.setFacilityId(safeFac);
+                return created;
+            });
+            policy.setAiEnabled(enabled);
+            policy.setUpdatedAt(Instant.now());
+            tenantPolicyRepository.save(policy);
+        }
         tenantAiFlags.put(safeFac, enabled);
         clinicalAuditLogger.recordTenantPolicyEvent(
                 safeFac, "SYSTEM_GOVERNANCE", "TENANT_AI_POLICY", true, true, "aiEnabled=" + enabled);
@@ -151,6 +187,11 @@ public class ClinicalAiGovernanceService {
 
     public boolean isTenantAiEnabled(UUID facilityId) {
         UUID safeFac = facilityId != null ? facilityId : new UUID(0L, 0L);
+        if (tenantPolicyRepository != null) {
+            return tenantPolicyRepository.findById(safeFac)
+                    .map(TenantAiPolicyEntity::isAiEnabled)
+                    .orElse(true);
+        }
         return tenantAiFlags.getOrDefault(safeFac, true);
     }
 
@@ -211,6 +252,9 @@ public class ClinicalAiGovernanceService {
                 null,
                 null
         );
+        if (draftRepository != null) {
+            draftRepository.save(toEntity(record));
+        }
         drafts.put(draftId, record);
         facilityLatencySumMs.computeIfAbsent(safeFacility, k -> new LongAdder()).add(Math.max(0L, latencyMs));
         facilityRequestCount.computeIfAbsent(safeFacility, k -> new LongAdder()).increment();
@@ -224,7 +268,7 @@ public class ClinicalAiGovernanceService {
                     totalRedactions,
                     safeCounts,
                     redactedPromptSha256,
-                    "Pre-model HIPAA Safe-Harbor redaction prior to " + modelId
+                    "Pre-model heuristic PHI pre-filter prior to " + modelId
             ));
         }
         clinicalAuditLogger.recordAiModelInteraction(new AiModelInteractionEvent(
@@ -257,7 +301,7 @@ public class ClinicalAiGovernanceService {
      * or {@code REJECTED}).
      */
     public ClinicalAiDraftRecord attestDraft(UUID draftId, AttestationCommand command) {
-        ClinicalAiDraftRecord existing = drafts.get(draftId);
+        ClinicalAiDraftRecord existing = findDraftInternal(draftId);
         if (existing == null) {
             throw new NoSuchElementException("Clinical AI draft not found: " + draftId);
         }
@@ -296,6 +340,12 @@ public class ClinicalAiGovernanceService {
                 command.attestationReason() != null ? command.attestationReason().trim() : "Clinician reviewed and signed",
                 Instant.now()
         );
+        if (draftRepository != null) {
+            ClinicalAiDraftEntity entity = draftRepository.findById(draftId)
+                    .orElseGet(() -> toEntity(existing));
+            applyRecordToEntity(updated, entity);
+            draftRepository.save(entity);
+        }
         drafts.put(draftId, updated);
 
         clinicalAuditLogger.recordClinicianAttestation(new ClinicianAttestationEvent(
@@ -319,7 +369,7 @@ public class ClinicalAiGovernanceService {
     }
 
     public ClinicalAiDraftRecord getDraft(UUID draftId) {
-        ClinicalAiDraftRecord found = drafts.get(draftId);
+        ClinicalAiDraftRecord found = findDraftInternal(draftId);
         if (found == null) {
             throw new NoSuchElementException("Clinical AI draft not found: " + draftId);
         }
@@ -327,6 +377,21 @@ public class ClinicalAiGovernanceService {
     }
 
     public List<ClinicalAiDraftRecord> listDrafts(UUID facilityId, DraftAttestationStatus statusFilter) {
+        if (draftRepository != null) {
+            List<ClinicalAiDraftEntity> rows;
+            if (facilityId != null && statusFilter != null) {
+                rows = draftRepository.findByFacilityIdAndStatusOrderByCreatedAtDesc(facilityId, statusFilter.name());
+            } else if (facilityId != null) {
+                rows = draftRepository.findByFacilityIdOrderByCreatedAtDesc(facilityId);
+            } else {
+                rows = draftRepository.findAll();
+            }
+            return rows.stream()
+                    .map(this::toRecord)
+                    .filter(d -> statusFilter == null || statusFilter == d.status())
+                    .sorted(Comparator.comparing(ClinicalAiDraftRecord::createdAt).reversed())
+                    .toList();
+        }
         return drafts.values().stream()
                 .filter(d -> facilityId == null || facilityId.equals(d.facilityId()))
                 .filter(d -> statusFilter == null || statusFilter == d.status())
@@ -336,9 +401,7 @@ public class ClinicalAiGovernanceService {
 
     public TenantAiGovernanceMetrics getTenantMetrics(UUID facilityId) {
         UUID safeFacility = facilityId != null ? facilityId : new UUID(0L, 0L);
-        List<ClinicalAiDraftRecord> facDrafts = drafts.values().stream()
-                .filter(d -> safeFacility.equals(d.facilityId()))
-                .toList();
+        List<ClinicalAiDraftRecord> facDrafts = listDrafts(safeFacility, null);
 
         long pending = facDrafts.stream().filter(d -> d.status() == DraftAttestationStatus.DRAFT_PENDING_ATTESTATION).count();
         long approved = facDrafts.stream().filter(d -> d.status() == DraftAttestationStatus.APPROVED).count();
@@ -347,8 +410,8 @@ public class ClinicalAiGovernanceService {
         long phiTotal = facDrafts.stream().mapToLong(ClinicalAiDraftRecord::totalPhiRedactions).sum();
         long tokensTotal = facDrafts.stream().mapToLong(d -> (long) d.promptTokens() + d.outputTokens()).sum();
 
-        long reqCount = facilityRequestCount.getOrDefault(safeFacility, new LongAdder()).sum();
-        long latSum = facilityLatencySumMs.getOrDefault(safeFacility, new LongAdder()).sum();
+        long reqCount = facDrafts.size();
+        long latSum = facDrafts.stream().mapToLong(ClinicalAiDraftRecord::latencyMs).sum();
         double avgLatency = reqCount > 0 ? (double) latSum / reqCount : 0.0;
 
         Map<String, Long> byCapability = new LinkedHashMap<>();
@@ -372,6 +435,86 @@ public class ClinicalAiGovernanceService {
                 avgLatency,
                 byCapability
         );
+    }
+
+    private ClinicalAiDraftRecord findDraftInternal(UUID draftId) {
+        if (draftRepository != null) {
+            return draftRepository.findById(draftId).map(this::toRecord).orElse(null);
+        }
+        return drafts.get(draftId);
+    }
+
+    private ClinicalAiDraftEntity toEntity(ClinicalAiDraftRecord record) {
+        ClinicalAiDraftEntity entity = new ClinicalAiDraftEntity();
+        applyRecordToEntity(record, entity);
+        return entity;
+    }
+
+    private void applyRecordToEntity(ClinicalAiDraftRecord record, ClinicalAiDraftEntity entity) {
+        entity.setDraftId(record.draftId());
+        entity.setFacilityId(record.facilityId());
+        entity.setPatientId(record.patientId());
+        entity.setCapability(record.capability().name());
+        entity.setModelId(record.modelId());
+        entity.setStatus(record.status().name());
+        entity.setRedactedPromptSha256(record.redactedPromptSha256());
+        entity.setOutputSha256(record.outputSha256());
+        entity.setRedactionCountsJson(serializeCounts(record.redactionCountsByCategory()));
+        entity.setTotalPhiRedactions(record.totalPhiRedactions());
+        entity.setStructuredOutputJson(record.structuredOutputJson());
+        entity.setClinicianEditedJson(record.clinicianEditedJson());
+        entity.setPromptTokens(record.promptTokens());
+        entity.setOutputTokens(record.outputTokens());
+        entity.setLatencyMs(record.latencyMs());
+        entity.setCreatedBy(record.createdBy());
+        entity.setCreatedAt(record.createdAt());
+        entity.setAttestedByPractitionerId(record.attestedByPractitionerId());
+        entity.setAttestationReason(record.attestationReason());
+        entity.setAttestedAt(record.attestedAt());
+    }
+
+    private ClinicalAiDraftRecord toRecord(ClinicalAiDraftEntity entity) {
+        return new ClinicalAiDraftRecord(
+                entity.getDraftId(),
+                entity.getFacilityId(),
+                entity.getPatientId(),
+                AiCapabilityType.valueOf(entity.getCapability()),
+                entity.getModelId(),
+                DraftAttestationStatus.valueOf(entity.getStatus()),
+                entity.getRedactedPromptSha256(),
+                entity.getOutputSha256(),
+                deserializeCounts(entity.getRedactionCountsJson()),
+                entity.getTotalPhiRedactions(),
+                entity.getStructuredOutputJson(),
+                entity.getClinicianEditedJson(),
+                entity.getPromptTokens(),
+                entity.getOutputTokens(),
+                entity.getLatencyMs(),
+                entity.getCreatedBy(),
+                entity.getCreatedAt(),
+                entity.getAttestedByPractitionerId(),
+                entity.getAttestationReason(),
+                entity.getAttestedAt()
+        );
+    }
+
+    private String serializeCounts(Map<String, Integer> counts) {
+        try {
+            return objectMapper.writeValueAsString(counts != null ? counts : Map.of());
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to serialize AI draft redaction counts JSON", ex);
+        }
+    }
+
+    private Map<String, Integer> deserializeCounts(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return Collections.unmodifiableMap(objectMapper.readValue(json, COUNTS_TYPE));
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to deserialize AI draft redaction counts JSON", ex);
+        }
     }
 
     private void emitAudit(
@@ -399,8 +542,10 @@ public class ClinicalAiGovernanceService {
                     "internal-ai-gateway",
                     UUID.randomUUID().toString()
             );
-        } catch (Exception ignored) {
-            // Audit persistence errors never block governance state updates in standalone mode
+        } catch (Exception ex) {
+            throw new ClinicalAuditPersistenceException(
+                    "Mandatory clinical governance audit persistence failed (action=" + action
+                            + ", resourceId=" + resourceId + ")", ex);
         }
     }
 }

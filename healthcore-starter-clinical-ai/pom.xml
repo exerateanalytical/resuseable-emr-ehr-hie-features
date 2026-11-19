@@ -22,9 +22,9 @@
     <artifactId>healthcore-starter-clinical-ai</artifactId>
     <name>Opes HealthCore Starter — Clinical &amp; Operational AI</name>
     <description>
-        Server-side Clinical AI starter providing HIPAA Safe-Harbor 18-identifier PHI redaction,
+        Server-side Clinical AI starter providing heuristic PHI risk-reduction pre-filtering,
         Java 25 Gemini API gateway (text, structured JSON, vision, transcription, TTS, embeddings,
-        calibrated decisions), mandatory clinician human-in-the-loop attestation, and AI audit governance.
+        calibrated decisions), mandatory clinician human-in-the-loop attestation, and durable AI audit governance.
     </description>
 
     <dependencies>

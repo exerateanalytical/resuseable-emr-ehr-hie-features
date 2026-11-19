@@ -10,6 +10,7 @@
 package com.opeshealth.healthcore.sync.service;
 
 import com.opeshealth.healthcore.persistence.id.UuidV7Generator;
+import com.opeshealth.healthcore.persistence.tenancy.FacilityContext;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock;
 import com.opeshealth.healthcore.sync.clock.HybridLogicalClock.Ed25519QrHealthCardSigner;
@@ -21,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -254,6 +256,10 @@ public class OfflineSyncService {
     public Map<String, Object> resolveConflict(UUID conflictId, String resolution, String resolvedBy) {
         SyncConflictEntity conflict = conflictRepo.findById(conflictId)
                 .orElseThrow(() -> new NoSuchElementException("Sync conflict not found: " + conflictId));
+        UUID activeFacility = FacilityContext.getFacilityId();
+        if (activeFacility != null && !activeFacility.equals(conflict.getFacilityId())) {
+            throw new AccessDeniedException("Cross-tenant conflict resolution denied for conflict " + conflictId);
+        }
         if (!"OPEN".equalsIgnoreCase(conflict.getStatus())) {
             return Map.of("conflictId", conflictId, "status", conflict.getStatus(), "alreadyResolved", true);
         }
@@ -314,30 +320,41 @@ public class OfflineSyncService {
             this.qrSigner = qrSigner;
         }
 
+        private static UUID requireMatchingFacility(UUID requestedFacilityId) {
+            UUID active = FacilityContext.getFacilityId();
+            if (active == null) {
+                throw new AccessDeniedException("Tenant facility context is required for offline sync operations.");
+            }
+            if (requestedFacilityId != null && !active.equals(requestedFacilityId)) {
+                throw new AccessDeniedException("Cross-tenant sync access denied: requested facility does not match active tenant.");
+            }
+            return active;
+        }
+
         @GetMapping("/pull")
-        @PreAuthorize("isAuthenticated()")
-        @Operation(summary = "Pull monotonic delta batch since last syncSeq cursor")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_facility:manage')")
+        @Operation(summary = "Pull monotonic delta batch since last syncSeq cursor (tenant-scoped)")
         public Map<String, Object> pull(
                 @RequestParam UUID facilityId,
                 @RequestParam(defaultValue = "0") long sinceSeq,
                 @RequestParam(defaultValue = "200") int limit) {
-            return service.pullDelta(facilityId, sinceSeq, limit);
+            return service.pullDelta(requireMatchingFacility(facilityId), sinceSeq, limit);
         }
 
         @PostMapping("/push")
-        @PreAuthorize("isAuthenticated()")
-        @Operation(summary = "Push offline Mobile/iPad/Edge mutations with clinical conflict safety")
+        @PreAuthorize("hasAuthority('PERM_patient:write') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_encounter:sign')")
+        @Operation(summary = "Push offline Mobile/iPad/Edge mutations with clinical conflict safety (tenant-scoped)")
         public Map<String, Object> push(
                 @RequestParam UUID facilityId,
                 @RequestBody List<IncomingMutation> mutations) {
-            return service.pushDeltaBatch(facilityId, mutations);
+            return service.pushDeltaBatch(requireMatchingFacility(facilityId), mutations);
         }
 
         @GetMapping("/conflicts")
         @PreAuthorize("hasAuthority('PERM_encounter:sign') or hasAuthority('PERM_audit:read') or hasAuthority('PERM_facility:manage')")
-        @Operation(summary = "List unresolved clinical sync conflicts awaiting clinician review")
+        @Operation(summary = "List unresolved clinical sync conflicts awaiting clinician review (tenant-scoped)")
         public List<SyncConflictEntity> conflicts(@RequestParam UUID facilityId) {
-            return conflictRepo.findByFacilityIdAndStatus(facilityId, "OPEN");
+            return conflictRepo.findByFacilityIdAndStatus(requireMatchingFacility(facilityId), "OPEN");
         }
 
         @PostMapping("/conflicts/{conflictId}/resolve")
@@ -347,32 +364,35 @@ public class OfflineSyncService {
                 @PathVariable UUID conflictId,
                 @RequestParam String resolution,
                 @RequestParam(defaultValue = "clinician") String resolvedBy) {
+            requireMatchingFacility(null);
             return service.resolveConflict(conflictId, resolution, resolvedBy);
         }
 
         @GetMapping("/tombstones")
-        @PreAuthorize("isAuthenticated()")
-        @Operation(summary = "Fetch soft-delete tombstones since a given ISO-8601 instant")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_chw:visit:write') or hasAuthority('PERM_facility:manage')")
+        @Operation(summary = "Fetch soft-delete tombstones since a given ISO-8601 instant (tenant-scoped)")
         public List<SyncTombstoneEntity> tombstones(
                 @RequestParam UUID facilityId,
                 @RequestParam(required = false) Instant since,
                 @RequestParam(defaultValue = "200") int limit) {
-            return service.pullTombstones(facilityId, since, limit);
+            return service.pullTombstones(requireMatchingFacility(facilityId), since, limit);
         }
 
         @PostMapping("/qr-card/sign")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_hie:export') or hasAuthority('PERM_encounter:sign')")
         @Operation(summary = "Issue Ed25519 cryptographically signed offline QR IPS Health Card")
         public Map<String, String> signQrCard(@RequestBody String compactIpsJson) {
+            requireMatchingFacility(null);
             return Map.of(
                     "qrToken", qrSigner.signCardPayload(compactIpsJson),
                     "publicKeyBase64", qrSigner.publicKeyBase64());
         }
 
         @PostMapping("/qr-card/verify")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasAuthority('PERM_patient:read') or hasAuthority('PERM_hie:export') or hasAuthority('PERM_chw:visit:write')")
         @Operation(summary = "Verify offline QR IPS Health Card signature")
         public Map<String, Boolean> verifyQrCard(@RequestBody String qrToken) {
+            requireMatchingFacility(null);
             return Map.of("valid", qrSigner.verifyCardToken(qrToken));
         }
     }

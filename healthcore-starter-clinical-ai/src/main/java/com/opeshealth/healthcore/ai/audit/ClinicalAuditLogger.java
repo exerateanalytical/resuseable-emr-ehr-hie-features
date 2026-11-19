@@ -10,6 +10,10 @@
  */
 package com.opeshealth.healthcore.ai.audit;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiAuditEntryEntity;
+import com.opeshealth.healthcore.ai.persistence.ClinicalAiPersistenceEntities.ClinicalAiAuditEntryRepository;
 import com.opeshealth.healthcore.ai.privacy.PhiRedactionGateway;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 import org.springframework.stereotype.Service;
@@ -25,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +37,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * Tamper-proof, cryptographically hash-chained HIPAA &amp; GDPR compliance audit logger inside
+ * Tamper-evident, cryptographically hash-chained clinical AI audit logger inside
  * {@code healthcore-starter-clinical-ai}.
  *
  * <p>Records three mandatory categories of clinical AI governance telemetry into a per-facility
@@ -44,14 +49,15 @@ import java.util.function.Consumer;
  *   <li><strong>Clinician Attestation Lifecycle:</strong> Every sign-off state transition
  *       ({@code DRAFT_PENDING_ATTESTATION} → {@code APPROVED}, {@code APPROVED_WITH_EDITS}, or
  *       {@code REJECTED}) with practitioner identity and edited-output digest.</li>
- *   <li><strong>PHI Redaction Events:</strong> Every HIPAA Safe-Harbor (§ 164.514(b)(2))
- *       18-identifier de-identification pass with category breakdown and redacted SHA-256 digest
- *       (zero raw PHI is ever persisted in the audit ledger).</li>
+ *   <li><strong>PHI Redaction Events:</strong> Every heuristic PHI risk-reduction pre-filter
+ *       pass with category breakdown and redacted SHA-256 digest (zero raw PHI is persisted in
+ *       the audit ledger).</li>
  * </ul>
  *
- * <p>Provides cryptographic chain integrity verification ({@link #verifyAuditChain(UUID)} and
- * {@link #verifyExternalAuditChain(UUID, List)}) and structured HIPAA compliance reporting
- * ({@link #generateHipaaComplianceReport(UUID, Instant, Instant)}).</p>
+ * <p>When a {@link ClinicalAiAuditEntryRepository} is wired by Spring Boot auto-configuration,
+ * entries are persisted durably to the relational database so chain continuity survives restarts
+ * and multi-instance deployments. Any failure writing to a configured persistent audit repository
+ * or {@link ClinicalAuditService} fails closed via {@link ClinicalAuditPersistenceException}.</p>
  *
  * @author Jude Nshome — Opes Health Systems (nshome@opesware.com)
  */
@@ -174,18 +180,31 @@ public class ClinicalAuditLogger {
         String headHash = GENESIS_HASH;
     }
 
+    private static final TypeReference<Map<String, Integer>> COUNTS_TYPE = new TypeReference<>() {};
+
     private final ClinicalAuditService persistentAuditService;
+    private final ClinicalAiAuditEntryRepository auditEntryRepository;
+    private final ObjectMapper objectMapper;
     private final PhiRedactionGateway detailScrubber;
     private final Map<UUID, FacilityLedger> ledgersByFacility = new ConcurrentHashMap<>();
     private final List<Consumer<TamperProofAuditEntry>> listeners = new CopyOnWriteArrayList<>();
 
     public ClinicalAuditLogger() {
-        this(null);
+        this(null, null, null);
     }
 
     public ClinicalAuditLogger(ClinicalAuditService persistentAuditService) {
+        this(persistentAuditService, null, null);
+    }
+
+    public ClinicalAuditLogger(
+            ClinicalAuditService persistentAuditService,
+            ClinicalAiAuditEntryRepository auditEntryRepository,
+            ObjectMapper objectMapper) {
         this.persistentAuditService = persistentAuditService;
-        // Dedicated standalone scrubber instance (never recursive) to prevent accidental PHI in log details
+        this.auditEntryRepository = auditEntryRepository;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        // Dedicated standalone scrubber instance (never recursive) to reduce accidental PHI in log details
         this.detailScrubber = new PhiRedactionGateway();
     }
 
@@ -257,8 +276,8 @@ public class ClinicalAuditLogger {
     }
 
     /**
-     * Records a HIPAA Safe-Harbor 18-identifier PHI redaction event (counts by category and
-     * redacted SHA-256 digest only — never raw PHI) into the tamper-proof chain.
+     * Records a heuristic PHI risk-reduction pre-filter event (counts by category and
+     * redacted SHA-256 digest only — never raw PHI) into the tamper-evident chain.
      */
     public TamperProofAuditEntry recordPhiRedactionEvent(PhiRedactionAuditEvent event) {
         Objects.requireNonNull(event, "PhiRedactionAuditEvent is required");
@@ -272,7 +291,7 @@ public class ClinicalAuditLogger {
                 null,
                 AuditEventType.PHI_REDACTION,
                 nonBlankOr(event.sourceComponent(), "PHI_REDACTION_GATEWAY"),
-                "HIPAA_SAFE_HARBOR_18",
+                "HEURISTIC_PHI_PREFILTER",
                 nonBlankOr(event.actorId(), "PHI_REDACTION_GATEWAY"),
                 "NOT_APPLICABLE",
                 "SUCCESS",
@@ -283,7 +302,7 @@ public class ClinicalAuditLogger {
                 0,
                 0,
                 0L,
-                nonBlankOr(event.detail(), "Safe-Harbor PHI scrubbing completed")
+                nonBlankOr(event.detail(), "Heuristic PHI risk-reduction pre-filter completed")
         );
     }
 
@@ -329,6 +348,14 @@ public class ClinicalAuditLogger {
             Instant from,
             Instant to) {
         List<TamperProofAuditEntry> results = new ArrayList<>();
+        if (auditEntryRepository != null) {
+            List<ClinicalAiAuditEntryEntity> persisted = facilityId != null
+                    ? auditEntryRepository.findByFacilityIdOrderBySequenceNumberAsc(facilityId)
+                    : auditEntryRepository.findAll();
+            List<TamperProofAuditEntry> mapped = persisted.stream().map(this::toRecord).toList();
+            collectMatching(mapped, eventTypeFilter, patientIdFilter, from, to, results);
+            return List.copyOf(results);
+        }
         if (facilityId != null) {
             FacilityLedger ledger = ledgersByFacility.get(facilityId);
             if (ledger != null) {
@@ -351,6 +378,18 @@ public class ClinicalAuditLogger {
      */
     public AuditChainVerificationReport verifyAuditChain(UUID facilityId) {
         UUID safeFac = facilityId != null ? facilityId : GLOBAL_FACILITY_ID;
+        if (auditEntryRepository != null) {
+            List<TamperProofAuditEntry> persisted = auditEntryRepository
+                    .findByFacilityIdOrderBySequenceNumberAsc(safeFac)
+                    .stream().map(this::toRecord).toList();
+            if (persisted.isEmpty()) {
+                return new AuditChainVerificationReport(
+                        safeFac, true, 0L, null, GENESIS_HASH,
+                        "No clinical AI audit entries recorded yet for facility."
+                );
+            }
+            return verifyExternalAuditChain(safeFac, persisted);
+        }
         FacilityLedger ledger = ledgersByFacility.get(safeFac);
         if (ledger == null) {
             return new AuditChainVerificationReport(
@@ -565,10 +604,24 @@ public class ClinicalAuditLogger {
         FacilityLedger ledger = ledgersByFacility.computeIfAbsent(safeFac, k -> new FacilityLedger());
         TamperProofAuditEntry entry;
         synchronized (ledger) {
-            long nextSeq = ledger.entries.size() + 1L;
+            long nextSeq;
+            String prevHash;
+            if (auditEntryRepository != null) {
+                Optional<ClinicalAiAuditEntryEntity> latestPersisted =
+                        auditEntryRepository.findTopByFacilityIdOrderBySequenceNumberDesc(safeFac);
+                if (latestPersisted.isPresent()) {
+                    nextSeq = latestPersisted.get().getSequenceNumber() + 1L;
+                    prevHash = latestPersisted.get().getEntrySha256Hash();
+                } else {
+                    nextSeq = 1L;
+                    prevHash = GENESIS_HASH;
+                }
+            } else {
+                nextSeq = ledger.entries.size() + 1L;
+                prevHash = ledger.headHash;
+            }
             UUID entryId = UUID.randomUUID();
             Instant recordedAt = Instant.now();
-            String prevHash = ledger.headHash;
             String entryHash = computeEntryHash(
                     entryId, nextSeq, safeFac, patientId, draftId, eventType,
                     capability, modelId, actorId, attestationStatus, outcome,
@@ -582,19 +635,33 @@ public class ClinicalAuditLogger {
                     promptTokens, outputTokens, latencyMs, scrubbedDetail, recordedAt,
                     prevHash, entryHash
             );
+
+            // Fail closed BEFORE mutating in-memory chain state so mandatory audit persistence
+            // failures never go unnoticed or desynchronize chain hashes.
+            persistToDurableRepository(entry);
+            forwardToPersistentAuditService(entry);
+
             ledger.entries.add(entry);
             ledger.headHash = entryHash;
         }
 
-        forwardToPersistentAuditService(entry);
         for (Consumer<TamperProofAuditEntry> listener : listeners) {
-            try {
-                listener.accept(entry);
-            } catch (Exception ignored) {
-                // Listener exceptions must never disrupt audit chain persistence
-            }
+            listener.accept(entry);
         }
         return entry;
+    }
+
+    private void persistToDurableRepository(TamperProofAuditEntry entry) {
+        if (auditEntryRepository == null) {
+            return;
+        }
+        try {
+            auditEntryRepository.save(toEntity(entry));
+        } catch (Exception ex) {
+            throw new ClinicalAuditPersistenceException(
+                    "Mandatory durable Clinical AI audit persistence failed for facility " + entry.facilityId()
+                            + " (eventType=" + entry.eventType() + ", seq=" + entry.sequenceNumber() + ")", ex);
+        }
     }
 
     private void forwardToPersistentAuditService(TamperProofAuditEntry entry) {
@@ -620,8 +687,82 @@ public class ClinicalAuditLogger {
                     "internal-clinical-ai-audit",
                     entry.entryId().toString()
             );
-        } catch (Exception ignored) {
-            // Standalone / in-memory operation remains resilient if DB audit repository is absent
+        } catch (Exception ex) {
+            throw new ClinicalAuditPersistenceException(
+                    "Mandatory ClinicalAuditService forwarding failed for AI audit entry " + entry.entryId(), ex);
+        }
+    }
+
+    private ClinicalAiAuditEntryEntity toEntity(TamperProofAuditEntry entry) {
+        ClinicalAiAuditEntryEntity entity = new ClinicalAiAuditEntryEntity();
+        entity.setEntryId(entry.entryId());
+        entity.setSequenceNumber(entry.sequenceNumber());
+        entity.setFacilityId(entry.facilityId());
+        entity.setPatientId(entry.patientId());
+        entity.setDraftId(entry.draftId());
+        entity.setEventType(entry.eventType().name());
+        entity.setCapability(entry.capability());
+        entity.setModelId(entry.modelId());
+        entity.setActorId(entry.actorId());
+        entity.setAttestationStatus(entry.attestationStatus());
+        entity.setOutcome(entry.outcome());
+        entity.setRedactedInputSha256(entry.redactedInputSha256());
+        entity.setOutputSha256(entry.outputSha256());
+        entity.setTotalPhiIdentifiersRedacted(entry.totalPhiIdentifiersRedacted());
+        entity.setRedactionCountsJson(serializeCounts(entry.redactionCountsByCategory()));
+        entity.setPromptTokens(entry.promptTokens());
+        entity.setOutputTokens(entry.outputTokens());
+        entity.setLatencyMs(entry.latencyMs());
+        entity.setSanitizedDetail(entry.sanitizedDetail());
+        entity.setRecordedAt(entry.recordedAt());
+        entity.setPreviousEntryHash(entry.previousEntryHash());
+        entity.setEntrySha256Hash(entry.entrySha256Hash());
+        return entity;
+    }
+
+    private TamperProofAuditEntry toRecord(ClinicalAiAuditEntryEntity entity) {
+        return new TamperProofAuditEntry(
+                entity.getEntryId(),
+                entity.getSequenceNumber(),
+                entity.getFacilityId(),
+                entity.getPatientId(),
+                entity.getDraftId(),
+                AuditEventType.valueOf(entity.getEventType()),
+                entity.getCapability(),
+                entity.getModelId(),
+                entity.getActorId(),
+                entity.getAttestationStatus(),
+                entity.getOutcome(),
+                entity.getRedactedInputSha256(),
+                entity.getOutputSha256(),
+                entity.getTotalPhiIdentifiersRedacted(),
+                deserializeCounts(entity.getRedactionCountsJson()),
+                entity.getPromptTokens(),
+                entity.getOutputTokens(),
+                entity.getLatencyMs(),
+                entity.getSanitizedDetail(),
+                entity.getRecordedAt(),
+                entity.getPreviousEntryHash(),
+                entity.getEntrySha256Hash()
+        );
+    }
+
+    private String serializeCounts(Map<String, Integer> counts) {
+        try {
+            return objectMapper.writeValueAsString(counts != null ? counts : Map.of());
+        } catch (Exception ex) {
+            throw new ClinicalAuditPersistenceException("Failed to serialize PHI redaction counts JSON", ex);
+        }
+    }
+
+    private Map<String, Integer> deserializeCounts(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return Collections.unmodifiableMap(new TreeMap<>(objectMapper.readValue(json, COUNTS_TYPE)));
+        } catch (Exception ex) {
+            throw new ClinicalAuditPersistenceException("Failed to deserialize PHI redaction counts JSON", ex);
         }
     }
 
