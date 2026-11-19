@@ -202,7 +202,21 @@ public class FhirApiRateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/cds-services")
                 || path.startsWith("/cds-services")
                 || path.startsWith("/api/v1/mpi")
+                || path.startsWith("/api/v1/identity-matching")
                 || path.startsWith("/api/v1/terminology")
+                || path.startsWith("/api/v1/cold-chain")
+                || path.startsWith("/api/v1/bulk-export")
+                || path.startsWith("/api/v1/consent")
+                || path.startsWith("/api/v1/pgx")
+                || path.startsWith("/api/v1/rpm")
+                || path.startsWith("/api/v1/subscriptions")
+                || path.startsWith("/api/v1/bcma")
+                || path.startsWith("/api/v1/ams")
+                || path.startsWith("/api/v1/ips")
+                || path.startsWith("/api/v1/prior-auth")
+                || path.startsWith("/api/v1/proms")
+                || path.startsWith("/api/v1/sdoh")
+                || path.startsWith("/api/v1/certificates")
                 || path.equals("/graphql")
                 || path.startsWith("/graphql/");
     }
@@ -210,7 +224,9 @@ public class FhirApiRateLimitFilter extends OncePerRequestFilter {
     private static boolean isBundleEndpoint(String path) {
         return path.equals("/api/v1/fhir")
                 || path.equals("/api/v1/bundles")
-                || path.equals("/fhir/r4");
+                || path.equals("/fhir/r4")
+                || path.startsWith("/api/v1/bulk-export")
+                || path.contains("/$export");
     }
 
     private static String normalizePath(HttpServletRequest request) {

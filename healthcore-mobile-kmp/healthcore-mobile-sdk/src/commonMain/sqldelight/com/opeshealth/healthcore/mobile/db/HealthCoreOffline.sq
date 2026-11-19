@@ -58,6 +58,91 @@ CREATE TABLE local_sync_checkpoint (
     last_synced_at TEXT NOT NULL
 );
 
+-- =============================================================================
+-- FHIR R4 Offline Resource Store, Priority Sync Queue & Conflict Ledger
+-- Used by DataSyncManager for offline FHIR resource queueing & 3-way conflict resolution
+-- =============================================================================
+
+CREATE TABLE local_fhir_resource (
+    resource_key TEXT NOT NULL PRIMARY KEY,
+    facility_id TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    patient_id TEXT,
+    version_id INTEGER NOT NULL DEFAULT 1,
+    etag TEXT NOT NULL,
+    hlc_timestamp TEXT NOT NULL,
+    origin_node_id TEXT NOT NULL,
+    base_fhir_json TEXT,
+    fhir_json TEXT NOT NULL,
+    sync_state TEXT NOT NULL DEFAULT 'PENDING_SYNC',
+    updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX idx_local_fhir_resource_patient
+    ON local_fhir_resource(patient_id, resource_type);
+
+CREATE INDEX idx_local_fhir_resource_facility_state
+    ON local_fhir_resource(facility_id, sync_state);
+
+CREATE TABLE local_fhir_sync_queue (
+    queue_id TEXT NOT NULL PRIMARY KEY,
+    facility_id TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    patient_id TEXT,
+    operation TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 50,
+    base_version_id INTEGER NOT NULL DEFAULT 1,
+    base_etag TEXT,
+    hlc_timestamp TEXT NOT NULL,
+    origin_node_id TEXT NOT NULL,
+    base_payload_json TEXT,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    next_attempt_at_ms INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX idx_local_fhir_sync_queue_sched
+    ON local_fhir_sync_queue(facility_id, status, next_attempt_at_ms, priority, hlc_timestamp);
+
+CREATE INDEX idx_local_fhir_sync_queue_entity
+    ON local_fhir_sync_queue(resource_type, resource_id, status);
+
+CREATE TABLE local_fhir_sync_conflict (
+    conflict_id TEXT NOT NULL PRIMARY KEY,
+    queue_id TEXT NOT NULL,
+    facility_id TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    patient_id TEXT,
+    conflict_type TEXT NOT NULL,
+    resolution_strategy TEXT NOT NULL,
+    local_hlc TEXT NOT NULL,
+    remote_hlc TEXT NOT NULL,
+    local_version_id INTEGER NOT NULL,
+    remote_version_id INTEGER NOT NULL,
+    base_payload_json TEXT,
+    local_payload_json TEXT NOT NULL,
+    remote_payload_json TEXT NOT NULL,
+    merged_payload_json TEXT,
+    status TEXT NOT NULL DEFAULT 'OPEN',
+    resolved_by TEXT,
+    resolved_at_ms INTEGER,
+    detected_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX idx_local_fhir_sync_conflict_status
+    ON local_fhir_sync_conflict(facility_id, status, detected_at_ms);
+
+-- =============================================================================
+-- Existing Queries (Preserved for OfflineVaultSyncRepository compatibility)
+-- =============================================================================
+
 selectAllPatients:
 SELECT * FROM local_patient ORDER BY family_name ASC;
 
@@ -99,3 +184,119 @@ SELECT * FROM local_clinical_note WHERE patient_id = ? ORDER BY hlc_timestamp DE
 selectVitalsForPatient:
 SELECT * FROM local_vital_signs WHERE patient_id = ? ORDER BY recorded_at DESC;
 
+-- =============================================================================
+-- DataSyncManager Queries for Offline FHIR Resources, Queue & Conflict Resolution
+-- =============================================================================
+
+upsertLocalFhirResource:
+INSERT OR REPLACE INTO local_fhir_resource(
+    resource_key, facility_id, resource_type, resource_id, patient_id,
+    version_id, etag, hlc_timestamp, origin_node_id, base_fhir_json,
+    fhir_json, sync_state, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLocalFhirResourceByKey:
+SELECT * FROM local_fhir_resource WHERE resource_key = ?;
+
+selectLocalFhirResourcesByPatient:
+SELECT * FROM local_fhir_resource
+WHERE patient_id = ? AND sync_state != 'DELETED_TOMBSTONE'
+ORDER BY updated_at_ms DESC;
+
+selectLocalFhirResourcesByType:
+SELECT * FROM local_fhir_resource
+WHERE facility_id = ? AND resource_type = ? AND sync_state != 'DELETED_TOMBSTONE'
+ORDER BY updated_at_ms DESC;
+
+updateLocalFhirResourceSyncState:
+UPDATE local_fhir_resource
+SET sync_state = ?, version_id = ?, etag = ?, hlc_timestamp = ?, base_fhir_json = ?, fhir_json = ?, updated_at_ms = ?
+WHERE resource_key = ?;
+
+deleteLocalFhirResourceByKey:
+DELETE FROM local_fhir_resource WHERE resource_key = ?;
+
+enqueueFhirSyncItem:
+INSERT OR REPLACE INTO local_fhir_sync_queue(
+    queue_id, facility_id, resource_type, resource_id, patient_id,
+    operation, priority, base_version_id, base_etag, hlc_timestamp,
+    origin_node_id, base_payload_json, payload_json, status,
+    attempt_count, max_attempts, next_attempt_at_ms, last_error, created_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectReadyFhirSyncQueueBatch:
+SELECT * FROM local_fhir_sync_queue
+WHERE facility_id = ?
+  AND (status = 'QUEUED' OR status = 'RETRY_SCHEDULED')
+  AND next_attempt_at_ms <= ?
+ORDER BY priority ASC, hlc_timestamp ASC
+LIMIT ?;
+
+selectAllPendingFhirSyncQueue:
+SELECT * FROM local_fhir_sync_queue
+WHERE facility_id = ?
+  AND status IN ('QUEUED', 'RETRY_SCHEDULED', 'IN_FLIGHT')
+ORDER BY priority ASC, hlc_timestamp ASC;
+
+selectFhirSyncQueueById:
+SELECT * FROM local_fhir_sync_queue WHERE queue_id = ?;
+
+selectPendingFhirSyncQueueByResource:
+SELECT * FROM local_fhir_sync_queue
+WHERE resource_type = ? AND resource_id = ?
+  AND status IN ('QUEUED', 'RETRY_SCHEDULED')
+ORDER BY created_at_ms DESC;
+
+updateFhirSyncQueueStatus:
+UPDATE local_fhir_sync_queue
+SET status = ?, last_error = ?
+WHERE queue_id = ?;
+
+scheduleFhirSyncRetry:
+UPDATE local_fhir_sync_queue
+SET status = ?, attempt_count = ?, next_attempt_at_ms = ?, last_error = ?
+WHERE queue_id = ?;
+
+markFhirSyncQueueCompleted:
+UPDATE local_fhir_sync_queue
+SET status = 'SYNCED', last_error = NULL
+WHERE queue_id = ?;
+
+coalescePendingFhirSyncQueuePayload:
+UPDATE local_fhir_sync_queue
+SET operation = ?, priority = ?, hlc_timestamp = ?, payload_json = ?, status = 'QUEUED', next_attempt_at_ms = 0
+WHERE queue_id = ?;
+
+deleteFhirSyncQueueById:
+DELETE FROM local_fhir_sync_queue WHERE queue_id = ?;
+
+deleteCompletedFhirSyncQueueItems:
+DELETE FROM local_fhir_sync_queue
+WHERE facility_id = ? AND status = 'SYNCED';
+
+insertFhirSyncConflict:
+INSERT OR REPLACE INTO local_fhir_sync_conflict(
+    conflict_id, queue_id, facility_id, resource_type, resource_id, patient_id,
+    conflict_type, resolution_strategy, local_hlc, remote_hlc,
+    local_version_id, remote_version_id, base_payload_json,
+    local_payload_json, remote_payload_json, merged_payload_json,
+    status, resolved_by, resolved_at_ms, detected_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectOpenFhirSyncConflicts:
+SELECT * FROM local_fhir_sync_conflict
+WHERE facility_id = ? AND status = 'OPEN'
+ORDER BY detected_at_ms DESC;
+
+selectAllFhirSyncConflicts:
+SELECT * FROM local_fhir_sync_conflict
+WHERE facility_id = ?
+ORDER BY detected_at_ms DESC;
+
+selectFhirSyncConflictById:
+SELECT * FROM local_fhir_sync_conflict WHERE conflict_id = ?;
+
+resolveFhirSyncConflict:
+UPDATE local_fhir_sync_conflict
+SET status = ?, merged_payload_json = ?, resolved_by = ?, resolved_at_ms = ?
+WHERE conflict_id = ?;

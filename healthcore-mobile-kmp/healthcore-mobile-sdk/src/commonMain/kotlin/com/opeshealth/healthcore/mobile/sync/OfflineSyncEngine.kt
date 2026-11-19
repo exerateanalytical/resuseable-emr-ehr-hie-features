@@ -183,6 +183,12 @@ class OfflineVaultSyncRepository(
     private val nodeId: String = "mobile-edge-1"
 ) {
     val db: HealthCoreOfflineDatabase = HealthCoreOfflineDatabase(driverFactory.createDriver())
+    val dataSyncManager: DataSyncManager = DataSyncManager(
+        store = SqlDelightFhirSyncStore(db),
+        baseUrl = baseUrl,
+        httpClient = httpClient,
+        nodeId = nodeId
+    )
     private val queries = db.healthCoreOfflineQueries
     private val hlc = MobileHybridLogicalClock(nodeId)
     private val json = Json { ignoreUnknownKeys = true }

@@ -148,7 +148,25 @@ public class PatientAuditAspect {
     @Pointcut("within(com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController) && execution(public * *(..))")
     public void graphqlControllerEndpoints() {}
 
-    @Pointcut("(patientControllerEndpoints() || practitionerControllerEndpoints() || observationControllerEndpoints() || encounterControllerEndpoints() || bundleControllerEndpoints() || cdsHooksControllerEndpoints() || graphqlControllerEndpoints())")
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.FhirBulkDataExportController) && execution(public * *(..))")
+    public void bulkExportControllerEndpoints() {}
+
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.IdentityMatchingController) && execution(public * *(..))")
+    public void identityMatchingControllerEndpoints() {}
+
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.DigitalHealthNextGenController) && execution(public * *(..))")
+    public void digitalHealthNextGenControllerEndpoints() {}
+
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.CertificateController) && execution(public * *(..))")
+    public void certificateControllerEndpoints() {}
+
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.InternationalPatientSummaryController) && execution(public * *(..))")
+    public void internationalPatientSummaryControllerEndpoints() {}
+
+    @Pointcut("within(com.opeshealth.healthcore.quickstart.web.ConsentController) && execution(public * *(..))")
+    public void consentControllerEndpoints() {}
+
+    @Pointcut("(patientControllerEndpoints() || practitionerControllerEndpoints() || observationControllerEndpoints() || encounterControllerEndpoints() || bundleControllerEndpoints() || cdsHooksControllerEndpoints() || graphqlControllerEndpoints() || bulkExportControllerEndpoints() || identityMatchingControllerEndpoints() || digitalHealthNextGenControllerEndpoints() || certificateControllerEndpoints() || internationalPatientSummaryControllerEndpoints() || consentControllerEndpoints())")
     public void auditedFhirControllerEndpoints() {}
 
     @Around("auditedFhirControllerEndpoints()")
@@ -169,6 +187,10 @@ public class PatientAuditAspect {
             case "Observation" -> "/api/v1/observations";
             case "Encounter" -> "/api/v1/encounters";
             case "Bundle" -> "/api/v1/bundles";
+            case "BulkDataExport" -> "/api/v1/fhir/Patient/$export";
+            case "IdentityMatching" -> "/api/v1/fhir/Patient/$match";
+            case "DigitalHealthSuite" -> "/api/v1/fhir/Patient/$summary";
+            case "DigitalHealthCertificate" -> "/api/v1/certificates";
             case "CDSHooks" -> "/api/v1/cds-services";
             case "GraphQL" -> "/graphql";
             default -> "/api/v1/patients";
@@ -319,6 +341,14 @@ public class PatientAuditAspect {
                 || (declaring != null && FhirGraphQlController.class.isAssignableFrom(declaring))) {
             return "GraphQL";
         }
+        if (target instanceof FhirBulkDataExportController
+                || (declaring != null && FhirBulkDataExportController.class.isAssignableFrom(declaring))) {
+            return "BulkDataExport";
+        }
+        if (target instanceof IdentityMatchingController
+                || (declaring != null && IdentityMatchingController.class.isAssignableFrom(declaring))) {
+            return "IdentityMatching";
+        }
         return "Patient";
     }
 
@@ -401,12 +431,25 @@ public class PatientAuditAspect {
             case "Observation" -> "HIPAA_OBSERVATION_";
             case "Encounter" -> "HIPAA_ENCOUNTER_";
             case "Bundle" -> "HIPAA_BUNDLE_";
+            case "BulkDataExport" -> "HIPAA_BULK_EXPORT_";
             case "CDSHooks" -> "HIPAA_CDS_HOOKS_";
             case "GraphQL" -> "HIPAA_GRAPHQL_";
             default -> "HIPAA_PATIENT_";
         };
         if ("GraphQL".equals(resourceType) || "CDSHooks".equals(resourceType)) {
             return prefix + methodName.toUpperCase(java.util.Locale.ROOT);
+        }
+        if ("BulkDataExport".equals(resourceType)) {
+            return switch (methodName) {
+                case "kickOffPatientCohortExport" -> prefix + "PATIENT_COHORT";
+                case "kickOffPractitionerCohortExport" -> prefix + "PRACTITIONER_COHORT";
+                case "createCustomCohortExport" -> prefix + "CUSTOM_COHORT";
+                case "getExportJobStatus" -> prefix + "STATUS";
+                case "downloadExportNdjsonFile" -> prefix + "DOWNLOAD_NDJSON";
+                case "downloadExportAsBundle" -> prefix + "DOWNLOAD_BUNDLE";
+                case "deleteExportJob" -> prefix + "DELETE";
+                default -> prefix + methodName.toUpperCase(java.util.Locale.ROOT);
+            };
         }
         return switch (methodName) {
             case "searchPatients", "searchPractitioners", "searchObservations", "searchEncounters" -> prefix + "SEARCH";
@@ -422,6 +465,13 @@ public class PatientAuditAspect {
     private static String resolveHttpMethodFallback(String resourceType, String methodName) {
         if ("GraphQL".equals(resourceType)) {
             return "POST";
+        }
+        if ("BulkDataExport".equals(resourceType)) {
+            return switch (methodName) {
+                case "createCustomCohortExport" -> "POST";
+                case "deleteExportJob" -> "DELETE";
+                default -> "GET";
+            };
         }
         if ("CDSHooks".equals(resourceType)) {
             return "discoverServices".equals(methodName) ? "GET" : "POST";
@@ -530,6 +580,14 @@ public class PatientAuditAspect {
                 int lastSlash = path.lastIndexOf('/');
                 if (lastSlash >= 0 && lastSlash + 1 < path.length()) {
                     return parseUuidQuietly(path.substring(lastSlash + 1));
+                }
+            }
+            List<String> contentLocations = response.getHeaders().get("Content-Location");
+            if (contentLocations != null && !contentLocations.isEmpty()) {
+                String cl = contentLocations.get(0);
+                int lastSlash = cl.lastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash + 1 < cl.length()) {
+                    return parseUuidQuietly(cl.substring(lastSlash + 1));
                 }
             }
         }

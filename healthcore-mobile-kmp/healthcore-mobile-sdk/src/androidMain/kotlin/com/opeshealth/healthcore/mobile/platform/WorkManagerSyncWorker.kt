@@ -30,10 +30,19 @@ class WorkManagerSyncWorker(
         val http = HttpClient(OkHttp)
         return try {
             val repo = OfflineVaultSyncRepository(PlatformSqlDriverFactory(applicationContext), baseUrl, http)
-            repo.syncWithServer(facilityId, token).fold(
-                onSuccess = { Result.success() },
-                onFailure = { Result.retry() }
+            val fhirSyncResult = repo.dataSyncManager.processBackgroundSync(
+                facilityId = facilityId,
+                bearerToken = token,
+                wallClockMs = System.currentTimeMillis()
             )
+            if (fhirSyncResult.isFailure) {
+                Result.retry()
+            } else {
+                repo.syncWithServer(facilityId, token).fold(
+                    onSuccess = { Result.success() },
+                    onFailure = { Result.retry() }
+                )
+            }
         } finally {
             http.close()
         }

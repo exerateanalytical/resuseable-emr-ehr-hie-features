@@ -103,10 +103,18 @@ import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfigu
 import com.opeshealth.healthcore.quickstart.config.FlywayMultiDbMigrationConfiguration.RdbmsDialect;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlController;
 import com.opeshealth.healthcore.quickstart.graphql.FhirGraphQlExceptionResolver;
+import com.opeshealth.healthcore.quickstart.service.ColdChainMonitoringService;
+import com.opeshealth.healthcore.quickstart.service.ColdChainMonitoringService.ColdChainSensorReading;
+import com.opeshealth.healthcore.quickstart.service.ColdChainMonitoringService.MonitoringStage;
+import com.opeshealth.healthcore.quickstart.service.ColdChainMonitoringService.SupplyThermalProfile;
+import com.opeshealth.healthcore.quickstart.service.FhirBulkDataExportService;
 import com.opeshealth.healthcore.quickstart.web.AuditEventController;
 import com.opeshealth.healthcore.quickstart.web.BundleController;
 import com.opeshealth.healthcore.quickstart.web.CdsHooksV2Controller;
+import com.opeshealth.healthcore.quickstart.web.CodeSystemController;
+import com.opeshealth.healthcore.quickstart.web.ColdChainMonitoringController;
 import com.opeshealth.healthcore.quickstart.web.EncounterController;
+import com.opeshealth.healthcore.quickstart.web.FhirBulkDataExportController;
 import com.opeshealth.healthcore.quickstart.web.HealthCoreApiExceptionAdvice;
 import com.opeshealth.healthcore.quickstart.web.ObservationController;
 import com.opeshealth.healthcore.security.audit.AuditChainHeadEntity;
@@ -2658,7 +2666,10 @@ class HealthCoreDomainSafetyTest {
                 EncounterController.class,
                 BundleController.class,
                 CdsHooksV2Controller.class,
-                AuditEventController.class
+                AuditEventController.class,
+                CodeSystemController.class,
+                ColdChainMonitoringController.class,
+                FhirBulkDataExportController.class
         );
         for (Class<?> controllerClass : fhirControllers) {
             assertTrue(controllerClass.isAnnotationPresent(io.swagger.v3.oas.annotations.tags.Tag.class),
@@ -2967,6 +2978,1310 @@ class HealthCoreDomainSafetyTest {
         String capJson = fhirHieService.buildFhirR4CapabilityStatementJson();
         assertTrue(capJson.contains("\"resourceType\": \"CapabilityStatement\""));
         assertTrue(capJson.contains("\"AuditEvent\""));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void terminologyServiceAndCodeSystemControllerValidateLoincSnomedCtAndIcd10EndToEnd() {
+        Map<String, CodeConceptEntity> store = new LinkedHashMap<>();
+        CodeConceptRepository conceptRepo = (CodeConceptRepository) Proxy.newProxyInstance(
+                CodeConceptRepository.class.getClassLoader(),
+                new Class<?>[]{CodeConceptRepository.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "count" -> (long) store.size();
+                    case "save" -> {
+                        CodeConceptEntity e = (CodeConceptEntity) args[0];
+                        store.put(e.getSystemUri() + "|" + e.getCode().toUpperCase(Locale.ROOT), e);
+                        yield e;
+                    }
+                    case "findBySystemUriAndCode" -> Optional.ofNullable(
+                            store.get(args[0] + "|" + ((String) args[1]).toUpperCase(Locale.ROOT)));
+                    case "findBySystemUriAndDisplayEnContainingIgnoreCase" -> {
+                        String sys = (String) args[0];
+                        String q = ((String) args[1]).toLowerCase(Locale.ROOT);
+                        yield store.values().stream()
+                                .filter(c -> sys.equals(c.getSystemUri())
+                                        && c.getDisplayEn().toLowerCase(Locale.ROOT).contains(q))
+                                .toList();
+                    }
+                    case "findAll" -> List.copyOf(store.values());
+                    default -> null;
+                });
+
+        Set<String> closureEdges = new LinkedHashSet<>();
+        TerminologyService.ConceptClosureRepository closureRepo =
+                (TerminologyService.ConceptClosureRepository) Proxy.newProxyInstance(
+                        TerminologyService.ConceptClosureRepository.class.getClassLoader(),
+                        new Class<?>[]{TerminologyService.ConceptClosureRepository.class},
+                        (proxy, method, args) -> switch (method.getName()) {
+                            case "save" -> {
+                                ConceptClosureEntity e = (ConceptClosureEntity) args[0];
+                                closureEdges.add(e.getSystemUri() + "|" + e.getAncestorCode() + "|" + e.getDescendantCode());
+                                yield e;
+                            }
+                            case "existsBySystemUriAndAncestorCodeAndDescendantCode" ->
+                                    closureEdges.contains(args[0] + "|" + args[1] + "|" + args[2]);
+                            default -> false;
+                        });
+
+        List< com.opeshealth.healthcore.terminology.domain.TerminologyEntities.ConceptMapEntity > conceptMaps = new ArrayList<>();
+        TerminologyService.ConceptMapRepository mapRepo =
+                (TerminologyService.ConceptMapRepository) Proxy.newProxyInstance(
+                        TerminologyService.ConceptMapRepository.class.getClassLoader(),
+                        new Class<?>[]{TerminologyService.ConceptMapRepository.class},
+                        (proxy, method, args) -> switch (method.getName()) {
+                            case "save" -> {
+                                var cm = (com.opeshealth.healthcore.terminology.domain.TerminologyEntities.ConceptMapEntity) args[0];
+                                conceptMaps.add(cm);
+                                yield cm;
+                            }
+                            case "findBySourceSystemAndSourceCode" -> conceptMaps.stream()
+                                    .filter(m -> m.getSourceSystem().equals(args[0]) && m.getSourceCode().equalsIgnoreCase((String) args[1]))
+                                    .toList();
+                            default -> List.of();
+                        });
+
+        TerminologyService.DdiRuleRepository ddiRepo =
+                (TerminologyService.DdiRuleRepository) Proxy.newProxyInstance(
+                        TerminologyService.DdiRuleRepository.class.getClassLoader(),
+                        new Class<?>[]{TerminologyService.DdiRuleRepository.class},
+                        (proxy, method, args) -> List.of());
+
+        TerminologyService terminologyService = new TerminologyService(conceptRepo, closureRepo, mapRepo, ddiRepo);
+        terminologyService.run(null);
+        CodeSystemController controller = new CodeSystemController(terminologyService);
+
+        // 1. LOINC Mod-10 check-digit validation + UCUM unit compatibility
+        assertTrue(TerminologyService.isValidLoincSyntax("8310-5"));
+        assertTrue(TerminologyService.isValidLoincSyntax("8867-4"));
+        assertFalse(TerminologyService.isValidLoincSyntax("8310-9")); // wrong Mod-10 check digit
+
+        var loincOk = terminologyService.validateCode(new TerminologyService.CodeValidationRequest(
+                "LOINC", "8310-5", "Body temperature", "VITALS", "[degF]", true));
+        assertTrue(loincOk.valid());
+        assertEquals("VALID", loincOk.issueCode());
+
+        var loincBadCheckDigit = terminologyService.validateCode("http://loinc.org", "8310-9", "Body temperature");
+        assertFalse(loincBadCheckDigit.valid());
+        assertEquals("INVALID_CODE_SYNTAX", loincBadCheckDigit.issueCode());
+
+        var loincBadUcum = terminologyService.validateCode(new TerminologyService.CodeValidationRequest(
+                "LOINC", "8310-5", "Body temperature", "VITALS", "mm[Hg]", false));
+        assertFalse(loincBadUcum.valid());
+        assertEquals("UCUM_UNIT_INCOMPATIBLE", loincBadUcum.issueCode());
+
+        // 2. SNOMED-CT SCTID syntax & IS-A hierarchy subsumption ($subsumes)
+        assertTrue(TerminologyService.isValidSnomedSyntax("764146007"));
+        assertTrue(TerminologyService.isValidSnomedSyntax("38341003"));
+        assertFalse(TerminologyService.isValidSnomedSyntax("0764146007")); // leading zero forbidden
+        assertFalse(TerminologyService.isValidSnomedSyntax("764146997")); // invalid partition '99'
+
+        var snomedValid = terminologyService.validateCode("SNOMED-CT", "38341003", "Hypertensive disorder, systemic arterial (disorder)");
+        assertTrue(snomedValid.valid());
+        assertEquals(TerminologyService.SNOMED, snomedValid.normalizedSystemUri());
+
+        var subsumesRes = terminologyService.evaluateSubsumption("SNOMED-CT", "764146007", "372687004");
+        assertEquals("subsumes", subsumesRes.outcome());
+        var subsumedByRes = terminologyService.evaluateSubsumption("SNOMED-CT", "372687004", "764146007");
+        assertEquals("subsumed-by", subsumedByRes.outcome());
+
+        // 3. WHO ICD-10 syntax, display mismatch detection & SNOMED -> ICD-10 $translate crosswalk
+        assertTrue(TerminologyService.isValidIcd10Syntax("B50.9"));
+        assertTrue(TerminologyService.isValidIcd10Syntax("I10"));
+        assertFalse(TerminologyService.isValidIcd10Syntax("999.99"));
+
+        var icdStrictDisplayFail = terminologyService.validateCode(new TerminologyService.CodeValidationRequest(
+                "ICD-10", "B50.9", "Wrong Display Label", "INFECTIOUS", null, true));
+        assertFalse(icdStrictDisplayFail.valid());
+        assertEquals("DISPLAY_MISMATCH", icdStrictDisplayFail.issueCode());
+
+        // 4. CodeSystemController REST & HL7 FHIR R4 Parameters operations
+        MockHttpServletResponse httpResp = new MockHttpServletResponse();
+        var listResp = controller.listCodeSystems("application/fhir+json", httpResp);
+        assertEquals(200, listResp.getStatusCode().value());
+        assertEquals("Bundle", listResp.getBody().get("resourceType"));
+
+        var fhirValidateResp = (ResponseEntity<Map<String, Object>>) controller.validateCodeGet(
+                "LOINC", null, "8867-4", "Heart rate", "VITALS", "/min", true, "fhir", "application/fhir+json", httpResp);
+        assertEquals(200, fhirValidateResp.getStatusCode().value());
+        assertEquals("Parameters", fhirValidateResp.getBody().get("resourceType"));
+
+        var batchResp = controller.validateBatch(List.of(
+                new TerminologyService.CodeValidationRequest("LOINC", "8480-6", "Systolic blood pressure"),
+                new TerminologyService.CodeValidationRequest("SNOMED-CT", "44054006", "Diabetes mellitus type 2 (disorder)"),
+                new TerminologyService.CodeValidationRequest("ICD-10", "I10", "Essential (primary) hypertension")
+        ), httpResp);
+        assertTrue(batchResp.getBody().allValid());
+        assertEquals(3, batchResp.getBody().validCount());
+
+        var translateResp = controller.translateConcept("SNOMED-CT", "38341003", httpResp);
+        assertEquals(Boolean.TRUE, translateResp.getBody().get("result"));
+
+        // 5. Concept upsert, deactivation -> INACTIVE_CONCEPT validation block, and UCUM conversion
+        var createdConcept = controller.upsertConcept(new CodeSystemController.ConceptUpsertPayload(
+                "ICD-10", "J45.9", "Asthma, unspecified", "Asthme, sans précision", "RESPIRATORY", null), httpResp);
+        assertEquals(201, createdConcept.getStatusCode().value());
+        assertTrue(terminologyService.validateCode("ICD-10", "J45.9", "Asthma, unspecified").valid());
+
+        controller.deactivateConcept("ICD-10", "J45.9", httpResp);
+        var afterDeactivate = terminologyService.validateCode("ICD-10", "J45.9", null);
+        assertFalse(afterDeactivate.valid());
+        assertEquals("INACTIVE_CONCEPT", afterDeactivate.issueCode());
+
+        var ucumResp = controller.convertUcum(new CodeSystemController.UcumConversionPayload(
+                new BigDecimal("180.182"), "mg/dL", "mmol/L"), httpResp);
+        assertEquals(new BigDecimal("10.00"), ucumResp.getBody().get("convertedValue"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void coldChainMonitoringServiceIntegratesWithObservationSystemAndAlertsOnExcursions() {
+        Map<UUID, ObservationEntity> obsStore = new LinkedHashMap<>();
+        ObservationRepository obsRepo = (ObservationRepository) Proxy.newProxyInstance(
+                ObservationRepository.class.getClassLoader(),
+                new Class<?>[]{ObservationRepository.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "save" -> {
+                        ObservationEntity e = (ObservationEntity) args[0];
+                        obsStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(obsStore.get((UUID) args[0]));
+                    case "findByFacilityIdOrderByEffectiveAtDesc" -> {
+                        UUID fac = (UUID) args[0];
+                        yield obsStore.values().stream()
+                                .filter(o -> Objects.equals(fac, o.getFacilityId()))
+                                .toList();
+                    }
+                    case "findAll" -> List.copyOf(obsStore.values());
+                    case "findByFacilityIdAndIdentifierSystemAndIdentifierValue" -> Optional.empty();
+                    default -> List.of();
+                });
+
+        List<ColdChainTelemetryEntity> telemetryRows = new ArrayList<>();
+        ColdChainRepository coldChainRepo = (ColdChainRepository) Proxy.newProxyInstance(
+                ColdChainRepository.class.getClassLoader(),
+                new Class<?>[]{ColdChainRepository.class},
+                (proxy, method, args) -> {
+                    if ("save".equals(method.getName())) {
+                        ColdChainTelemetryEntity row = (ColdChainTelemetryEntity) args[0];
+                        telemetryRows.add(row);
+                        return row;
+                    }
+                    return List.of();
+                });
+
+        List<TransactionalOutboxEntity> outboxEvents = new ArrayList<>();
+        OutboxRelayService.OutboxRepository outboxRepo = (OutboxRelayService.OutboxRepository) Proxy.newProxyInstance(
+                OutboxRelayService.OutboxRepository.class.getClassLoader(),
+                new Class<?>[]{OutboxRelayService.OutboxRepository.class},
+                (proxy, method, args) -> {
+                    if ("save".equals(method.getName())) {
+                        TransactionalOutboxEntity evt = (TransactionalOutboxEntity) args[0];
+                        outboxEvents.add(evt);
+                        return evt;
+                    }
+                    return List.of();
+                });
+
+        ObservationService observationService = new ObservationService(obsRepo, outboxRepo);
+        ColdChainMonitoringService coldChainService = new ColdChainMonitoringService(
+                observationService, coldChainRepo, outboxRepo);
+        ColdChainMonitoringController controller = new ColdChainMonitoringController(
+                coldChainService, observationService);
+
+        UUID facilityId = UUID.randomUUID();
+        String sensorId = "ILR-FRIDGE-DLA-01";
+
+        // 1. In-range reading (+4.5 Cel): creates FHIR Observation with interpretation 'N' and 0 alerts
+        var normalReceipt = coldChainService.recordSensorTelemetry(new ColdChainSensorReading(
+                facilityId, sensorId, "PENTA-LOT-2026A", "Pentavalent Vaccine",
+                SupplyThermalProfile.WHO_STANDARD_REFRIGERATED_2C_8C,
+                MonitoringStage.FIXED_STORAGE,
+                new BigDecimal("4.50"), "Cel", new BigDecimal("55.0"),
+                20, true, 98, null, "Central EPI Store Douala", Instant.now().minusSeconds(600)));
+
+        assertFalse(normalReceipt.excursionDetected());
+        assertEquals("N", normalReceipt.fhirInterpretationCode());
+        assertEquals("WITHIN_SPEC_RELEASED", normalReceipt.batchDispositionStatus());
+        assertNotNull(observationService.getObservationById(normalReceipt.observationId()));
+
+        // 2. Transport Heat + Shock + Humidity Excursion in Fahrenheit (53.6 degF -> +12.00 Cel)
+        var heatReceipt = coldChainService.recordSensorTelemetry(new ColdChainSensorReading(
+                facilityId, sensorId, "PENTA-LOT-2026A", "Pentavalent Vaccine",
+                SupplyThermalProfile.WHO_STANDARD_REFRIGERATED_2C_8C,
+                MonitoringStage.IN_TRANSIT_TRANSPORT,
+                new BigDecimal("53.6"), "[degF]", new BigDecimal("82.0"),
+                120, true, 85, new BigDecimal("4.20"), "Douala -> Buea Route", Instant.now().minusSeconds(300)));
+
+        assertTrue(heatReceipt.excursionDetected());
+        assertEquals(new BigDecimal("12.00"), heatReceipt.normalizedTempCelsius());
+        assertEquals("H", heatReceipt.fhirInterpretationCode());
+        assertEquals("HOLD_AND_INSPECT_VVM", heatReceipt.batchDispositionStatus());
+        assertEquals(3, heatReceipt.triggeredAlerts().size()); // HEAT_EXCURSION + TRANSPORT_SHOCK_EXCURSION + HUMIDITY_EXCURSION
+
+        // 3. Critical Freeze Excursion (+0.20 Cel <= +0.50 Cel freeze-sensitive threshold) + Power Failure via Controller
+        MockHttpServletResponse httpResp = new MockHttpServletResponse();
+        var freezeResp = (ResponseEntity<Map<String, Object>>) controller.ingestSensorTelemetry(
+                facilityId, "application/json", "json",
+                new ColdChainSensorReading(
+                        facilityId, sensorId, "PENTA-LOT-2026A", "Pentavalent Vaccine",
+                        SupplyThermalProfile.WHO_STANDARD_REFRIGERATED_2C_8C,
+                        MonitoringStage.FIXED_STORAGE,
+                        new BigDecimal("0.20"), "Cel", new BigDecimal("60.0"),
+                        340, false, 12, null, "Central EPI Store Douala", Instant.now()),
+                httpResp);
+
+        assertEquals(201, freezeResp.getStatusCode().value());
+        assertEquals("LL", freezeResp.getBody().get("fhirInterpretationCode"));
+        assertEquals("QUARANTINE_SHAKE_TEST_REQUIRED", freezeResp.getBody().get("batchDispositionStatus"));
+        assertEquals(3, telemetryRows.size());
+        assertTrue(outboxEvents.stream().anyMatch(e -> "ColdChainExcursionAlertEvent".equals(e.getEventType())));
+
+        // 4. Compliance & Mean Kinetic Temperature (MKT) evaluation from persisted FHIR Observations
+        var complianceResp = controller.evaluateCompliance(
+                sensorId, facilityId, facilityId, SupplyThermalProfile.WHO_STANDARD_REFRIGERATED_2C_8C, httpResp);
+        var report = complianceResp.getBody();
+        assertEquals(3, report.totalObservationsAnalyzed());
+        assertEquals(1, report.inRangeObservationCount());
+        assertEquals(1, report.heatExcursionCount());
+        assertEquals(1, report.freezeExcursionCount());
+        assertEquals("QUARANTINE_SHAKE_TEST_REQUIRED", report.overallDisposition());
+        assertTrue(report.meanKineticTemperatureCelsius().compareTo(new BigDecimal("5.00")) > 0);
+
+        // 5. Alert listing and pharmacist acknowledgment
+        var activeAlertsResp = controller.listAlerts(facilityId, facilityId, sensorId, true, httpResp);
+        int activeBeforeAck = (int) activeAlertsResp.getBody().get("total");
+        assertEquals(6, activeBeforeAck);
+
+        UUID firstAlertId = report.activeAlerts().get(0).alertId();
+        var ackResp = controller.acknowledgeAlert(
+                firstAlertId,
+                new ColdChainMonitoringController.AlertAcknowledgePayload(
+                        "pharm.nshome", "Batch quarantined in cold-room bay Q-1; WHO Shake Test scheduled."),
+                httpResp);
+        assertTrue(ackResp.getBody().acknowledged());
+        assertEquals("pharm.nshome", ackResp.getBody().acknowledgedBy());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void fhirBulkDataExportEndpointExportsPractitionerCohortWithAopAuditAndRateLimiting() throws Exception {
+        var patCtx = buildInMemoryPatientTestContext();
+        PatientService patientService = patCtx.patientService();
+        PractitionerService practitionerService = buildInMemoryPractitionerService();
+        EncounterService encounterService = buildInMemoryEncounterService();
+        ObservationService observationService = buildInMemoryObservationService();
+
+        FhirBulkDataExportService bulkExportService = new FhirBulkDataExportService(
+                patientService, practitionerService, encounterService, observationService);
+
+        // Wrap FhirBulkDataExportController with PatientAuditAspect to verify AOP audit interception
+        List<PatientAuditAspect.HipaaPatientAuditRecord> auditTrail = new ArrayList<>();
+        PatientAuditAspect auditAspect = new PatientAuditAspect((ClinicalAuditService) null);
+        auditAspect.registerListener(auditTrail::add);
+
+        AspectJProxyFactory proxyFactory = new AspectJProxyFactory(new FhirBulkDataExportController(bulkExportService));
+        proxyFactory.addAspect(auditAspect);
+        FhirBulkDataExportController controller = proxyFactory.getProxy();
+
+        UUID facilityId = UUID.randomUUID();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("dr.nshome", "N/A",
+                        List.of(new SimpleGrantedAuthority("ROLE_CLINICIAN"), new SimpleGrantedAuthority("PERM_patient:read"))));
+        try {
+            // 1. Seed Attending Practitioner + 2 Patients (only Patient 1 is attributed to Dr. Nshome)
+            PractitionerEntity pract = new PractitionerEntity();
+            pract.setFacilityId(facilityId);
+            pract.setFamilyName("Nshome");
+            pract.setGivenName("Jude");
+            pract.setGender("male");
+            pract.setActive(true);
+            PractitionerEntity savedPract = practitionerService.createPractitioner(pract);
+
+            Patient pat1 = patientService.createFromFhirJson(facilityId, """
+                    {"resourceType":"Patient","active":true,"name":[{"family":"Ekambi","given":["Marie"]}],"gender":"female","birthDate":"1988-04-12"}
+                    """);
+            UUID pat1Id = UUID.fromString(pat1.getIdElement().getIdPart());
+
+            Patient pat2 = patientService.createFromFhirJson(facilityId, """
+                    {"resourceType":"Patient","active":true,"name":[{"family":"Unattributed","given":["Paul"]}],"gender":"male","birthDate":"1975-09-20"}
+                    """);
+            UUID pat2Id = UUID.fromString(pat2.getIdElement().getIdPart());
+            assertNotEquals(pat1Id, pat2Id);
+
+            EncounterEntity enc1 = new EncounterEntity();
+            enc1.setFacilityId(facilityId);
+            enc1.setPatientId(pat1Id);
+            enc1.setPractitionerId(savedPract.getId());
+            enc1.setEncounterType("AMB");
+            enc1.setStatus("FINISHED");
+            enc1.setChiefComplaint("Malaria follow-up");
+            EncounterEntity savedEnc1 = encounterService.createEncounter(enc1);
+
+            ObservationEntity obs1 = new ObservationEntity();
+            obs1.setFacilityId(facilityId);
+            obs1.setStatus("final");
+            obs1.setCodeSystem("http://loinc.org");
+            obs1.setCode("8310-5");
+            obs1.setCodeDisplay("Body temperature");
+            obs1.setSubjectReference("Patient/" + pat1Id);
+            obs1.setPatientId(pat1Id);
+            obs1.setEncounterReference("Encounter/" + savedEnc1.getId());
+            obs1.setEncounterId(savedEnc1.getId());
+            obs1.setPerformerReference("Practitioner/" + savedPract.getId());
+            obs1.setPractitionerId(savedPract.getId());
+            obs1.setValueType("Quantity");
+            obs1.setValueQuantity(new BigDecimal("37.4"));
+            obs1.setValueUnit("Cel");
+            observationService.createObservation(obs1);
+
+            // 2. Kick off Practitioner Cohort Bulk Data Export (HTTP 202 Accepted + Content-Location header)
+            MockHttpServletResponse httpResp = new MockHttpServletResponse();
+            ResponseEntity<Map<String, Object>> kickOffResp = controller.kickOffPractitionerCohortExport(
+                    savedPract.getId(),
+                    "Patient,Encounter,Observation,Practitioner",
+                    null,
+                    "application/fhir+ndjson",
+                    null,
+                    false,
+                    facilityId,
+                    facilityId,
+                    "respond-async",
+                    httpResp
+            );
+            assertEquals(202, kickOffResp.getStatusCode().value());
+            assertNotNull(kickOffResp.getHeaders().getFirst("Content-Location"));
+            assertEquals(1, kickOffResp.getBody().get("cohortPatientCount"));
+            assertEquals(4, kickOffResp.getBody().get("totalExportedResources"));
+            UUID jobId = UUID.fromString(kickOffResp.getBody().get("jobId").toString());
+
+            // 3. Poll export job status & download NDJSON files + FHIR collection Bundle
+            ResponseEntity<Map<String, Object>> statusResp = controller.getExportJobStatus(jobId, httpResp);
+            assertEquals(200, statusResp.getStatusCode().value());
+            List<?> outputFiles = (List<?>) statusResp.getBody().get("output");
+            assertEquals(4, outputFiles.size());
+
+            ResponseEntity<String> patientNdjsonResp = controller.downloadExportNdjsonFile(jobId, "Patient.ndjson", httpResp);
+            assertEquals(200, patientNdjsonResp.getStatusCode().value());
+            assertTrue(patientNdjsonResp.getBody().contains("\"family\":\"Ekambi\""));
+            assertFalse(patientNdjsonResp.getBody().contains("Unattributed"));
+
+            ResponseEntity<String> bundleResp = controller.downloadExportAsBundle(jobId, httpResp);
+            assertEquals(200, bundleResp.getStatusCode().value());
+            assertTrue(bundleResp.getBody().contains("\"type\": \"collection\""));
+
+            // 4. Delete export job (HTTP 202 Accepted) and confirm 404 thereafter
+            ResponseEntity<Map<String, Object>> deleteResp = controller.deleteExportJob(jobId);
+            assertEquals(202, deleteResp.getStatusCode().value());
+            assertThrows(NoSuchElementException.class, () -> controller.getExportJobStatus(jobId, httpResp));
+
+            // 5. Verify PatientAuditAspect captured all Bulk Data Export actions with actor & jobId
+            assertTrue(auditTrail.stream().anyMatch(r ->
+                    "BulkDataExport".equals(r.resourceType())
+                            && "HIPAA_BULK_EXPORT_PRACTITIONER_COHORT".equals(r.action())
+                            && "dr.nshome".equals(r.userId())
+                            && "SUCCESS".equals(r.outcome())));
+            assertTrue(auditTrail.stream().anyMatch(r ->
+                    "BulkDataExport".equals(r.resourceType())
+                            && "HIPAA_BULK_EXPORT_DOWNLOAD_NDJSON".equals(r.action())
+                            && jobId.toString().equals(r.resourceId())));
+            assertTrue(auditTrail.stream().anyMatch(r ->
+                    "BulkDataExport".equals(r.resourceType())
+                            && "HIPAA_BULK_EXPORT_DELETE".equals(r.action())));
+
+            // 6. Verify Bucket4j FhirApiRateLimitFilter throttles /$export under the BUNDLE rate-limit tier
+            FhirApiRateLimitFilter bulkRateFilter = new FhirApiRateLimitFilter(
+                    new RateLimitPolicy(true, 100L, 1L, 50L, Duration.ofMinutes(1), 100L));
+            MockHttpServletRequest exportReq1 = new MockHttpServletRequest(
+                    "GET", "/api/v1/fhir/Practitioner/" + savedPract.getId() + "/$export");
+            MockHttpServletResponse exportResp1 = new MockHttpServletResponse();
+            bulkRateFilter.doFilter(exportReq1, exportResp1, new MockFilterChain());
+            assertEquals(200, exportResp1.getStatus());
+            assertEquals("1", exportResp1.getHeader("X-RateLimit-Limit"));
+
+            MockHttpServletRequest exportReq2 = new MockHttpServletRequest(
+                    "GET", "/api/v1/fhir/Practitioner/" + savedPract.getId() + "/$export");
+            MockHttpServletResponse exportResp2 = new MockHttpServletResponse();
+            bulkRateFilter.doFilter(exportReq2, exportResp2, new MockFilterChain());
+            assertEquals(429, exportResp2.getStatus());
+            assertTrue(exportResp2.getContentAsString().contains("RATE_LIMIT_EXCEEDED"));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void identityMatchingServiceProbabilisticDuplicateDetectionAndManualResolutionWorkEndToEnd() {
+        Map<UUID, PatientAggregateEntity> patStore = new LinkedHashMap<>();
+        PatientRepository patRepo = (PatientRepository) Proxy.newProxyInstance(
+                PatientRepository.class.getClassLoader(),
+                new Class<?>[]{PatientRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        PatientAggregateEntity e = (PatientAggregateEntity) a[0];
+                        patStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(patStore.get((UUID) a[0]));
+                    case "findByFacilityIdAndMrn" -> patStore.values().stream()
+                            .filter(e -> Objects.equals(e.getFacilityId(), a[0]) && Objects.equals(e.getMrn(), a[1]))
+                            .findFirst();
+                    case "findByFacilityIdAndActiveTrueOrderByUpdatedAtDesc" -> patStore.values().stream()
+                            .filter(e -> Objects.equals(e.getFacilityId(), a[0]) && e.isActive())
+                            .toList();
+                    default -> new ArrayList<>(patStore.values());
+                });
+
+        PatientService patientService = new PatientService(patRepo);
+        com.opeshealth.healthcore.quickstart.service.IdentityMatchingService matchingService =
+                new com.opeshealth.healthcore.quickstart.service.IdentityMatchingService(patientService);
+        com.opeshealth.healthcore.quickstart.web.IdentityMatchingController controller =
+                new com.opeshealth.healthcore.quickstart.web.IdentityMatchingController(matchingService, patientService);
+
+        UUID facilityId = UUID.randomUUID();
+
+        // 1. Seed three patients: two near-duplicate records for the same patient ("Nshome Jude" vs "Nshomé Jud")
+        //    and one distinct patient ("Mbarga Clarisse")
+        Patient p1 = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-DUP-101"}],
+                  "name": [{"family": "Nshome", "given": ["Jude", "Emmanuel"]}],
+                  "gender": "male",
+                  "birthDate": "1988-04-11",
+                  "telecom": [
+                    {"system": "phone", "value": "+237 677-11-22-33"},
+                    {"system": "email", "value": "jude.nshome@opeshealthsystems.com"}
+                  ]
+                }
+                """);
+        UUID p1Id = UUID.fromString(p1.getIdElement().getIdPart());
+
+        Patient p2 = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-DUP-102"}],
+                  "name": [{"family": "Nshomé", "given": ["Jud", "E"]}],
+                  "gender": "male",
+                  "birthDate": "1988-04-11",
+                  "telecom": [
+                    {"system": "phone", "value": "677112233"},
+                    {"system": "email", "value": "jude.nshome@opeshealthsystems.com"}
+                  ]
+                }
+                """);
+        UUID p2Id = UUID.fromString(p2.getIdElement().getIdPart());
+
+        Patient p3 = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-DIST-201"}],
+                  "name": [{"family": "Mbarga", "given": ["Clarisse"]}],
+                  "gender": "female",
+                  "birthDate": "1995-09-23",
+                  "telecom": [{"system": "phone", "value": "+237699887766"}]
+                }
+                """);
+        UUID p3Id = UUID.fromString(p3.getIdElement().getIdPart());
+
+        // 2. Verify Jaro-Winkler and Damerau-Levenshtein string similarity & pairwise score
+        assertTrue(com.opeshealth.healthcore.quickstart.service.IdentityMatchingService
+                .jaroWinklerSimilarity("Nshome", "Nshomé") >= 0.99);
+        assertTrue(com.opeshealth.healthcore.quickstart.service.IdentityMatchingService
+                .damerauLevenshteinSimilarity("Nshome", "Nshoeme") > 0.80);
+
+        var pairwise = controller.compareTwoPatients(p1Id, p2Id).getBody();
+        assertNotNull(pairwise);
+        assertTrue(pairwise.compositeProbability() >= 0.85);
+        assertFalse(pairwise.fieldBreakdown().isEmpty());
+
+        var distinctPairwise = controller.compareTwoPatients(p1Id, p3Id).getBody();
+        assertNotNull(distinctPairwise);
+        assertTrue(distinctPairwise.compositeProbability() < 0.35);
+
+        // 3. Execute HL7 FHIR R4 POST /api/v1/fhir/Patient/$match operation
+        MockHttpServletRequest matchReq = new MockHttpServletRequest("POST", "/api/v1/fhir/Patient/$match");
+        ResponseEntity<String> fhirMatchBundleResp = controller.fhirPatientMatchOperation(
+                facilityId,
+                false,
+                10,
+                true,
+                """
+                {
+                  "resourceType": "Parameters",
+                  "parameter": [
+                    {
+                      "name": "resource",
+                      "resource": {
+                        "resourceType": "Patient",
+                        "name": [{"family": "Nshome", "given": ["Jude"]}],
+                        "gender": "male",
+                        "birthDate": "1988-04-11",
+                        "telecom": [{"system": "phone", "value": "677112233"}]
+                      }
+                    },
+                    {"name": "count", "valueInteger": 5}
+                  ]
+                }
+                """,
+                matchReq
+        );
+        assertEquals(200, fhirMatchBundleResp.getStatusCode().value());
+        String matchBundleJson = Objects.requireNonNull(fhirMatchBundleResp.getBody());
+        assertTrue(matchBundleJson.contains("\"type\": \"searchset\""));
+        assertTrue(matchBundleJson.contains("http://hl7.org/fhir/StructureDefinition/match-grade"));
+
+        // 4. Scan the FHIR database for duplicate patient records and verify p1 <-> p2 is flagged for manual resolution
+        ResponseEntity<com.opeshealth.healthcore.quickstart.service.IdentityMatchingService.DuplicateDatabaseScanSummary> scanResp =
+                controller.scanDatabaseForDuplicates(facilityId, facilityId, true, 0.65, matchReq);
+        assertEquals(200, scanResp.getStatusCode().value());
+        var scanSummary = Objects.requireNonNull(scanResp.getBody());
+        assertEquals(3, scanSummary.totalActivePatientsScanned());
+        assertEquals(1, scanSummary.flaggedPairs().size());
+
+        var flaggedPair = scanSummary.flaggedPairs().get(0);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.IdentityMatchingService.DuplicateFlagStatus.PENDING_MANUAL_RESOLUTION,
+                flaggedPair.status());
+        assertTrue(flaggedPair.compositeProbability() >= 0.85);
+
+        // 5. Resolve the flagged duplicate manually via CONFIRM_DUPLICATE_AND_MERGE (surviving = p1Id, retired = p2Id)
+        var resolveMergeReq = new com.opeshealth.healthcore.quickstart.service.IdentityMatchingService.ManualResolutionRequest(
+                com.opeshealth.healthcore.quickstart.service.IdentityMatchingService.ManualResolutionAction.CONFIRM_DUPLICATE_AND_MERGE,
+                p1Id,
+                "steward.douala@opeshealthsystems.com",
+                "Verified identical national ID and subscriber phone number; merged MRN-DUP-102 into MRN-DUP-101"
+        );
+        var resolvedFlag = controller.resolveDuplicateFlag(flaggedPair.flagId(), resolveMergeReq, matchReq).getBody();
+        assertNotNull(resolvedFlag);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.IdentityMatchingService.DuplicateFlagStatus.RESOLVED_MERGED,
+                resolvedFlag.status());
+        assertEquals(p1Id, resolvedFlag.survivingPatientId());
+        assertEquals(p2Id, resolvedFlag.retiredDuplicatePatientId());
+        assertFalse(patientService.getPatientById(p2Id).isActive());
+    }
+
+    @Test
+    void nextGenDigitalHealthTenCapabilitiesSuiteWorksEndToEnd() {
+        Map<UUID, PatientAggregateEntity> patStore = new LinkedHashMap<>();
+        PatientRepository patRepo = (PatientRepository) Proxy.newProxyInstance(
+                PatientRepository.class.getClassLoader(),
+                new Class<?>[]{PatientRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        PatientAggregateEntity e = (PatientAggregateEntity) a[0];
+                        patStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(patStore.get((UUID) a[0]));
+                    case "findByFacilityIdAndMrn" -> patStore.values().stream()
+                            .filter(e -> Objects.equals(e.getFacilityId(), a[0]) && Objects.equals(e.getMrn(), a[1]))
+                            .findFirst();
+                    default -> new ArrayList<>(patStore.values());
+                });
+
+        Map<UUID, ObservationEntity> obsStore = new LinkedHashMap<>();
+        ObservationRepository obsRepo = (ObservationRepository) Proxy.newProxyInstance(
+                ObservationRepository.class.getClassLoader(),
+                new Class<?>[]{ObservationRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        ObservationEntity e = (ObservationEntity) a[0];
+                        obsStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(obsStore.get((UUID) a[0]));
+                    default -> new ArrayList<>(obsStore.values());
+                });
+
+        PatientService patientService = new PatientService(patRepo);
+        ObservationService observationService = new ObservationService(obsRepo);
+
+        var subscriptionService = new com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService();
+        var consentService = new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService(null, subscriptionService);
+        var pgxService = new com.opeshealth.healthcore.quickstart.service.PharmacogenomicsCdsService();
+        var rpmService = new com.opeshealth.healthcore.quickstart.service.RemotePatientMonitoringService(observationService, subscriptionService, null);
+        var bcmaService = new com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService(pgxService, subscriptionService, null);
+        var amsService = new com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService(subscriptionService, null);
+        var ipsService = new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService(
+                patientService, observationService, consentService, pgxService);
+        var priorAuthService = new com.opeshealth.healthcore.quickstart.service.PriorAuthAndEligibilityService();
+        var promService = new com.opeshealth.healthcore.quickstart.service.PromQuestionnaireEngineService(observationService, subscriptionService, null);
+        var sdohService = new com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService();
+
+        var controller = new com.opeshealth.healthcore.quickstart.web.DigitalHealthNextGenController(
+                consentService, pgxService, rpmService, subscriptionService,
+                bcmaService, amsService, ipsService, priorAuthService, promService, sdohService
+        );
+
+        UUID facilityId = UUID.randomUUID();
+        Patient createdPatient = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-NEXTGEN-001"}],
+                  "name": [{"family": "Tchoumi", "given": ["Aurelie"]}],
+                  "gender": "female",
+                  "birthDate": "1991-07-14",
+                  "telecom": [{"system": "phone", "value": "+237677554433"}]
+                }
+                """);
+        UUID patientId = UUID.fromString(createdPatient.getIdElement().getIdPart());
+
+        // Capability 4: Register R5-Backport Topic Subscriptions
+        assertEquals(6, controller.listSubscriptionTopics().getBody().size());
+        controller.createSubscription(new com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.SubscriptionRegistrationRequest(
+                facilityId,
+                com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.TOPIC_CRITICAL_OBSERVATION_ALERT,
+                com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.ChannelType.REST_HOOK,
+                "https://icu.opeshealthsystems.com/webhooks/rrt",
+                "secret-icu-2026",
+                "application/fhir+json",
+                Map.of(),
+                "ICU-Rapid-Response-Hook"
+        ));
+        controller.createSubscription(new com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.SubscriptionRegistrationRequest(
+                facilityId,
+                com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.TOPIC_BREAK_THE_GLASS_INVOKED,
+                com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.ChannelType.REST_HOOK,
+                "https://compliance.opeshealthsystems.com/webhooks/btg",
+                "secret-btg-2026",
+                "application/fhir+json",
+                Map.of(),
+                "Privacy-Compliance-Officer-Hook"
+        ));
+
+        // Capability 1: FHIR Consent, DS4P Segmentation & Break-the-Glass emergency override
+        controller.registerConsentDirective(new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConsentDirectiveRequest(
+                facilityId,
+                patientId,
+                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConsentProvisionType.DENY,
+                Set.of(com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV,
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.PSY),
+                Set.of(),
+                Set.of("TREAT"),
+                null,
+                null,
+                null
+        ));
+        var btgSession = controller.invokeBreakTheGlass(new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.BreakTheGlassRequest(
+                facilityId,
+                patientId,
+                "dr.emergency.douala",
+                "ROLE_PHYSICIAN",
+                "Unconscious emergency trauma arrival requiring immediate antiretroviral interaction check",
+                Set.of(com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV),
+                60
+        )).getBody();
+        assertNotNull(btgSession);
+        assertTrue(btgSession.emergencyToken().startsWith("BTG-"));
+
+        // Capability 2: Pharmacogenomics (PGx) CPIC Level A
+        controller.registerPatientGenotype(new com.opeshealth.healthcore.quickstart.service.PharmacogenomicsCdsService.PgxAlleleRegistrationRequest(
+                facilityId, patientId, "CYP2C19", "*2/*2", null, "LAB-PGX-01"
+        ));
+        var pgxAlert = controller.evaluatePgxOrder(new com.opeshealth.healthcore.quickstart.service.PharmacogenomicsCdsService.PgxPrescriptionCheckRequest(
+                facilityId, patientId, "Clopidogrel", "B01AC04", "75 mg"
+        )).getBody();
+        assertNotNull(pgxAlert);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.PharmacogenomicsCdsService.PgxAlertSeverity.CONTRAINDICATED_CRITICAL,
+                pgxAlert.severity());
+        assertTrue(pgxAlert.blockAdministrationWithoutOverride());
+
+        // Capability 3: Remote Patient Monitoring (RPM) & NEWS2 / MEWS / qSOFA
+        var wearable = controller.registerWearableDevice(
+                new com.opeshealth.healthcore.quickstart.service.RemotePatientMonitoringService.WearableDeviceRegistrationRequest(
+                        facilityId, patientId, "SN-OPES-PATCH-900", "SMART_PATCH", "Opes BioTelemetry", false
+                )).getBody();
+        assertNotNull(wearable);
+        var ews = controller.ingestRpmTelemetry(
+                new com.opeshealth.healthcore.quickstart.service.RemotePatientMonitoringService.RpmVitalTelemetryPacket(
+                        facilityId, patientId, null, wearable.deviceId(),
+                        26, 89, true, false, 86, 54, 134,
+                        com.opeshealth.healthcore.quickstart.service.RemotePatientMonitoringService.ConsciousnessAcvpu.CONFUSION,
+                        39.2
+                )).getBody();
+        assertNotNull(ews);
+        assertTrue(ews.news2TotalScore() >= 14);
+        assertEquals(3, ews.qsofaTotalScore());
+        assertTrue(ews.rapidResponseTeamTriggered());
+
+        // Capability 5: Closed-Loop BCMA 5-Rights & High-Alert LASA Dual-Nurse Verification
+        var insulinOrder = controller.scheduleEmarOrder(
+                new com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService.EmarScheduledOrderRequest(
+                        facilityId, patientId, "WB-PAT-001", "Insulin Regular IV", "A10AB01",
+                        "00300028123456", 10.0, "units", "IV", Instant.now(), 60, true, "dr.nshome"
+                )).getBody();
+        assertNotNull(insulinOrder);
+        assertTrue(insulinOrder.highAlertLasaMedication());
+
+        var blockedBcma = controller.verifyAndAdministerMedication(
+                new com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService.BedsideBarcodeScanRequest(
+                        insulinOrder.orderId(), patientId, "WB-PAT-001", "00300028123456",
+                        10.0, "units", "IV", "NURSE-BADGE-01", null, Instant.now(), false, null
+                )).getBody();
+        assertNotNull(blockedBcma);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService.BcmaVerificationOutcome.BLOCKED_HIGH_ALERT_MISSING_DUAL_NURSE,
+                blockedBcma.outcome());
+
+        var verifiedBcma = controller.verifyAndAdministerMedication(
+                new com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService.BedsideBarcodeScanRequest(
+                        insulinOrder.orderId(), patientId, "WB-PAT-001", "00300028123456",
+                        10.0, "units", "IV", "NURSE-BADGE-01", "NURSE-BADGE-02", Instant.now(), false, "Dual nurse verified"
+                )).getBody();
+        assertNotNull(verifiedBcma);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.BcmaMedicationSafetyService.BcmaVerificationOutcome.VERIFIED_ADMINISTERED,
+                verifiedBcma.outcome());
+
+        // Capability 6: Antimicrobial Stewardship (WHO AWaRe & Cumulative Antibiogram)
+        var blockedReserve = controller.evaluateAntibioticOrder(
+                new com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService.AntibioticStewardshipOrderRequest(
+                        facilityId, patientId, "Colistin", "Gram-negative sepsis", 7, true, null, "dr.nshome"
+                )).getBody();
+        assertNotNull(blockedReserve);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService.WhoAwareCategory.RESERVE,
+                blockedReserve.awareCategory());
+        assertFalse(blockedReserve.approvedForDispensing());
+
+        var mrsaIsolate = controller.recordIsolateSusceptibility(
+                new com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService.MicrobiologyIsolateRequest(
+                        facilityId, patientId, "Blood", "Staphylococcus aureus", "3092008",
+                        "Oxacillin", 8.0,
+                        com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService.SusceptibilityInterpretation.R,
+                        true
+                )).getBody();
+        assertNotNull(mrsaIsolate);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.AntimicrobialStewardshipService.MdroClassification.MRSA,
+                mrsaIsolate.mdroClassification());
+        assertEquals(1, controller.generateCumulativeAntibiogram(facilityId).getBody().totalIsolatesAnalyzed());
+
+        // Capability 7: International Patient Summary (Patient/{id}/$summary) with DS4P & JWS RS256/EdDSA verification
+        controller.seedPatientIpsData(new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService.IpsSeedClinicalSummaryRequest(
+                patientId,
+                List.of(
+                        new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService.IpsClinicalProblemItem(
+                                "38341003", "Essential hypertension", "active", null),
+                        new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService.IpsClinicalProblemItem(
+                                "86406008", "Human immunodeficiency virus infection", "active",
+                                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV)
+                ),
+                List.of("Penicillin G — Anaphylaxis"),
+                List.of("Amlodipine 5 mg daily"),
+                List.of("Yellow Fever Vaccine")
+        ));
+
+        var redactedIps = controller.generatePatientIpsSummary(patientId, "dr.routine", null, null, "RS256").getBody();
+        assertNotNull(redactedIps);
+        assertEquals(1, redactedIps.redactedSensitiveEntryCount());
+        assertFalse(redactedIps.fhirIpsDocumentBundleJson().contains("86406008"));
+
+        var unlockedIps = controller.generatePatientIpsSummary(
+                patientId, "dr.emergency.douala", btgSession.emergencyToken(), null, "EdDSA").getBody();
+        assertNotNull(unlockedIps);
+        assertTrue(unlockedIps.ds4pBreakTheGlassApplied());
+        assertEquals(0, unlockedIps.redactedSensitiveEntryCount());
+        assertTrue(unlockedIps.fhirIpsDocumentBundleJson().contains("86406008"));
+
+        var verifyResult = controller.verifySignedIpsBundle(
+                new com.opeshealth.healthcore.quickstart.web.DigitalHealthNextGenController.IpsJwsVerificationRequest(
+                        unlockedIps.jwsCompactSignature())).getBody();
+        assertNotNull(verifyResult);
+        assertTrue(verifyResult.signatureValid());
+        assertEquals("EdDSA", verifyResult.signingAlgorithm());
+
+        // Capability 8: Electronic Prior Authorization (Da Vinci PAS) & Coverage Eligibility
+        var eligibility = controller.verifyCoverageEligibility(
+                new com.opeshealth.healthcore.quickstart.service.PriorAuthAndEligibilityService.EligibilityCheckRequest(
+                        facilityId, patientId, "MRI", new BigDecimal("185000.00")
+                )).getBody();
+        assertNotNull(eligibility);
+        assertTrue(eligibility.benefitCovered());
+        assertTrue(eligibility.priorAuthorizationRequired());
+
+        var priorAuth = controller.submitPriorAuthorization(
+                new com.opeshealth.healthcore.quickstart.service.PriorAuthAndEligibilityService.PriorAuthSubmissionRequest(
+                        facilityId, patientId, "CPT-70553", "Brain MRI with and without contrast",
+                        "G43.909", "Refractory neurological deficit after 6 weeks of conservative therapy",
+                        true, new BigDecimal("185000.00"), "dr.nshome"
+                )).getBody();
+        assertNotNull(priorAuth);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.PriorAuthAndEligibilityService.PriorAuthDecision.APPROVED,
+                priorAuth.decision());
+
+        // Capability 9: PROMs (PHQ-9 with Item 9 suicide risk alert)
+        var phq9Result = controller.submitPromQuestionnaire(
+                new com.opeshealth.healthcore.quickstart.service.PromQuestionnaireEngineService.PromSubmissionRequest(
+                        facilityId, patientId, null,
+                        com.opeshealth.healthcore.quickstart.service.PromQuestionnaireEngineService.PromInstrumentCode.PHQ_9,
+                        Map.of("q1", 3, "q2", 3, "q3", 2, "q4", 2, "q5", 2, "q6", 2, "q7", 2, "q8", 1, "q9", 2)
+                )).getBody();
+        assertNotNull(phq9Result);
+        assertEquals(19, phq9Result.normalizedScore());
+        assertTrue(phq9Result.suicideOrSelfHarmRiskFlagged());
+        assertNotNull(phq9Result.derivedObservationId());
+
+        // Capability 10: SDoH Gravity Project Screening & Closed-Loop CHW Referral
+        var sdohEval = controller.evaluateSdohScreening(
+                new com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.SdohScreeningRequest(
+                        facilityId, patientId,
+                        com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.SdohDomain.FOOD_INSECURITY,
+                        com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.SdohRiskLevel.HIGH_URGENT_RISK,
+                        "Household ran out of food twice this month",
+                        "Douala Nutrition Collective",
+                        "CHW-BONABERI-07",
+                        true
+                )).getBody();
+        assertNotNull(sdohEval);
+        assertEquals("Z59.41", sdohEval.generatedIcd10ZCode());
+        assertNotNull(sdohEval.closedLoopReferralId());
+
+        var closedReferral = controller.updateSdohReferralStatus(
+                sdohEval.closedLoopReferralId(),
+                new com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.ReferralStatusUpdateRequest(
+                        com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.ReferralLoopStatus.FULFILLED_CLOSED,
+                        "CHW-BONABERI-07",
+                        "Delivered 30-day household nutrition parcel and enrolled in maternal food voucher program"
+                )).getBody();
+        assertNotNull(closedReferral);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.SdohGravityReferralService.ReferralLoopStatus.FULFILLED_CLOSED,
+                closedReferral.status());
+        assertNotNull(closedReferral.closedAt());
+
+        // Confirm FHIR R5-Backport Subscription notifications were delivered with HMAC-SHA256 signatures
+        var deliveredNotifications = controller.listSubscriptionDeliveries(null, patientId).getBody();
+        assertNotNull(deliveredNotifications);
+        assertTrue(deliveredNotifications.size() >= 2);
+        assertTrue(deliveredNotifications.get(0).hmacSha256Signature().startsWith("sha256="));
+    }
+
+    @Test
+    void digitalHealthCertificateServiceAndControllerJwsQrVerificationWorksEndToEnd() {
+        Map<UUID, PatientAggregateEntity> patStore = new LinkedHashMap<>();
+        PatientRepository patRepo = (PatientRepository) Proxy.newProxyInstance(
+                PatientRepository.class.getClassLoader(),
+                new Class<?>[]{PatientRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        PatientAggregateEntity e = (PatientAggregateEntity) a[0];
+                        patStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(patStore.get((UUID) a[0]));
+                    case "findByFacilityIdAndMrn" -> patStore.values().stream()
+                            .filter(e -> Objects.equals(e.getFacilityId(), a[0]) && Objects.equals(e.getMrn(), a[1]))
+                            .findFirst();
+                    default -> new ArrayList<>(patStore.values());
+                });
+
+        PatientService patientService = new PatientService(patRepo);
+        var certService = new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService(patientService);
+        var controller = new com.opeshealth.healthcore.quickstart.web.CertificateController(certService);
+
+        UUID facilityId = UUID.randomUUID();
+        Patient createdPatient = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-CERT-777"}],
+                  "name": [{"family": "Ngassa", "given": ["Samuel"]}],
+                  "gender": "male",
+                  "birthDate": "1986-11-03",
+                  "telecom": [{"system": "phone", "value": "+237699001122"}]
+                }
+                """);
+        UUID patientId = UUID.fromString(createdPatient.getIdElement().getIdPart());
+
+        // 1. Issue Ed25519 (EdDSA) JWS-signed Yellow Fever WHO ICVP Certificate with DEFLATE compression
+        var ed25519Cert = controller.issueCertificate(
+                facilityId,
+                new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateIssuanceRequest(
+                        facilityId,
+                        patientId,
+                        com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateType.IMMUNIZATION_ICVP,
+                        "Ed25519",
+                        "http://hl7.org/fhir/sid/cvx",
+                        "037",
+                        "Yellow Fever Vaccine (Stamaril)",
+                        "LOT-YF-2026-DLA",
+                        1,
+                        "Douala International Vaccination Center",
+                        "CM",
+                        3650,
+                        true
+                )
+        ).getBody();
+        assertNotNull(ed25519Cert);
+        assertEquals("EdDSA", ed25519Cert.jwsAlgHeader());
+        assertTrue(ed25519Cert.uvciIdentifier().startsWith("URN:UVCI:01:CM:OPES-"));
+        assertTrue(ed25519Cert.qrCode().smartHealthCardNumericUri().startsWith("shc:/"));
+        assertTrue(ed25519Cert.qrCode().qrCodeSvg().contains("<svg"));
+        assertTrue(ed25519Cert.qrCode().qrCodePngBase64DataUri().startsWith("data:image/png;base64,"));
+
+        // 2. Issue RS256 JWS-signed Diagnostic Test Clearance Certificate
+        var rs256Cert = controller.issueCertificate(
+                facilityId,
+                new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateIssuanceRequest(
+                        facilityId,
+                        patientId,
+                        com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateType.DIAGNOSTIC_TEST_RESULT,
+                        "RS256",
+                        "http://loinc.org",
+                        "94500-6",
+                        "Respiratory virus RT-PCR Negative",
+                        "BATCH-PCR-88",
+                        null,
+                        "Opes Reference Diagnostics Lab",
+                        "CM",
+                        14,
+                        false
+                )
+        ).getBody();
+        assertNotNull(rs256Cert);
+        assertEquals("RS256", rs256Cert.jwsAlgHeader());
+
+        // 3. Verify mobile QR scan using SMART Health Card numeric URI (shc:/...) for Ed25519 certificate
+        var verifyEd25519Qr = controller.verifyCertificate(
+                new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateVerificationRequest(
+                        ed25519Cert.qrCode().smartHealthCardNumericUri()
+                )
+        ).getBody();
+        assertNotNull(verifyEd25519Qr);
+        assertTrue(verifyEd25519Qr.valid());
+        assertTrue(verifyEd25519Qr.cryptographicSignatureVerified());
+        assertEquals("ED25519", verifyEd25519Qr.signingAlgorithm());
+
+        // 4. Verify RS256 JWS compact token directly
+        var verifyRs256 = controller.verifyCertificate(
+                new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateVerificationRequest(
+                        rs256Cert.jwsCompactToken()
+                )
+        ).getBody();
+        assertNotNull(verifyRs256);
+        assertTrue(verifyRs256.valid());
+        assertEquals("RS256", verifyRs256.signingAlgorithm());
+
+        // 5. Verify SVG & PNG QR code download endpoints and public JWKS endpoint
+        ResponseEntity<String> svgResp = controller.getCertificateQrSvg(ed25519Cert.certificateId());
+        assertEquals(200, svgResp.getStatusCode().value());
+        assertTrue(Objects.requireNonNull(svgResp.getBody()).contains("<svg"));
+
+        ResponseEntity<byte[]> pngResp = controller.getCertificateQrPng(ed25519Cert.certificateId());
+        assertEquals(200, pngResp.getStatusCode().value());
+        assertTrue(Objects.requireNonNull(pngResp.getBody()).length > 100);
+
+        Map<String, Object> jwks = controller.getPublicJwks().getBody();
+        assertNotNull(jwks);
+        assertEquals(2, ((List<?>) jwks.get("keys")).size());
+
+        // 6. Revoke the RS256 certificate and confirm subsequent mobile verification rejects it as REVOKED
+        controller.revokeCertificate(
+                rs256Cert.certificateId(),
+                "Replaced by updated laboratory test",
+                null
+        );
+        var verifyAfterRevoke = controller.verifyCertificate(
+                new com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateVerificationRequest(
+                        rs256Cert.jwsCompactToken()
+                )
+        ).getBody();
+        assertNotNull(verifyAfterRevoke);
+        assertFalse(verifyAfterRevoke.valid());
+        assertFalse(verifyAfterRevoke.notRevoked());
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.CertificateStatus.REVOKED,
+                verifyAfterRevoke.status());
+    }
+
+    @Test
+    void internationalPatientSummaryControllerJwsAndQrCodePayloadsWorkEndToEnd() {
+        Map<UUID, PatientAggregateEntity> patStore = new LinkedHashMap<>();
+        PatientRepository patRepo = (PatientRepository) Proxy.newProxyInstance(
+                PatientRepository.class.getClassLoader(),
+                new Class<?>[]{PatientRepository.class},
+                (p, m, a) -> switch (m.getName()) {
+                    case "save" -> {
+                        PatientAggregateEntity e = (PatientAggregateEntity) a[0];
+                        patStore.put(e.getId(), e);
+                        yield e;
+                    }
+                    case "findById" -> Optional.ofNullable(patStore.get((UUID) a[0]));
+                    case "findByFacilityIdAndMrn" -> patStore.values().stream()
+                            .filter(e -> Objects.equals(e.getFacilityId(), a[0]) && Objects.equals(e.getMrn(), a[1]))
+                            .findFirst();
+                    default -> new ArrayList<>(patStore.values());
+                });
+
+        PatientService patientService = new PatientService(patRepo);
+        var ipsService = new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService(patientService);
+        var ipsController = new com.opeshealth.healthcore.quickstart.web.InternationalPatientSummaryController(ipsService);
+
+        UUID facilityId = UUID.randomUUID();
+        Patient createdPatient = patientService.createFromFhirJson(facilityId, """
+                {
+                  "resourceType": "Patient",
+                  "identifier": [{"system": "urn:opes:mrn", "value": "MRN-IPS-888"}],
+                  "name": [{"family": "Eto'o", "given": ["David"]}],
+                  "gender": "male",
+                  "birthDate": "1983-02-19",
+                  "telecom": [{"system": "phone", "value": "+237670112233"}]
+                }
+                """);
+        UUID patientId = UUID.fromString(createdPatient.getIdElement().getIdPart());
+
+        // 1. Seed IPS clinical sections including active problems, allergies, medications, immunizations, and procedures
+        ipsController.seedPatientIpsData(
+                new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService.IpsSeedClinicalSummaryRequest(
+                        patientId,
+                        List.of(new com.opeshealth.healthcore.quickstart.service.InternationalPatientSummaryService.IpsClinicalProblemItem(
+                                "44054006", "Type 2 diabetes mellitus", "active", null)),
+                        List.of("Sulfonamide antibiotics"),
+                        List.of("Metformin 500 mg twice daily"),
+                        List.of("Yellow Fever Vaccine — WHO ICVP"),
+                        List.of("Laparoscopic appendectomy")
+                ));
+
+        // 2. Generate Ed25519 (EdDSA) JWS-signed IPS Document Bundle with DEFLATE compression and QR code payloads
+        var ed25519Ips = ipsController.generatePatientIpsSummary(
+                patientId, "dr.nshome", null, null, "Ed25519", true
+        ).getBody();
+        assertNotNull(ed25519Ips);
+        assertEquals("EdDSA", ed25519Ips.signingAlgorithm());
+        assertTrue(ed25519Ips.payloadDeflateCompressed());
+        assertNotNull(ed25519Ips.qrCode());
+        assertTrue(ed25519Ips.qrCode().smartHealthCardNumericUri().startsWith("shc:/"));
+        assertTrue(ed25519Ips.qrCode().gdhcnIpsCompactUri().startsWith("hcert:/ips/v1/"));
+        assertTrue(ed25519Ips.qrCode().qrCodeSvg().contains("<svg"));
+        assertTrue(ed25519Ips.qrCode().qrCodePngBase64DataUri().startsWith("data:image/png;base64,"));
+        assertTrue(ed25519Ips.fhirIpsDocumentBundleJson().contains("Laparoscopic appendectomy"));
+
+        // 3. Generate RS256 JWS-signed IPS Document Bundle
+        var rs256Ips = ipsController.generatePatientIpsSummary(
+                patientId, "dr.nshome", null, null, "RS256", false
+        ).getBody();
+        assertNotNull(rs256Ips);
+        assertEquals("RS256", rs256Ips.signingAlgorithm());
+
+        // 4. Verify Ed25519 IPS via its SMART Health Card numeric QR payload (shc:/...)
+        var verifyEdQr = ipsController.verifySignedIpsBundle(
+                Map.of("qrPayload", ed25519Ips.qrCode().smartHealthCardNumericUri())
+        ).getBody();
+        assertNotNull(verifyEdQr);
+        assertTrue(verifyEdQr.signatureValid());
+        assertEquals("EdDSA", verifyEdQr.signingAlgorithm());
+        assertEquals(ed25519Ips.documentBundleId(), verifyEdQr.documentBundleId());
+        assertEquals(patientId, verifyEdQr.patientId());
+
+        // 5. Verify RS256 IPS via its JWS compact signature
+        var verifyRs256 = ipsController.verifySignedIpsBundle(
+                Map.of("jwsCompactSignature", rs256Ips.jwsCompactSignature())
+        ).getBody();
+        assertNotNull(verifyRs256);
+        assertTrue(verifyRs256.signatureValid());
+        assertEquals("RS256", verifyRs256.signingAlgorithm());
+
+        // 6. Verify SVG/PNG QR download endpoints, bundle history, and public IPS JWKS
+        assertEquals(200, ipsController.getIpsBundleQrSvg(ed25519Ips.documentBundleId()).getStatusCode().value());
+        assertEquals(200, ipsController.getIpsBundleQrPng(ed25519Ips.documentBundleId()).getStatusCode().value());
+        assertEquals(2, ipsController.listPatientIpsBundles(patientId).getBody().size());
+        assertEquals(2, ((List<?>) ipsController.getPublicIpsJwks().getBody().get("keys")).size());
+    }
+
+    @Test
+    void consentServiceAndControllerDs4pBreakTheGlassWithMandatoryAuditFlaggingWorkEndToEnd() {
+        var auditLoggingService = new com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService();
+        var subscriptionService = new com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService(auditLoggingService);
+        var enforcementService = new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService(
+                auditLoggingService, subscriptionService);
+        var consentService = new com.opeshealth.healthcore.quickstart.service.ConsentService(
+                enforcementService, auditLoggingService, subscriptionService);
+        var consentController = new com.opeshealth.healthcore.quickstart.web.ConsentController(consentService);
+
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+
+        // 1. Register an HL7 FHIR R4 Consent directive from raw FHIR R4 Consent JSON restricting HIV, PSY, and ETH
+        String rawFhirConsentJson = """
+                {
+                  "resourceType": "Consent",
+                  "status": "active",
+                  "patient": {"reference": "Patient/%s"},
+                  "policy": [{"uri": "https://opeshealthsystems.com/fhir/Policy/hipaa-gdpr-ds4p-privacy"}],
+                  "provision": {
+                    "type": "deny",
+                    "securityLabel": [
+                      {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "HIV"},
+                      {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "PSY"},
+                      {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "ETH"}
+                    ]
+                  }
+                }
+                """.formatted(patientId);
+
+        var createdDirective = consentController.createConsentFromRawFhirJson(facilityId, rawFhirConsentJson).getBody();
+        assertNotNull(createdDirective);
+        assertEquals("active", createdDirective.status());
+        assertTrue(createdDirective.restrictedCategories().contains(
+                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV));
+
+        // 2. Search FHIR Consent searchset Bundle & read FHIR Consent JSON resource
+        String bundleJson = consentController.searchFhirConsentBundle(patientId, "active").getBody();
+        assertNotNull(bundleJson);
+        assertTrue(bundleJson.contains("\"resourceType\": \"Bundle\""));
+        assertTrue(bundleJson.contains(createdDirective.consentId().toString()));
+
+        // 3. Classify clinical content for DS4P confidentiality and obligations
+        var classification = consentController.classifyClinicalContent(
+                new com.opeshealth.healthcore.quickstart.service.ConsentService.Ds4pClassificationRequest(
+                        "Observation",
+                        "obs-hiv-viral-load-1",
+                        "HIV-1 RNA viral load CD4 antiretroviral therapy monitoring",
+                        "B20"
+                )).getBody();
+        assertNotNull(classification);
+        assertEquals(
+                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConfidentialityLevel.V,
+                classification.assignedConfidentiality());
+        assertTrue(classification.requiresExplicitConsentOrBreakTheGlass());
+
+        // 4. Evaluate DS4P segmentation without Break-the-Glass — sensitive HIV & PSY items are redacted
+        var clinicalItems = List.of(
+                new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ClinicalSegmentItem(
+                        "obs-bp-1", "Observation", "Blood Pressure 120/78 mmHg", null,
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConfidentialityLevel.N),
+                new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ClinicalSegmentItem(
+                        "cond-hiv-1", "Condition", "HIV antiretroviral regimen",
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV,
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConfidentialityLevel.V),
+                new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ClinicalSegmentItem(
+                        "note-psy-1", "DocumentReference", "Psychiatric crisis note",
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.PSY,
+                        com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConfidentialityLevel.R)
+        );
+        var redactedEval = consentController.evaluateDs4pSegmentation(
+                null,
+                new com.opeshealth.healthcore.quickstart.web.ConsentController.Ds4pEvaluationRequest(
+                        patientId, "dr.emergency", "TREAT", null, clinicalItems
+                )).getBody();
+        assertNotNull(redactedEval);
+        assertEquals(1, redactedEval.permittedItemsCount());
+        assertEquals(2, redactedEval.redactedItemsCount());
+        assertFalse(redactedEval.breakTheGlassApplied());
+
+        // 5. Verify Break-the-Glass rejection records a mandatory FAILURE audit flag in FhirAuditLoggingService
+        assertThrows(IllegalArgumentException.class, () ->
+                consentController.invokeBreakTheGlassWithAuditFlag(
+                        new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.BreakTheGlassRequest(
+                                facilityId, patientId, "dr.emergency", "ROLE_PHYSICIAN", "short", null, 30
+                        )));
+        var rejectedAudits = auditLoggingService.searchAuditLogs(
+                new com.opeshealth.healthcore.quickstart.service.FhirAuditLoggingService.AuditSearchCriteria(
+                        facilityId.toString(), patientId, null, null, null,
+                        "BREAK_THE_GLASS_REJECTED_MANDATORY_AUDIT_FLAG", "FAILURE", null, null, 0, 20
+                ));
+        assertEquals(1, rejectedAudits.total());
+
+        // 6. Invoke valid Break-the-Glass ($break-the-glass) and verify mandatory audit flag creation + SHA-256 hash
+        var btgInvocation = consentController.invokeBreakTheGlassWithAuditFlag(
+                new com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.BreakTheGlassRequest(
+                        facilityId,
+                        patientId,
+                        "dr.emergency",
+                        "ROLE_PHYSICIAN",
+                        "Unconscious trauma patient in ED requiring urgent medication and HIV/psychiatry history check",
+                        java.util.Set.of(
+                                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.HIV,
+                                com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.SensitivityCategory.PSY),
+                        60
+                )).getBody();
+        assertNotNull(btgInvocation);
+        assertNotNull(btgInvocation.session());
+        assertNotNull(btgInvocation.mandatoryAuditFlag());
+        assertTrue(btgInvocation.mandatoryAuditFlag().mandatoryAuditFlagged());
+        assertEquals("ETREAT", btgInvocation.mandatoryAuditFlag().purposeOfUseCode());
+        assertEquals(com.opeshealth.healthcore.quickstart.service.ConsentService.AUDIT_FLAG_PENDING_REVIEW,
+                btgInvocation.mandatoryAuditFlag().reviewStatus());
+        assertNotNull(btgInvocation.mandatoryAuditFlag().auditEntrySha256Hash());
+        assertEquals(64, btgInvocation.mandatoryAuditFlag().auditEntrySha256Hash().length());
+
+        // 7. Re-evaluate DS4P segmentation with the active Break-the-Glass token — all 3 items are now permitted
+        var btgEval = consentController.evaluateDs4pSegmentation(
+                btgInvocation.session().emergencyToken(),
+                new com.opeshealth.healthcore.quickstart.web.ConsentController.Ds4pEvaluationRequest(
+                        patientId, "dr.emergency", "ETREAT", null, clinicalItems
+                )).getBody();
+        assertNotNull(btgEval);
+        assertTrue(btgEval.breakTheGlassApplied());
+        assertEquals(3, btgEval.permittedItemsCount());
+        assertEquals(0, btgEval.redactedItemsCount());
+
+        // 8. Compliance Officer reviews and adjudicates the mandatory Break-the-Glass audit flag
+        var pendingFlags = consentController.listBreakTheGlassAuditFlags(
+                patientId, com.opeshealth.healthcore.quickstart.service.ConsentService.AUDIT_FLAG_PENDING_REVIEW
+        ).getBody();
+        assertNotNull(pendingFlags);
+        assertEquals(1, pendingFlags.size());
+
+        var adjudicatedFlag = consentController.reviewBreakTheGlassAuditFlag(
+                btgInvocation.mandatoryAuditFlag().flagId(),
+                new com.opeshealth.healthcore.quickstart.service.ConsentService.BreakTheGlassComplianceReviewRequest(
+                        "chief.privacy.officer",
+                        "APPROVED",
+                        "Verified ED trauma admission log; Break-the-Glass ETREAT override clinically justified."
+                )).getBody();
+        assertNotNull(adjudicatedFlag);
+        assertEquals(com.opeshealth.healthcore.quickstart.service.ConsentService.AUDIT_FLAG_APPROVED,
+                adjudicatedFlag.reviewStatus());
+        assertEquals("chief.privacy.officer", adjudicatedFlag.reviewedBy());
+
+        // 9. Revoke Break-the-Glass token and revoke FHIR Consent directive
+        var revokedSession = consentController.revokeBreakTheGlass(btgInvocation.session().emergencyToken()).getBody();
+        assertNotNull(revokedSession);
+        assertFalse(revokedSession.active());
+
+        var revokedConsent = consentController.revokeConsentDirective(
+                createdDirective.consentId(), "patient.portal", "Patient updated privacy preferences", null
+        ).getBody();
+        assertNotNull(revokedConsent);
+        assertEquals("inactive", revokedConsent.status());
+    }
+
+    @Test
+    void kmpDataSyncManagerAndSqlDelightSchemaOfflineQueueAndConflictResolutionContractVerified() throws Exception {
+        java.nio.file.Path sqPath = java.nio.file.Path.of(
+                "..", "healthcore-mobile-kmp", "healthcore-mobile-sdk",
+                "src", "commonMain", "sqldelight", "com", "opeshealth", "healthcore", "mobile", "db", "HealthCoreOffline.sq");
+        if (!java.nio.file.Files.exists(sqPath)) {
+            sqPath = java.nio.file.Path.of(
+                    "healthcore-mobile-kmp", "healthcore-mobile-sdk",
+                    "src", "commonMain", "sqldelight", "com", "opeshealth", "healthcore", "mobile", "db", "HealthCoreOffline.sq");
+        }
+        assertTrue(java.nio.file.Files.exists(sqPath));
+        String sqContent = java.nio.file.Files.readString(sqPath);
+        assertTrue(sqContent.contains("CREATE TABLE local_fhir_resource"));
+        assertTrue(sqContent.contains("CREATE TABLE local_fhir_sync_queue"));
+        assertTrue(sqContent.contains("CREATE TABLE local_fhir_sync_conflict"));
+        assertTrue(sqContent.contains("selectReadyFhirSyncQueueBatch:"));
+        assertTrue(sqContent.contains("coalescePendingFhirSyncQueuePayload:"));
+        assertTrue(sqContent.contains("resolveFhirSyncConflict:"));
+
+        java.nio.file.Path managerPath = sqPath.getParent().resolve("../../../../../../../../kotlin/com/opeshealth/healthcore/mobile/sync/DataSyncManager.kt").normalize();
+        assertTrue(java.nio.file.Files.exists(managerPath));
+        String managerSource = java.nio.file.Files.readString(managerPath);
+        assertTrue(managerSource.contains("class DataSyncManager"));
+        assertTrue(managerSource.contains("fun enqueueOfflineFhirResource"));
+        assertTrue(managerSource.contains("suspend fun processBackgroundSync"));
+        assertTrue(managerSource.contains("fun performThreeWayFhirMerge"));
+        assertTrue(managerSource.contains("fun resolveQuarantinedConflict"));
+        assertTrue(managerSource.contains("CLINICAL_SAFETY_QUARANTINE"));
+        assertTrue(managerSource.contains("THREE_WAY_FIELD_MERGE"));
+        assertTrue(managerSource.contains("HLC_LAST_WRITE_WINS"));
     }
 
     @SuppressWarnings("unused")

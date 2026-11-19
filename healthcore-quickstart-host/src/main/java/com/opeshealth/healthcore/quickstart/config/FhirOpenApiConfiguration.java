@@ -106,6 +106,7 @@ public class FhirOpenApiConfiguration {
                 .addSchemas("FhirObservationResource", buildFhirObservationSchema())
                 .addSchemas("FhirBundleResource", buildFhirBundleSchema())
                 .addSchemas("FhirAuditEventResource", buildFhirAuditEventSchema())
+                .addSchemas("FhirCodeSystemResource", buildFhirCodeSystemSchema())
                 .addSchemas("FhirOperationOutcome", buildFhirOperationOutcomeSchema())
                 .addSchemas("ApiErrorResponse", buildApiErrorResponseSchema());
 
@@ -137,6 +138,14 @@ public class FhirOpenApiConfiguration {
                         new Tag().name("FHIR R4 Observation").description("HL7 FHIR R4 Observation (vital signs & laboratory results) CRUD, LOINC/UCUM validation, and search"),
                         new Tag().name("FHIR R4 Bundle (Batch & Transaction)").description("HL7 FHIR R4 Bundle processor supporting atomic transactions (urn:uuid resolution) and isolated batch operations"),
                         new Tag().name("FHIR R4 AuditEvent & HIPAA/GDPR Compliance").description("Tamper-evident SHA-256 hash-chained FHIR R4 AuditEvent search, chain integrity verification, and HIPAA § 164.528 / GDPR Art. 15 patient access disclosure reports"),
+                        new Tag().name("FHIR R4 Terminology & CodeSystem Validation").description("LOINC, SNOMED-CT, and ICD-10 clinical terminology validation ($validate-code), concept lookup ($lookup), IS-A hierarchy subsumption ($subsumes), and crosswalk translation ($translate)"),
+                        new Tag().name("FHIR R4 Cold-Chain & Vaccine Sensor Telemetry").description("Vaccine and pharmaceutical cold-chain storage & transport telemetry integrated with HL7 FHIR R4 Observation, automated excursion alerting, and Mean Kinetic Temperature (MKT) compliance"),
+                        new Tag().name("FHIR R4 Bulk Data Export ($export)").description("HL7 FHIR R4 Bulk Data Access IG v2.0 cohort export for practitioners (/Practitioner/{id}/$export and /Patient/$export) producing application/fhir+ndjson streams and status manifests"),
+                        new Tag().name("FHIR R4 Patient Identity Matching & Duplicate Resolution").description("Probabilistic Fellegi-Sunter & Jaro-Winkler Patient/$match, database duplicate scanning, and manual resolution queue"),
+                        new Tag().name("FHIR R4 Next-Generation Digital Health Suite").description("FHIR Consent/DS4P Break-the-Glass, CPIC Pharmacogenomics, RPM NEWS2/qSOFA, R5-Backport Subscriptions, Closed-Loop BCMA, WHO AWaRe Antimicrobial Stewardship, Signed IPS ($summary), Da Vinci PAS Prior Auth, PROMs, and Gravity SDoH"),
+                        new Tag().name("FHIR R4 Digital Health Certificates & JWS QR Verification").description("JWS signed (RS256 & Ed25519) health certificates, SMART Health Card (shc:/) QR code generation (SVG/PNG), mobile verification, and RFC 7517 JWKS"),
+                        new Tag().name("FHIR R4 International Patient Summary ($summary) & JWS QR Payloads").description("HL7 FHIR R4 Patient/{id}/$summary operation generating JWS-signed (RS256 & Ed25519) IPS Document Bundles, SMART Health Card (shc:/) QR payloads, SVG/PNG QR codes, and cryptographic verification"),
+                        new Tag().name("FHIR R4 Consent, DS4P Privacy & Break-the-Glass").description("HL7 FHIR R4 Consent lifecycle, DS4P Data Segmentation for Privacy (HIV, PSY, ETH, SDV, GEN, VIP), and Break-the-Glass (ETREAT) emergency access with mandatory HIPAA/GDPR audit flagging"),
                         new Tag().name("CDS Hooks 2.0 Clinical Decision Support").description("HL7 CDS Hooks 2.0 Discovery, Hook Execution (patient-view, encounter-start, encounter-discharge, observation-review), and Feedback endpoints")
                 ))
                 .addSecurityItem(new SecurityRequirement()
@@ -159,6 +168,21 @@ public class FhirOpenApiConfiguration {
                         "/api/v1/fhir/**",
                         "/api/v1/bundles/**",
                         "/api/v1/audit-events/**",
+                        "/api/v1/terminology/**",
+                        "/api/v1/cold-chain/**",
+                        "/api/v1/bulk-export/**",
+                        "/api/v1/identity-matching/**",
+                        "/api/v1/consent/**",
+                        "/api/v1/pgx/**",
+                        "/api/v1/rpm/**",
+                        "/api/v1/subscriptions/**",
+                        "/api/v1/bcma/**",
+                        "/api/v1/ams/**",
+                        "/api/v1/ips/**",
+                        "/api/v1/prior-auth/**",
+                        "/api/v1/proms/**",
+                        "/api/v1/sdoh/**",
+                        "/api/v1/certificates/**",
                         "/api/v1/cds-services/**",
                         "/cds-services/**"
                 )
@@ -326,6 +350,19 @@ public class FhirOpenApiConfiguration {
                 .addProperty("agent", new ArraySchema().items(new ObjectSchema().description("Authenticated clinician/system actor, role, and network IP")))
                 .addProperty("source", new ObjectSchema().description("Facility site key and Opes HealthCore SHA-256 audit observer"))
                 .addProperty("entity", new ArraySchema().items(new ObjectSchema().description("Audited FHIR resource reference, Patient subject, sequenceNumber, prevHash, entryHash, and correlationId")));
+    }
+
+    private static Schema<?> buildFhirCodeSystemSchema() {
+        return new ObjectSchema()
+                .description("HL7 FHIR R4 CodeSystem resource representation for LOINC, SNOMED-CT, ICD-10, ICD-11, RxNorm, ATC, and CVX")
+                .addProperty("resourceType", new StringSchema()._default("CodeSystem").description("Fixed value 'CodeSystem'"))
+                .addProperty("id", new StringSchema().description("Logical CodeSystem short identifier (loinc | snomed-ct | icd-10 | rxnorm | atc | cvx)"))
+                .addProperty("url", new StringSchema().description("Canonical HL7 FHIR R4 CodeSystem URI"))
+                .addProperty("version", new StringSchema().description("Terminology edition / release version"))
+                .addProperty("name", new StringSchema().description("Standard short name"))
+                .addProperty("status", new StringSchema()._default("active"))
+                .addProperty("count", new IntegerSchema().description("Active concept count"))
+                .addProperty("syntaxRule", new StringSchema().description("Code syntax and check-digit validation rule"));
     }
 
     private static Schema<?> buildFhirOperationOutcomeSchema() {
