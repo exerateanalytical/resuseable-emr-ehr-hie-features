@@ -1,0 +1,1009 @@
+{
+  "schemaVersion": "1.0",
+  "documentType": "Repository implementation and verification specification",
+  "repository": {
+    "name": "exerateanalytical/resuseable-emr-ehr-hie-features",
+    "url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features",
+    "languageComposition": {
+      "Java": 96,
+      "Kotlin": 3.7,
+      "Other": 0.3
+    }
+  },
+  "mission": {
+    "goal": "Transform the repository into an industry-grade, reusable Hospital Information System platform that allows a developer to assemble a production-oriented outpatient and inpatient system quickly.",
+    "successDefinition": "The repository has a clean build, tested implementation, accurate documentation, tenant isolation, clinical auditability, standards-aware interoperability, safe failure behavior, and independently reviewable evidence for every advertised capability.",
+    "explicitNonGoals": [
+      "No claim of zero bugs",
+      "No claim of clinical certification",
+      "No claim of HIPAA or GDPR certification",
+      "No claim of regulatory clearance",
+      "No autonomous clinical diagnosis or prescribing",
+      "No standards certification without independent conformance testing",
+      "No external integration claim without a working integration test"
+    ]
+  },
+  "operatingRules": {
+    "orderOfWork": [
+      "Fix P0 security defects",
+      "Fix P0 clinical-safety defects",
+      "Establish migration and build reproducibility",
+      "Complete core end-to-end workflows",
+      "Implement and test interoperability",
+      "Complete operations and assurance",
+      "Update documentation only after implementation and tests prove the claim"
+    ],
+    "mandatoryPerChange": [
+      "Domain model",
+      "Database migration",
+      "Repository and transactional service",
+      "REST or standards API",
+      "Authorization policy",
+      "Tenant isolation",
+      "Audit event",
+      "Validation and error behavior",
+      "Unit tests",
+      "Integration tests",
+      "API documentation",
+      "User documentation",
+      "Known-limitations entry",
+      "No mock success response",
+      "No hardcoded production secret",
+      "No placeholder implementation"
+    ],
+    "forbiddenShortcuts": [
+      "Returning fabricated success",
+      "Generating random IDs for resources that were not stored",
+      "Advertising unimplemented FHIR interactions",
+      "Using isAuthenticated as a substitute for patient authorization",
+      "Trusting a client-provided facility ID",
+      "Treating regex redaction as guaranteed Safe Harbor compliance",
+      "Treating a draft in process memory as an immutable attestation ledger",
+      "Fail-open practitioner credential checks",
+      "Empty allergy or medication context for order safety checks",
+      "Mock STOW-RS success for metadata-only storage",
+      "Marketing demo integrations as production integrations"
+    ]
+  },
+  "targetArchitecture": {
+    "backend": "Java 25, Spring Boot 4.0-compatible implementation",
+    "mobile": "Kotlin Compose Multiplatform",
+    "primaryDatabase": "PostgreSQL",
+    "additionalDatabases": [
+      "Microsoft SQL Server",
+      "MySQL"
+    ],
+    "migrationOwner": "Choose one authoritative migration system and separate from the alternative system",
+    "identityProvider": "OIDC/OAuth2-compatible provider, Keycloak reference implementation",
+    "dataStores": [
+      "Relational database",
+      "Optional Redis cache",
+      "Optional Kafka or RabbitMQ event transport",
+      "Object storage for approved media and documents"
+    ],
+    "standards": [
+      "FHIR R4",
+      "HL7 V2",
+      "IHE",
+      "DICOMweb",
+      "CDA R2",
+      "LOINC",
+      "SNOMED CT",
+      "ICD-10",
+      "ICD-11",
+      "RxNorm",
+      "ATC",
+      "UCUM",
+      "X12 where a payer requires it"
+    ]
+  },
+  "currentKnownP0AndP1Gaps": [
+    {
+      "id": "SEC-001",
+      "severity": "P0",
+      "area": "Authorization bypass",
+      "finding": "Patient-data endpoints use authentication as an alternative to required patient or clinical permissions.",
+      "requiredFix": "Remove broad authenticated-user alternatives on patient APIs. Require explicit permission and contextual authorization.",
+      "acceptanceTests": [
+        "Authenticated user without permission receives 403",
+        "Cross-facility patient access receives 403",
+        "Cross-patient access receives 403",
+        "Authorized clinician receives expected patient data",
+        "Break-the-glass is evaluated and audited separately"
+      ]
+    },
+    {
+      "id": "SEC-002",
+      "severity": "P0",
+      "area": "Tenant isolation",
+      "finding": "Some bulk and patient search paths use findAll or do not visibly constrain facility identity.",
+      "requiredFix": "Enforce facility scoping in repository queries and service authorization. Activate PostgreSQL RLS or equivalent database isolation.",
+      "acceptanceTests": [
+        "Bulk export never returns another tenant's patients",
+        "IHE search cannot cross tenant boundaries",
+        "Direct repository lookup rejects cross-tenant entities",
+        "Database session facility context is set and cleared correctly",
+        "RLS policy denies cross-facility data access"
+      ]
+    },
+    {
+      "id": "FHIR-001",
+      "severity": "P0",
+      "area": "FHIR transactions",
+      "finding": "FHIR Transaction Bundle processing creates response locations but does not persist the resources.",
+      "requiredFix": "Implement real create, update, delete, conditional, transaction and batch behavior or remove unsupported claims.",
+      "acceptanceTests": [
+        "Resources actually persist",
+        "Valid transaction Bundle is committed atomically",
+        "Invalid transaction Bundle rolls back",
+        "Response status and location match actual resources",
+        "Conditional and version operations behave correctly",
+        "FHIR validator accepts generated fixtures"
+      ]
+    },
+    {
+      "id": "FHIR-002",
+      "severity": "P1",
+      "area": "CapabilityStatement accuracy",
+      "finding": "The CapabilityStatement advertises interactions and operations that are not fully implemented.",
+      "requiredFix": "Generate capabilities from implemented behavior and remove unsupported operations.",
+      "acceptanceTests": [
+        "Every advertised search parameter exists",
+        "Every advertised interaction has an endpoint test",
+        "Every advertised operation executes successfully or is removed",
+        "Multiple profile fixtures are validated"
+      ]
+    },
+    {
+      "id": "FHIR-003",
+      "severity": "P1",
+      "area": "IPS completeness",
+      "finding": "The IPS summary does not assemble complete clinical sections from persisted data.",
+      "requiredFix": "Aggregate authorized allergies, medications, conditions, observations, procedures, immunizations and supporting documents.",
+      "acceptanceTests": [
+        "IPS fixture includes required sections",
+        "No cross-facility record enters the bundle",
+        "Missing sections are represented explicitly",
+        "Generated bundle validates against selected IPS profile"
+      ]
+    },
+    {
+      "id": "HL7-001",
+      "severity": "P1",
+      "area": "HL7 mapping",
+      "finding": "HL7 V2 ingestion acknowledges messages without clearly applying supported message content.",
+      "requiredFix": "Implement message-type-specific mapping or clearly limit the public contract to parse-and-acknowledge behavior.",
+      "acceptanceTests": [
+        "ADT creates or updates the correct visit state",
+        "ORM creates or updates the correct order",
+        "ORU creates or updates the correct result",
+        "SIU updates appointment state",
+        "DFT creates or reverses the correct financial event",
+        "Duplicate MSH-10 does not apply twice",
+        "Malformed messages return AE and quarantine safely"
+      ]
+    },
+    {
+      "id": "DICOM-001",
+      "severity": "P1",
+      "area": "DICOMweb",
+      "finding": "DICOM STOW is a metadata save and is not a real DICOM object store.",
+      "requiredFix": "Integrate a real PACS or implement standards-compatible multipart STOW/WADO/QIDO behavior.",
+      "acceptanceTests": [
+        "STOW stores real DICOM instances",
+        "WADO returns a retrievable DICOM object",
+        "QIDO returns correct study metadata",
+        "Invalid UIDs are rejected",
+        "Tenant authorization is enforced",
+        "PACS outage is handled and observable"
+      ]
+    },
+    {
+      "id": "IHE-001",
+      "severity": "P1",
+      "area": "IHE directory",
+      "finding": "mCSD Organization and Location endpoints return hardcoded sample resources.",
+      "requiredFix": "Replace hardcoded resources with persisted facility and location directory data.",
+      "acceptanceTests": [
+        "Directory reflects configured facilities",
+        "Cross-facility data is scoped",
+        "Create, update and search behavior is tested",
+        "Profile responses validate"
+      ]
+    },
+    {
+      "id": "CLIN-001",
+      "severity": "P0",
+      "area": "Practitioner credentials",
+      "finding": "Missing practitioner credential records are treated as active.",
+      "requiredFix": "Fail closed for clinical actions. Keep any development bypass explicitly disabled in production.",
+      "acceptanceTests": [
+        "Missing record denies clinical action",
+        "Expired record denies clinical action",
+        "Suspended record denies clinical action",
+        "Valid record permits authorized action",
+        "Cross-facility credential does not permit access"
+      ]
+    },
+    {
+      "id": "CLIN-002",
+      "severity": "P0",
+      "area": "Medication safety context",
+      "finding": "Order safety checks receive empty medication, allergy and condition context in some REST flows.",
+      "requiredFix": "Load current authorized patient context or block the order with a documented missing-data reason.",
+      "acceptanceTests": [
+        "Allergy conflict is detected",
+        "Drug interaction is detected",
+        "Renal context is applied",
+        "Weight context is applied",
+        "Missing context produces a safe fail",
+        "Result is audited"
+      ]
+    },
+    {
+      "id": "CLIN-003",
+      "severity": "P0",
+      "area": "Medication administration",
+      "finding": "eMAR barcode validation compares scanned text to a patient UUID string.",
+      "requiredFix": "Implement real patient wristband and medication barcode verification against the order.",
+      "acceptanceTests": [
+        "Wrong patient denies administration",
+        "Wrong medication denies administration",
+        "Wrong dose denies administration",
+        "Wrong route denies administration",
+        "Wrong time or duplicate administration is handled",
+        "Two-person rules are enforced where required"
+      ]
+    },
+    {
+      "id": "FIN-001",
+      "severity": "P1",
+      "area": "Billing integrity",
+      "finding": "Billing posts one ledger entry and account balance rather than a fully reconciled journal model.",
+      "requiredFix": "Implement balanced, currency-safe, idempotent and reversible journal postings.",
+      "acceptanceTests": [
+        "Debit and credit total equal",
+        "Duplicate posting is ignored or rejected",
+        "Refund and reversal balance the original transaction",
+        "Currency rounding is tested",
+        "Concurrent posting cannot lose updates",
+        "Reconciliation report can explain every account movement"
+      ]
+    },
+    {
+      "id": "PHARM-001",
+      "severity": "P0",
+      "area": "Inventory concurrency",
+      "finding": "FEFO dispensing may oversell stock during concurrent requests.",
+      "requiredFix": "Use conditional database decrement or pessimistic locking and prevent negative inventory.",
+      "acceptanceTests": [
+        "Concurrent requests cannot oversell",
+        "Partial-fill policy is honored",
+        "Transaction rollback restores stock",
+        "Expired and quarantined lots are excluded",
+        "FEFO order is deterministic"
+      ]
+    },
+    {
+      "id": "AI-001",
+      "severity": "P0",
+      "area": "AI governance durability",
+      "finding": "Drafts and tenant AI flags are stored in process memory.",
+      "requiredFix": "Persist drafts, tenant policy, attestation and audit state to durable, tenant-scoped storage.",
+      "acceptanceTests": [
+        "Draft survives restart",
+        "Draft status is consistent across pods",
+        "Approved draft is not lost",
+        "Attestation records practitioner identity",
+        "Kill-switch applies immediately across pods",
+        "Audit persistence failure is handled safely"
+      ]
+    },
+    {
+      "id": "AI-002",
+      "severity": "P0",
+      "area": "PHI redaction",
+      "finding": "Regex redaction is not reliable for every direct or indirect identifier.",
+      "requiredFix": "Define redaction as a risk-reduction control, not guaranteed Safe Harbor compliance. Review and test before external AI use.",
+      "acceptanceTests": [
+        "Known names and identifiers are removed",
+        "Common date, address and phone formats are removed",
+        "Free-text name formats are tested",
+        "Adversarial and malformed input is tested",
+        "Rehydration requires authorized service",
+        "Redaction maps are protected and purgeable"
+      ]
+    },
+    {
+      "id": "SECRET-001",
+      "severity": "P0",
+      "area": "Secret management",
+      "finding": "Development and runtime code contains hardcoded secret values.",
+      "requiredFix": "Move all secrets to environment or secret-manager configuration and fail startup if required production secrets are missing.",
+      "acceptanceTests": [
+        "Repository secret scan is clean",
+        "Production startup fails without required secrets",
+        "Secret rotation is tested",
+        "Logs never print secret values",
+        "Default credentials cannot reach production profile"
+      ]
+    },
+    {
+      "id": "AUDIT-001",
+      "severity": "P0",
+      "area": "Audit failure handling",
+      "finding": "Some governance audit failures are swallowed.",
+      "requiredFix": "Make mandatory audit failures block or durably queue the operation.",
+      "acceptanceTests": [
+        "Audit-store outage is simulated",
+        "Mandatory event is not silently lost",
+        "Queue or fail-close behavior is demonstrated",
+        "Chain integrity can be verified"
+      ]
+    },
+    {
+      "id": "BUILD-001",
+      "severity": "P0",
+      "area": "Build and migration reproducibility",
+      "finding": "The repository may not currently build or pass all database tests.",
+      "requiredFix": "Run and repair the full build, migrations and test suite in CI.",
+      "acceptanceTests": [
+        "Clean Maven build passes",
+        "Clean database migration passes on PostgreSQL",
+        "Clean database migration passes on SQL Server",
+        "Clean database migration passes on MySQL",
+        "Upgrade migration passes",
+        "Testcontainers suite passes",
+        "Mobile build passes independently"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Security, build and platform foundation",
+      "priority": "P0",
+      "durationGuidance": "First gate; no Phase 2 clinical deployment",
+      "deliverables": [
+        "Maven reactor builds on clean environment",
+        "One migration strategy",
+        "PostgreSQL RLS or equivalent isolation",
+        "OIDC/RBAC/ABAC foundation",
+        "Durable audit ledger",
+        "Secret management",
+        "API error and versioning conventions",
+        "Working reference application",
+        "Clean CI pipeline"
+      ],
+      "modules": [
+        "Tenant and Facility Governance",
+        "Identity, RBAC and ABAC",
+        "Durable Clinical Audit",
+        "Database Migration Core",
+        "Secrets and Configuration",
+        "API Platform Core",
+        "Reference Hospital Application"
+      ],
+      "exitCriteria": [
+        "P0 authorization findings fixed",
+        "P0 credential findings fixed",
+        "Cross-tenant tests pass",
+        "Full build passes",
+        "Database migration tests pass",
+        "Development secrets absent",
+        "Audit failure behavior tested",
+        "Reference application can start from documentation"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Clinical and patient administration MVP",
+      "priority": "P0",
+      "deliverables": [
+        "Master Patient Index",
+        "Appointments and scheduling",
+        "Encounters and ADT",
+        "Clinical documentation",
+        "Orders and results",
+        "Terminology and coding",
+        "Care plans and nursing tasks",
+        "Patient portal foundation"
+      ],
+      "modules": [
+        {
+          "name": "Master Patient Index",
+          "requiredCapabilities": [
+            "Registration",
+            "Demographics",
+            "Identifier encryption",
+            "Blind indexes",
+            "Duplicate detection",
+            "Golden records",
+            "Merge and unmerge",
+            "Merge cascade",
+            "Facility-scoped search"
+          ]
+        },
+        {
+          "name": "Appointments and Scheduling",
+          "requiredCapabilities": [
+            "Provider and room scheduling",
+            "Equipment scheduling",
+            "Queues",
+            "Check-in",
+            "No-show",
+            "Reschedule",
+            "Cancellation",
+            "Conflict detection",
+            "Waitlist",
+            "Reminders"
+          ]
+        },
+        {
+          "name": "Encounter and ADT",
+          "requiredCapabilities": [
+            "Outpatient encounter",
+            "Emergency encounter",
+            "Admission",
+            "Transfer",
+            "Discharge",
+            "Bed assignment",
+            "Ward census",
+            "Visit provenance",
+            "Referrals"
+          ]
+        },
+        {
+          "name": "Clinical Documentation",
+          "requiredCapabilities": [
+            "Structured SOAP",
+            "Templates",
+            "Versioned notes",
+            "Immutable history",
+            "Amendments",
+            "Sign",
+            "Co-sign",
+            "License gate",
+            "Document audit"
+          ]
+        },
+        {
+          "name": "Orders and Results",
+          "requiredCapabilities": [
+            "Medication orders",
+            "Laboratory orders",
+            "Imaging orders",
+            "Procedure orders",
+            "Referrals",
+            "Common order lifecycle",
+            "Result verification",
+            "Correction",
+            "Amendment",
+            "Critical result workflow",
+            "Notifications"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Hospital operations",
+      "priority": "P0",
+      "deliverables": [
+        "Pharmacy",
+        "Laboratory",
+        "Radiology",
+        "Nursing and inpatient operations",
+        "Operating theater",
+        "Blood bank",
+        "Biomedical and cold chain",
+        "Emergency and triage"
+      ],
+      "modules": [
+        {
+          "name": "Pharmacy",
+          "requiredCapabilities": [
+            "Formulary",
+            "Stock lots",
+            "FEFO",
+            "Expiry quarantine",
+            "Controlled drugs",
+            "Dual witness",
+            "Dispense",
+            "Partial fill",
+            "Returns",
+            "Recalls",
+            "Barcode verification",
+            "Medication reconciliation",
+            "Concurrency-safe stock updates"
+          ]
+        },
+        {
+          "name": "Laboratory",
+          "requiredCapabilities": [
+            "Specimen accession",
+            "Barcode support",
+            "Analyzer interfaces",
+            "ASTM and HL7",
+            "Westgard QC",
+            "Reflex testing",
+            "Panic result read-back",
+            "Result verification",
+            "Amendments"
+          ]
+        },
+        {
+          "name": "Radiology",
+          "requiredCapabilities": [
+            "Modality worklist",
+            "Exam scheduling",
+            "PACS integration",
+            "DICOM metadata",
+            "Reporting",
+            "Critical findings",
+            "Closed-loop notification"
+          ]
+        },
+        {
+          "name": "Nursing and Inpatient Operations",
+          "requiredCapabilities": [
+            "Patient assignment",
+            "Observations",
+            "Intake and output",
+            "Medication administration",
+            "Care plans",
+            "Shift handover",
+            "Escalation",
+            "Discharge readiness"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Revenue cycle and public health",
+      "deliverables": [
+        "Tariffs",
+        "Charge capture",
+        "Invoice",
+        "Payment",
+        "Refund",
+        "Balanced ledger",
+        "Eligibility",
+        "Authorization",
+        "Claim submission",
+        "Remittance",
+        "Disease surveillance",
+        "Immunization",
+        "DHIS2 adapter"
+      ],
+      "modules": [
+        "Tariffs and Charge Capture",
+        "Billing and Double-Entry Ledger",
+        "Insurance and Payer",
+        "Healthcare Coding",
+        "Public Health and Disease Surveillance"
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Standards-based interoperability",
+      "deliverables": [
+        "FHIR R4 server",
+        "HL7 V2 gateway",
+        "IHE integration",
+        "DICOM integration",
+        "Terminology mapping",
+        "Integration outbox",
+        "Retry and replay",
+        "Dead-letter queue",
+        "Partner conformance profiles"
+      ],
+      "exitCriteria": [
+        "FHIR operations validated",
+        "HL7 fixtures tested",
+        "IHE profile behavior tested",
+        "DICOMweb behavior tested",
+        "No hardcoded directory or protocol success",
+        "Failure and replay behavior observable"
+      ]
+    },
+    {
+      "phase": 6,
+      "name": "Offline and mobile",
+      "deliverables": [
+        "Android application",
+        "iPhone and iPad application",
+        "Encrypted local storage",
+        "Offline queue",
+        "Conflict resolution",
+        "Media synchronization",
+        "Device revocation"
+      ]
+    },
+    {
+      "phase": 7,
+      "name": "Governed clinical AI",
+      "deliverables": [
+        "Durable tenant policy",
+        "Draft and attestation database",
+        "PHI redaction gateway",
+        "Ambient scribe",
+        "Chart summarization",
+        "Coding assistance",
+        "Medication reconciliation assistance",
+        "Semantic search",
+        "Predictive and capacity tools"
+      ],
+      "safetyRules": [
+        "No autonomous diagnosis",
+        "No autonomous prescribing",
+        "No direct patient release without approval",
+        "Every AI draft is auditable",
+        "Every external model call uses approved credentials",
+        "All clinical AI has deterministic failure behavior"
+      ]
+    },
+    {
+      "phase": 8,
+      "name": "Analytics and reporting",
+      "deliverables": [
+        "Operational dashboards",
+        "Bed and occupancy analytics",
+        "Laboratory turnaround analytics",
+        "Claims status analytics",
+        "Clinical quality measures",
+        "Cohort export",
+        "Data lineage",
+        "Export authorization"
+      ]
+    },
+    {
+      "phase": 9,
+      "name": "Assurance and go-live",
+      "deliverables": [
+        "Security testing",
+        "Privacy review",
+        "Clinical safety review",
+        "Standards conformance testing",
+        "Performance testing",
+        "Disaster recovery drill",
+        "Backup and restore drill",
+        "Dependency and secret scanning",
+        "Penetration testing",
+        "Production runbook",
+        "Rollback plan",
+        "Known-limitations register",
+        "Incident response plan"
+      ],
+      "releaseGate": "No production release until P0 and P1 findings are closed and evidence is attached to the release."
+    }
+  ],
+  "modulesToBuildNow": [
+    {
+      "order": 1,
+      "name": "Tenant and Facility Governance",
+      "priority": "P0",
+      "reason": "Prevents cross-facility and cross-patient data exposure"
+    },
+    {
+      "order": 2,
+      "name": "Identity, RBAC, ABAC and Consent",
+      "priority": "P0",
+      "reason": "Controls access to all clinical, billing and export functions"
+    },
+    {
+      "order": 3,
+      "name": "Database Migration and Deployment Core",
+      "priority": "P0",
+      "reason": "Prevents each hospital deployment from becoming an irreproducible database variant"
+    },
+    {
+      "order": 4,
+      "name": "Durable Audit Ledger",
+      "priority": "P0",
+      "reason": "Required for clinical accountability and incident investigation"
+    },
+    {
+      "order": 5,
+      "name": "Master Patient Index",
+      "priority": "P0",
+      "reason": "Every clinical and administrative workflow depends on reliable patient identity"
+    },
+    {
+      "order": 6,
+      "name": "Appointments and Encounters",
+      "priority": "P0",
+      "reason": "Creates the first complete outpatient and inpatient workflow"
+    },
+    {
+      "order": 7,
+      "name": "ADT and Bed Management",
+      "priority": "P0",
+      "reason": "Required for inpatient patient flow"
+    },
+    {
+      "order": 8,
+      "name": "Clinical Notes and Orders",
+      "priority": "P0",
+      "reason": "Creates the central clinical work process"
+    },
+    {
+      "order": 9,
+      "name": "Pharmacy and Medication Safety",
+      "priority": "P0",
+      "reason": "Medication and stock safety are high-risk and central to a hospital"
+    },
+    {
+      "order": 10,
+      "name": "Laboratory",
+      "priority": "P0",
+      "reason": "Common hospital workflow and prerequisite for orders/results"
+    },
+    {
+      "order": 11,
+      "name": "Radiology",
+      "priority": "P0",
+      "reason": "Requires real PACS/DICOM integration rather than simulated metadata"
+    },
+    {
+      "order": 12,
+      "name": "Billing and Reconciliation",
+      "priority": "P0",
+      "reason": "Converts clinical activity into auditable financial operations"
+    },
+    {
+      "order": 13,
+      "name": "FHIR R4 and HL7 V2",
+      "priority": "P0",
+      "reason": "Allows external systems to integrate through supported standards"
+    },
+    {
+      "order": 14,
+      "name": "Integration Operations",
+      "priority": "P0",
+      "reason": "Provides retry, replay, idempotency and dead-letter handling"
+    },
+    {
+      "order": 15,
+      "name": "Nursing and Inpatient Care",
+      "priority": "P1",
+      "reason": "Completes the inpatient care workflow"
+    },
+    {
+      "order": 16,
+      "name": "Patient Portal",
+      "priority": "P1",
+      "reason": "Creates patient-facing access to the platform"
+    },
+    {
+      "order": 17,
+      "name": "Blood Bank",
+      "priority": "P1",
+      "reason": "High-risk but reusable hospital module"
+    },
+    {
+      "order": 18,
+      "name": "Operating Theater",
+      "priority": "P1",
+      "reason": "Requires safe integration with EMR, staffing and billing"
+    },
+    {
+      "order": 19,
+      "name": "Offline and Mobile",
+      "priority": "P1",
+      "reason": "Supports low-connectivity facilities after core clinical workflows are stable"
+    },
+    {
+      "order": 20,
+      "name": "Governed Clinical AI",
+      "priority": "P1",
+      "reason": "Must use durable governance and human accountability"
+    }
+  ],
+  "referenceApplicationRequiredWorkflows": [
+    {
+      "workflow": "Outpatient registration and visit",
+      "steps": [
+        "Register patient",
+        "Detect duplicate",
+        "Book appointment",
+        "Check in",
+        "Start encounter",
+        "Record vitals",
+        "Create note",
+        "Place orders",
+        "Dispense medication",
+        "Close encounter",
+        "Create invoice"
+      ]
+    },
+    {
+      "workflow": "Inpatient admission",
+      "steps": [
+        "Verify patient",
+        "Register encounter",
+        "Assign bed",
+        "Create nursing plan",
+        "Record observations",
+        "Place medication and laboratory orders",
+        "Record medication administration",
+        "Transfer or discharge",
+        "Reconcile medication",
+        "Create discharge summary",
+        "Settle bill"
+      ]
+    },
+    {
+      "workflow": "Laboratory critical result",
+      "steps": [
+        "Accession specimen",
+        "Receive analyzer result",
+        "Evaluate QC",
+        "Block release if QC fails",
+        "Create critical alert",
+        "Notify clinician",
+        "Record verbal read-back",
+        "Persist result",
+        "Audit all steps"
+      ]
+    },
+    {
+      "workflow": "MPI merge",
+      "steps": [
+        "Find duplicate candidates",
+        "Require authorized merge",
+        "Create merge history",
+        "Relink clinical records",
+        "Publish merge event",
+        "Verify outgoing integrations",
+        "Support unmerge",
+        "Audit merge and unmerge"
+      ]
+    },
+    {
+      "workflow": "FHIR interoperability",
+      "steps": [
+        "Authenticate caller",
+        "Authorize tenant and patient",
+        "Validate resource",
+        "Apply transaction",
+        "Write audit and outbox event",
+        "Return real status and location",
+        "Receive subscription event",
+        "Record failure and retry"
+      ]
+    }
+  ],
+  "testingRequirements": {
+    "testTypes": [
+      "Unit tests",
+      "Repository tests",
+      "REST contract tests",
+      "FHIR validation tests",
+      "HL7 fixture tests",
+      "DICOM fixture tests",
+      "Tenant isolation tests",
+      "Authorization tests",
+      "Clinical-safety rule tests",
+      "Billing reconciliation tests",
+      "Concurrency tests",
+      "Migration upgrade tests",
+      "Disaster recovery tests",
+      "Mobile offline-sync tests"
+    ],
+    "databaseMatrix": [
+      "PostgreSQL clean install",
+      "PostgreSQL upgrade",
+      "MySQL clean install",
+      "MySQL upgrade",
+      "SQL Server clean install",
+      "SQL Server upgrade"
+    ],
+    "ciRequiredStages": [
+      "Secret and dependency scan",
+      "Java and Kotlin compilation",
+      "Unit tests",
+      "Integration tests",
+      "Database migration tests",
+      "Security tests",
+      "Standards fixture tests",
+      "Package build",
+      "Container build",
+      "Documentation validation",
+      "Release artifact signing"
+    ],
+    "minimumCoveragePolicy": "No module is complete because a percentage threshold was met. Critical authorization, merge, medication, billing, audit, transaction, and concurrency paths require explicit branch and integration tests.",
+    "clinicalReviewRequiredFor": [
+      "Triage",
+      "Vital signs",
+      "Order safety",
+      "Medication reconciliation",
+      "Blood compatibility",
+      "Laboratory panic values",
+      "Clinical AI",
+      "Predictive risk tools",
+      "Billing clinical coding",
+      "De-identification"
+    ]
+  },
+  "documentationRequirements": {
+    "perModule": [
+      "Purpose",
+      "Implemented capabilities",
+      "Explicitly unsupported capabilities",
+      "Domain model",
+      "Database migrations",
+      "REST APIs",
+      "FHIR or HL7 mappings",
+      "Authorization model",
+      "Tenant scope",
+      "Audit events",
+      "Configuration",
+      "Deployment requirements",
+      "Failure behavior",
+      "Clinical validation status",
+      "Test evidence",
+      "Known limitations"
+    ],
+    "repositoryDocuments": [
+      "README",
+      "Developer guide",
+      "Architecture decision records",
+      "Threat model",
+      "Clinical safety case",
+      "Privacy impact assessment",
+      "Data dictionary",
+      "API conformance report",
+      "Database migration guide",
+      "Production runbook",
+      "Incident response plan",
+      "Known limitations register"
+    ]
+  },
+  "agentExecutionInstructions": {
+    "firstStep": "Inspect the current code and compare every advertised claim with implementation. Do not assume previous README statements are correct.",
+    "secondStep": "Create an implementation backlog from the P0 and P1 gaps in this document.",
+    "thirdStep": "For every change, identify exact files, database migrations, API contracts, authorization checks, audit events and tests.",
+    "fourthStep": "Implement the smallest complete vertical slice before expanding to another module.",
+    "deliveryFormat": [
+      "List changed files",
+      "List new files",
+      "List migration files",
+      "List security changes",
+      "List tests added",
+      "List test commands",
+      "List remaining known gaps",
+      "Do not mark a task complete without evidence"
+    ],
+    "requiredFinalReportFields": [
+      "implementedCapabilities",
+      "verifiedTestCommands",
+      "databaseVersionsTested",
+      "standardsProfilesTested",
+      "securityFindingsClosed",
+      "clinicalSafetyFindingsClosed",
+      "remainingKnownLimitations",
+      "notImplementedOrDeferred",
+      "releaseReadinessStatus"
+    ]
+  },
+  "releaseReadinessGate": {
+    "cannotBeProductionReadyUntil": [
+      "P0 gaps are closed",
+      "P1 gaps are either closed or documented and blocked",
+      "Full build passes",
+      "All required database migrations pass",
+      "Cross-tenant tests pass",
+      "Clinical safety rules are reviewed",
+      "Privacy and secret controls are reviewed",
+      "Standards claims are tested",
+      "Disaster recovery is demonstrated",
+      "A reference deployment works end-to-end",
+      "Independent security review is complete",
+      "Independent clinical review is complete",
+      "Operational documentation is complete"
+    ],
+    "legalAndCertificationNote": "Certification and regulatory compliance depend on jurisdiction, intended use, quality-system processes and independent assessment. Source code and testing cannot by themselves claim certification."
+  }
+}
