@@ -1,0 +1,1124 @@
+# MASTER DEVELOPMENT DIRECTIVE
+## OPES HealthCore — Universal Healthcare & Life Sciences Reusable SDK
+
+**Repository:** https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features
+
+**Primary stack:** Java 25, Spring Boot 4, Maven, PostgreSQL, Kotlin Multiplatform for optional mobile SDKs.
+
+**Mission:** Transform OPES HealthCore into a complete, modular, independently reusable software development foundation for healthcare, pharmaceutical and life-science developers.
+
+---
+
+# 1. CRITICAL PRODUCT DEFINITION
+
+OPES HealthCore is NOT a Hospital Information System, EMR, EHR, HIE, pharmacy application, diagnostic-center application or pharmaceutical manufacturing application.
+
+It is a **reusable SDK, framework and module library** from which independent software developers can build those applications.
+
+The purpose is to eliminate repeated implementation of complex, common healthcare and life-science functionality.
+
+Developers must be able to select the modules relevant to their industry, integrate them into their existing software, configure them and build their own user-facing products.
+
+### Mandatory architectural principles
+
+1. **Composable:** Each module must work independently with only its documented dependencies.
+2. **Domain-specific:** Pharmaceutical, clinical, diagnostic and research capabilities must have appropriate models and workflows.
+3. **Configurable:** Business rules, jurisdictions, workflows, terminology, databases and policies must be customizable.
+4. **Extensible:** Developers must be able to override default behavior through stable extension interfaces.
+5. **Headless-first:** Modules must work without any reference UI.
+6. **Frontend-independent:** Expose REST/OpenAPI and Java service interfaces. Support integration from Java, Kotlin, Python, .NET, JavaScript-based applications and other systems through documented APIs.
+7. **Production-oriented:** All advertised features must have implemented persistence, security, errors and tests.
+8. **Standards-aware:** Support relevant international standards without falsely claiming certification.
+9. **Offline-capable where relevant:** Offline support must be optional, not an unnecessary requirement for every module.
+10. **Backward-compatible:** Modules must use explicit versions and published compatibility rules.
+
+Never require a developer building a standalone pharmacy or diagnostic-center application to install the whole hospital reference application.
+
+---
+
+# 2. FIRST ASSIGNMENT: AUDIT AND STABILIZE THE EXISTING SDK
+
+Before expanding the platform:
+
+- Inspect every Maven module, class, service, repository, controller, migration, test and dependency.
+- Map all existing domain capabilities to their owning modules.
+- Identify duplicated services and competing sources of truth.
+- Identify missing persistence, security, validation and audit functionality.
+- Fix the existing Maven dependency-resolution failure.
+- Execute the full Maven build and existing test suites.
+- Establish database migration verification.
+- Address critical tenant-isolation defects.
+- Remove memory-only storage from clinical or regulated business operations.
+- Correct false or unsupported documentation claims.
+- Maintain an implementation and evidence register.
+
+Preserve functional code rather than needlessly rewriting it.
+
+For each reusable module, record:
+
+- Module ID and artifact coordinates
+- Domain ownership
+- Implemented capabilities
+- Public interfaces and APIs
+- Required dependencies
+- Optional integrations
+- Configurable features
+- Database migrations
+- Security requirements
+- Test coverage
+- Known limitations
+- Release-readiness status
+
+Do not claim the existing SDK is production-ready merely because its class structure is complete.
+
+---
+
+# 3. BUILD AN INDUSTRY CAPABILITY-PACK SYSTEM
+
+Create a capability-pack architecture.
+
+A capability pack is a dependency profile, configuration set, documentation package and integration recipe that assembles relevant reusable modules.
+
+It must not become a second monolithic implementation of the same functionality.
+
+Implement the following initial capability packs.
+
+## PACK 01 — Independent Pharmacy Information System
+
+**Pack ID:** `healthcore-pack-pharmacy`
+
+**Target developers:** Teams building independent retail pharmacies, hospital pharmacies, pharmaceutical wholesalers, pharmacy chains and dispensary applications.
+
+### Required reusable capabilities
+
+- Pharmacy registration and facility configuration
+- Drug and pharmaceutical product catalog
+- Generic names, brand names, strengths and formulations
+- ATC/RxNorm and locally configurable coding systems
+- Drug classifications and regulatory restrictions
+- Product suppliers and manufacturers
+- Procurement and purchase orders
+- Goods receipt and stock reconciliation
+- Batch, lot, expiry and serial-number tracking
+- FEFO inventory management
+- Multi-branch stock transfers
+- Prescription intake and validation
+- Electronic prescription integration
+- Dispensing and partial dispensing
+- Prescription refill management
+- Pharmacist verification
+- Controlled-substance register
+- Recall and quarantine
+- Returns and damaged stock
+- Drug interaction and allergy checking when clinical context is available
+- Medication counseling and safety notices
+- Stock valuation and inventory adjustments
+- Sales, invoicing and payments through optional finance modules
+- Insurance claims through optional payer integrations
+- Low-stock and near-expiry alerts
+- Barcode and QR scanning
+- Supplier and procurement APIs
+- Stock movement audit
+- Offline dispensing with conflict-safe synchronization, where configured
+
+### Required workflows
+
+1. Supplier → Purchase order → Receipt → Batch validation → Inventory
+2. Prescription → Pharmacist verification → Dispensing → Stock deduction
+3. Stock request → Inter-branch transfer → Receiving confirmation
+4. Recall notice → Identify affected batches → Quarantine → Return/destruction
+5. Expiry monitoring → Alert → Withdrawal → Adjustment
+6. Controlled drug → Authorized dispensing → Witness verification → Audit
+7. Stock sale → Invoice → Payment → Ledger entry, if finance is enabled
+
+### Required deliverables
+
+Provide pharmacy-specific entities, services, interfaces, workflows, events, REST APIs, default roles, configurable forms, reports, integration guides and automated tests.
+
+The standalone pharmacy pack must **not depend on the EMR, LIS, inpatient or HIS modules**.
+
+Clinical patient records and e-prescriptions must be optional integrations.
+
+---
+
+## PACK 02 — Diagnostic Center Information System
+
+**Pack ID:** `healthcore-pack-diagnostics`
+
+**Target developers:** Independent medical laboratories, diagnostic centers, radiology centers, pathology laboratories and combined diagnostic facilities.
+
+### Required reusable capabilities
+
+- Diagnostic-center and branch configuration
+- Patient/client registration
+- Referring-doctor and referring-facility management
+- Test and examination catalogs
+- Diagnostic packages and profiles
+- Laboratory orders and imaging orders
+- Appointment and sample collection scheduling
+- Barcode specimen accessioning
+- Specimen identification, collection and tracking
+- Specimen rejection and recollection
+- Laboratory worklists
+- Analyzer interfaces
+- ASTM and HL7 result integration
+- Manual result entry
+- Instrument and QC management
+- Westgard and configurable QC policies
+- Reference intervals
+- Critical result detection and escalation
+- Result validation and authorization
+- Result correction and amendment
+- Pathology and histology workflows
+- Radiology scheduling and worklists
+- DICOM/DICOMweb and PACS adapters
+- Imaging reports and structured findings
+- Report generation and signing
+- Patient result access
+- Referring-clinician result delivery
+- Billing and payment through optional modules
+- Turnaround-time monitoring
+- Referral laboratory and send-out management
+- Equipment calibration and maintenance
+- Quality incidents and corrective actions
+
+### Required workflows
+
+1. Patient/referral → Order → Payment/coverage check → Specimen collection
+2. Specimen → Accession → Processing → QC → Result validation
+3. Critical result → Clinician notification → Read-back → Acknowledgment
+4. Imaging request → Scheduling → Modality → PACS → Reporting
+5. Verified result → Signed report → Secure delivery
+6. Rejected specimen → Reason → Recollection → New processing
+7. External analyzer → Message ingestion → Validation → Result association
+
+### Required deliverables
+
+Independent laboratory and radiology modules, with an optional combined diagnostic-center pack.
+
+A laboratory-only developer must not need radiology modules. A radiology-only developer must not need laboratory analyzers or chemistry workflows.
+
+Support ISO 15189-oriented quality-management features without claiming that software alone confers accreditation.
+
+---
+
+## PACK 03 — Pharmaceutical Manufacturing Software
+
+**Pack ID:** `healthcore-pack-pharma-manufacturing`
+
+**Target developers:** Companies building pharmaceutical ERP, Manufacturing Execution Systems (MES), quality-management software, production tracking and pharmaceutical supply-chain applications.
+
+This is a NEW domain. Do not simply rename hospital pharmacy modules as manufacturing modules.
+
+### Required reusable capabilities
+
+**Manufacturing and production**
+- Pharmaceutical product master data
+- Active pharmaceutical ingredients (API) and excipients
+- Formulation and bill of materials
+- Master manufacturing formulas
+- Manufacturing instructions
+- Production planning
+- Production orders
+- Batch numbering
+- Batch manufacturing records (BMR/eBMR)
+- Batch packaging records (BPR/eBPR)
+- Material dispensing and weighing verification
+- Equipment allocation
+- Line clearance
+- Production-stage verification
+- In-process controls
+- Yield calculations and reconciliation
+- Packaging and labeling
+- Finished-goods registration
+- Batch genealogy and traceability
+
+**Quality control**
+- Raw material sampling
+- Incoming material testing
+- In-process laboratory testing
+- Finished-product quality tests
+- QC specification management
+- Certificate of Analysis generation
+- Stability studies
+- Out-of-specification and out-of-trend investigations
+- Quality approval or rejection
+- Retained samples
+- Reference standards and reagent management
+
+**Quality management**
+- SOP and controlled-document management
+- Document versioning
+- Deviations and nonconformances
+- CAPA
+- Change control
+- Quality risk management
+- Supplier qualification
+- Equipment qualification and calibration
+- Training and competency records
+- Audit trail and electronic signatures
+- Complaint management
+- Recall management
+- Product quality review
+- Validation documentation and evidence
+
+**Warehouse and distribution**
+- Raw material inventory
+- Packaging inventory
+- Quarantine and release status
+- Batch inventory
+- Serialization and aggregation interfaces
+- GS1 DataMatrix identification
+- Expiry and shelf-life tracking
+- Warehouse storage conditions
+- Cold-chain monitoring
+- Distribution and shipment traceability
+- Returns, recall and product destruction
+
+### Required workflows
+
+1. Product formulation → Approved master formula → Manufacturing instruction
+2. Procurement → Incoming material → Quarantine → Sampling → QC release
+3. Production order → Material dispensing → Manufacturing → In-process QC
+4. Completed batch → QC review → QA review → Authorized batch disposition
+5. Packaging → Serialization → Finished goods → Distribution
+6. Deviation → Investigation → Root cause → CAPA → Effectiveness review
+7. Complaint → Affected batch identification → Investigation → Recall decision
+8. Equipment calibration → Qualification → Authorized production use
+
+### Industry requirements
+
+Design configurable controls aligned, where applicable, with WHO GMP, ICH Q7–Q10, EU GMP Annex 11 and FDA 21 CFR Part 11.
+
+Support:
+- Computerized-system validation evidence
+- Electronic record integrity
+- Electronic signatures and signer identity
+- Maker-checker and segregation of duties
+- Audit trails
+- Controlled document versions
+- Electronic batch-record review
+- Traceability
+- Record retention
+- Data integrity principles
+
+These are technical capabilities supporting regulated workflows; do not claim automatic GMP or regulatory compliance.
+
+**Critical isolation rule:** Pharmaceutical manufacturing must work without MPI, patient encounters, EMR notes or hospital modules.
+
+---
+
+## PACK 04 — Life Sciences, Biotechnology and Research Software
+
+**Pack ID:** `healthcore-pack-life-sciences`
+
+**Target developers:** Biotechnology companies, contract research organizations, research institutions, genomics laboratories, biobanks, biomedical research centers and life-science technology companies.
+
+### Required reusable capabilities
+
+**Research operations**
+- Research organizations and laboratories
+- Research projects and studies
+- Protocol management and versioning
+- Research team assignments
+- Study milestones
+- Controlled research documents
+- Research approvals and governance
+- Ethics approval tracking
+- Research collaboration management
+
+**Laboratory Information Management (LIMS)**
+- Scientific sample registration
+- Sample identifiers and barcode tracking
+- Sample accessioning
+- Sample preparation
+- Chain of custody
+- Experiment management
+- Instrument scheduling and integration
+- Sample processing and analysis
+- Quality control
+- Results and scientific data storage
+- Sample retention and disposal
+
+**Electronic Laboratory Notebook (ELN)**
+- Experiments and observations
+- Protocol templates
+- Research notes
+- Version history
+- Attachments
+- Electronic signatures
+- Experiment reproducibility
+- Experiment review and approval
+
+**Biobanking**
+- Biospecimen collection
+- Donor/participant consent where relevant
+- Sample inventory
+- Freezer and location mapping
+- Temperature monitoring
+- Aliquot genealogy
+- Chain of custody
+- Sample requests and fulfillment
+- Controlled distribution
+- Sample disposal
+
+**Genomics and bioinformatics**
+- Sequencing sample metadata
+- Library preparation tracking
+- Sequencing run metadata
+- Bioinformatics pipeline tracking
+- Reference genome and pipeline versioning
+- Analysis result provenance
+- Variant-data adapters
+- Genomics data-access governance
+- Research dataset lineage
+
+**Clinical research**
+- Study participants
+- Screening and enrollment
+- Eligibility workflows
+- Electronic informed consent
+- Case report forms
+- Study visits
+- Protocol deviations
+- Adverse-event recording
+- Investigational product accountability
+- Data queries and corrections
+- Clinical research data export
+- De-identification and controlled disclosure
+- Research data standards integration
+
+### Required workflows
+
+1. Study proposal → Protocol → Ethics approval → Study activation
+2. Sample collection → Registration → Processing → Storage → Analysis
+3. Research protocol → Experiment → Observation → Review → Approval
+4. Biobank request → Authorization → Sample retrieval → Shipment
+5. Sequencing → Bioinformatics analysis → Quality review → Data publication
+6. Clinical study → Consent → Enrollment → Visits → Data cleaning → Export
+7. Dataset request → Governance approval → De-identification assessment → Authorized access
+
+### Required standards and interfaces
+
+Support applicable CDISC formats, including CDASH, SDTM and ADaM; OMOP mappings where appropriate; configurable HL7 FHIR research exchange; and ISO 20387-oriented biobanking requirements.
+
+Apply ICH E6(R3) to regulated clinical trial workflows where applicable.
+
+Scientific samples must not be automatically modeled as patients. A biological sample may have a donor, subject, source organism, experimental lineage or no individual patient relationship at all.
+
+Keep research identity, specimen and scientific-data models independent from clinical EMR assumptions.
+
+---
+
+## PACK 05 — Electronic Medical Record (EMR)
+
+**Pack ID:** `healthcore-pack-emr`
+
+**Target developers:** Outpatient clinics, specialist clinics, ambulatory care and clinical record applications.
+
+### Required capabilities
+
+- Patient identity and registration
+- Encounters and visits
+- Clinical histories
+- Allergies and medication lists
+- Vitals and observations
+- Triage
+- SOAP and structured clinical notes
+- Diagnoses and problems
+- Procedures
+- Orders and results
+- Electronic prescriptions
+- Clinical decision support
+- Care plans
+- Referrals
+- Clinical document templates
+- Consent and privacy
+- Clinical audit
+- Practitioner identity and authorization
+- Role-specific workflows
+
+Provide configurable specialty extensions for pediatrics, cardiology, dentistry, ophthalmology, dermatology, obstetrics and other clinical specialties.
+
+### Required workflow
+
+`Patient registration → Appointment/arrival → Triage → Consultation → Orders/prescription → Results → Clinical plan → Follow-up`
+
+The standalone EMR must not require payroll, hospital accounting, mortuary or inpatient modules.
+
+---
+
+## PACK 06 — Electronic Health Record (EHR)
+
+**Pack ID:** `healthcore-pack-ehr`
+
+**Target developers:** Teams building longitudinal health-record systems spanning multiple encounters, providers or care settings.
+
+### Required capabilities
+
+Extend the relevant EMR foundation with:
+
+- Longitudinal medical history
+- Cross-encounter clinical timelines
+- Medication and allergy reconciliation
+- Provenance tracking
+- Source attribution
+- Patient consent
+- Care coordination
+- Health information sharing
+- External document import
+- Clinical summaries
+- International Patient Summary where supported
+- Patient-access APIs
+- Health record portability
+- Privacy segmentation
+- Controlled external data reconciliation
+
+### Required workflow
+
+`Patient identity → Historical record aggregation → Provenance validation → Clinical reconciliation → Longitudinal record → Authorized access/export`
+
+An EHR is not simply an EMR with more menus. It must preserve clinical provenance and reconcile information from multiple sources.
+
+---
+
+## PACK 07 — Hospital Information System (HIS)
+
+**Pack ID:** `healthcore-pack-his`
+
+**Target developers:** Teams building complete hospital management and integrated clinical/administrative platforms.
+
+Compose relevant healthcare modules through configuration rather than duplicating them.
+
+### Optional domain capabilities
+
+- Registration and MPI
+- Appointments and queues
+- Emergency department
+- Outpatient care
+- Inpatient and ADT
+- Nursing and eMAR
+- Surgery and anesthesia
+- Pharmacy
+- Laboratory
+- Radiology
+- Blood bank
+- Billing and insurance
+- Bed and ward management
+- Workforce and rosters
+- Materials and procurement
+- Assets and biomedical equipment
+- Quality and incident reporting
+- Public health reporting
+- Executive analytics
+- Mortuary and civil registration
+- Patient portal
+- Offline mobile operations
+
+### Requirements
+
+Create selectable HIS composition profiles for:
+
+- Small outpatient hospital
+- General hospital
+- Multispecialty hospital
+- Referral/tertiary hospital
+- Multi-facility hospital network
+
+The developer must be able to remove unneeded modules without breaking unrelated workflows.
+
+Avoid mandatory global dependencies on every available module.
+
+---
+
+## PACK 08 — Health Information Exchange (HIE)
+
+**Pack ID:** `healthcore-pack-hie`
+
+**Target developers:** Teams building institutional, regional, national or cross-network health-information exchange services.
+
+### Required capabilities
+
+- Provider and organization directories
+- Master Patient Index integration
+- Record locator services
+- Patient identity cross-references
+- Patient matching and reconciliation
+- FHIR R4 APIs and configurable profiles
+- HL7 v2 interfaces
+- IHE integration profiles
+- Clinical document registries
+- Secure document exchange
+- Consent and policy evaluation
+- Identity federation
+- Trusted partner onboarding
+- Data transformation and normalization
+- Terminology mapping
+- Subscription/event notifications
+- Data provenance
+- Audit and access logging
+- Idempotent integration processing
+- Integration retry and dead-letter handling
+- Bulk data exchange with authorization
+- Interoperability monitoring dashboards
+- Edge/offline exchange adapters where appropriate
+
+### Required workflow
+
+`Partner onboarding → Trust verification → Patient discovery → Consent/authorization → Data request → Transformation → Exchange → Receipt acknowledgment → Audit`
+
+The HIE must operate independently from inpatient care, hospital billing, pharmacy sales or production-manufacturing systems.
+
+---
+
+# 4. SHARED FOUNDATIONAL MODULES
+
+Do not duplicate foundational capabilities across industry packs.
+
+Use existing HealthCore modules where suitable and introduce missing shared foundations where necessary.
+
+Establish clear contracts for:
+
+1. Authentication and authorization
+2. Tenant/organization/facility context
+3. Audit events and electronic signatures
+4. Workflow orchestration
+5. Configurable forms and validation
+6. Document rendering and storage
+7. Notifications
+8. Scheduling and calendar infrastructure
+9. Event publishing and subscriptions
+10. Transactional outbox/inbox
+11. Inventory primitives and traceability
+12. Financial ledger integration
+13. Terminology and reference data
+14. Device and instrument integration
+15. Data import/export
+16. Reporting and analytics
+17. Offline sync
+18. API security and integration governance
+19. Regulatory configuration and retention policies
+20. Provenance and immutable record history
+
+Shared infrastructure must remain domain-neutral.
+
+Do not force unrelated domains to share mutable JPA entities simply because their business objects have similar names. Use explicit mapping contracts and domain adapters.
+
+For example, a clinical specimen, a research biospecimen and a pharmaceutical QC sample may share barcode infrastructure but must retain distinct domain semantics.
+
+---
+
+# 5. DEVELOPER SELECTIVITY AND INSTALLATION
+
+Implement three installation modes.
+
+### Mode A — Individual module
+
+The developer selects a single module, such as:
+
+`healthcore-starter-terminology-cdss`
+
+Only required dependencies are installed.
+
+### Mode B — Industry capability pack
+
+The developer selects a profile, such as:
+
+`healthcore-pack-pharmacy`
+
+The pack assembles its required modules with sensible configurable defaults.
+
+### Mode C — Custom composition
+
+The developer combines individual modules:
+
+Example: MPI + Laboratory + Billing + Patient Portal.
+
+This must be supported without requiring a predefined industry pack.
+
+### Pack manifests
+
+Create a versioned machine-readable manifest for every pack containing:
+
+- Pack ID and version
+- Description and intended developer audience
+- Required modules
+- Optional modules
+- Dependency constraints
+- Supported database platforms
+- Provided capabilities
+- Exposed APIs and events
+- Required configuration
+- Default roles and permissions
+- Relevant standards and applicability
+- Reference integrations
+- Installation examples
+- Known limitations
+
+Provide dependency conflict detection and module compatibility checks.
+
+---
+
+# 6. EASY INTEGRATION GUIDES — MANDATORY
+
+The SDK must be extraordinarily easy for other developers to understand and integrate.
+
+Create a dedicated `docs/integrations/` area.
+
+Every individual module and every industry pack must have a complete integration guide.
+
+### Mandatory guide structure
+
+1. What the module solves
+2. Who should use it
+3. When not to use it
+4. Required dependencies
+5. Installation instructions
+6. Minimum configuration
+7. Database setup and migrations
+8. Authentication and authorization
+9. Most common workflows
+10. Java/Spring service usage examples
+11. REST API examples
+12. Request and response payloads
+13. Error codes and recovery behavior
+14. Events and webhooks
+15. Customization and extension points
+16. Optional integrations
+17. Testing examples
+18. Production deployment considerations
+19. Troubleshooting
+20. Version compatibility and migration guide
+
+### Developer example projects
+
+Create independently runnable, minimal examples:
+
+- `examples/standalone-pharmacy`
+- `examples/diagnostic-laboratory`
+- `examples/radiology-center`
+- `examples/pharma-manufacturing`
+- `examples/life-sciences-lims`
+- `examples/biobank`
+- `examples/clinical-research`
+- `examples/outpatient-emr`
+- `examples/longitudinal-ehr`
+- `examples/hospital-his`
+- `examples/regional-hie`
+
+These are **SDK integration examples, not complete commercial applications**.
+
+Each example must start with only the required dependencies and demonstrate actual persisted operations.
+
+Include Docker Compose for local development, sample synthetic datasets, environment templates, API collections, health checks and test scripts.
+
+### External application integration
+
+Document integration for:
+
+- Existing Java/Spring applications
+- Independent REST consumers
+- Python applications
+- .NET applications
+- Kotlin/Android applications
+- Web applications using OpenAPI-generated clients
+- External ERP systems
+- Laboratory analyzers
+- PACS and imaging systems
+- Existing hospital systems
+- Research data platforms
+- Pharmaceutical manufacturing equipment and external systems
+
+Do not require developers to adopt a particular frontend framework.
+
+Generate language-specific clients from versioned OpenAPI contracts where feasible.
+
+---
+
+# 7. EXTENSION POINTS AND CONFIGURATION
+
+Every significant module must expose stable configuration and extension mechanisms.
+
+Examples:
+
+**Pharmacy**
+- Custom dispensing policy
+- Custom controlled-substance regulation
+- Custom product classification
+- Custom insurance integration
+- Custom inventory valuation
+
+**Diagnostics**
+- Custom reference intervals
+- Custom result-validation workflows
+- Analyzer adapters
+- Custom QC rules
+- Critical-value escalation policies
+
+**Pharmaceutical manufacturing**
+- Custom production workflow
+- Manufacturing formula templates
+- Batch-record templates
+- Quality release workflow
+- E-signature approval requirements
+- Serialization adapters
+
+**Life sciences**
+- Custom experimental protocols
+- Sample metadata schemas
+- Scientific instrument adapters
+- Custom bioinformatics pipelines
+- Research consent policies
+
+**Clinical software**
+- Custom specialty packs
+- Care pathways
+- Clinical templates
+- CDS rules
+- Terminology sets
+- Clinical approval workflows
+
+Support Spring configuration properties, interfaces/SPIs, strategy implementations, custom workflow definitions and well-documented application events.
+
+Extensions must not require developers to modify the SDK's internal source code.
+
+---
+
+# 8. FORMS, REPORTS AND WORKFLOW DEFINITIONS
+
+Do not treat a list of form titles as completed form functionality.
+
+Each form must have:
+
+- Unique template identifier
+- Domain and purpose
+- Version
+- Structured schema
+- Field types and validation
+- Units and terminology bindings
+- Conditional fields
+- Required/optional status
+- Role permissions
+- Electronic signature requirements
+- Persistence mapping
+- Print/PDF definition
+- Localization resources
+- Approval/review status
+- Relevant tests
+
+Each workflow must include:
+
+- States and transitions
+- Trigger events
+- Actor roles
+- Preconditions
+- Authorization policy
+- Validation rules
+- Business actions
+- Transaction boundaries
+- Side effects
+- Failure/retry behavior
+- Audit requirements
+- Integration events
+- Completion criteria
+
+Reports must document their metric definitions, query logic, filters, tenant scope, source tables and export formats.
+
+Do not fabricate clinical or financial metrics.
+
+---
+
+# 9. REGULATORY AND STANDARDS DESIGN
+
+Create a standards applicability matrix for each module and capability pack.
+
+Relevant references may include:
+
+- HL7 FHIR R4 and applicable implementation guides
+- HL7 v2
+- IHE profiles
+- DICOM/DICOMweb
+- ICD-10/ICD-11
+- LOINC
+- SNOMED CT
+- ATC/RxNorm
+- UCUM
+- WHO GMP
+- ICH Q7, Q8, Q9 and Q10
+- EU GMP Annex 11
+- FDA 21 CFR Part 11
+- ISO 15189
+- ISO 20387
+- ICH E6(R3)
+- CDISC SDTM, ADaM and CDASH
+- OMOP CDM
+- GS1 identification and traceability standards
+- Applicable national data-protection and health-sector requirements
+
+Implement jurisdiction-specific regulatory adapters and configuration profiles, including relevant Cameroon and regional requirements when an applicable use case is identified.
+
+Do not imply that a standard applies universally to every industry or country.
+
+Do not label software as accredited, certified, GMP-compliant or regulator-approved without appropriate independent evidence.
+
+Maintain verification records and distinguish:
+- Standard identified
+- Implementation in progress
+- Technical implementation complete
+- Automated conformance evidence available
+- Independently validated/certified, if applicable
+
+---
+
+# 10. TESTING AND RELEASE QUALITY GATES
+
+Each module must have its own unit and integration test suites.
+
+Test the module in isolation and when combined with related modules.
+
+Mandatory scenarios:
+
+- Successful installation
+- Startup with valid configuration
+- Startup failure with missing critical configuration
+- CRUD and workflow persistence
+- Authentication
+- Authorization
+- Tenant isolation
+- Audit integrity
+- Invalid input
+- Duplicate requests
+- Concurrent requests
+- Transaction rollback
+- Idempotency
+- Database migration
+- Event delivery and retry
+- External integration failure
+- Restart and data recovery
+- Compatibility with previous supported versions
+
+Additional clinical safety tests must be included for clinical modules.
+
+Manufacturing and life-science modules must additionally test electronic signatures, controlled record changes, traceability and appropriate regulated workflows.
+
+Where relevant, support PostgreSQL first and verify declared SQL Server/MySQL compatibility before advertising it.
+
+Set minimum test-coverage targets, but do not equate coverage percentage with correctness.
+
+The release gate is a successful build plus independently reviewable test evidence, not a feature-completion claim.
+
+---
+
+# 11. DEVELOPER DOCUMENTATION PORTAL
+
+Build a well-organized developer documentation structure.
+
+Recommended sections:
+
+- Getting started
+- SDK architecture
+- Installation and configuration
+- Individual modules
+- Industry capability packs
+- API reference
+- Workflow reference
+- Domain models
+- Events and integration
+- Security
+- Database migrations
+- Offline/mobile SDK
+- Sample applications
+- Troubleshooting
+- Versioning and upgrades
+- Known limitations
+- Contribution guidelines
+
+Provide a searchable module catalog showing:
+
+- Name
+- Purpose
+- Industry relevance
+- Dependencies
+- Supported integrations
+- Documentation links
+- Example projects
+- Current implementation status
+- Release version
+
+Maintain working code snippets and test them in CI where practical.
+
+Target a first successful standalone example setup in approximately 15–30 minutes on a prepared developer environment. Measure actual setup time instead of advertising unverified claims.
+
+---
+
+# 12. REQUIRED REPOSITORY STRUCTURE
+
+Preserve and improve existing module paths.
+
+Organize the repository conceptually as:
+
+```text
+healthcore/
+├── healthcore-bom/
+├── healthcore-persistence-core/
+├── healthcore-security-audit/
+├── healthcore-starter-*/
+│
+├── [new independent domain starters]
+│   ├── pharmaceutical-manufacturing/
+│   ├── pharma-quality-management/
+│   ├── pharma-batch-records/
+│   ├── pharma-serialization/
+│   ├── life-sciences-lims/
+│   ├── electronic-lab-notebook/
+│   ├── biobanking/
+│   ├── genomics-research/
+│   └── clinical-research/
+│
+├── packs/
+│   ├── pharmacy/
+│   ├── diagnostics/
+│   ├── pharma-manufacturing/
+│   ├── life-sciences/
+│   ├── emr/
+│   ├── ehr/
+│   ├── his/
+│   └── hie/
+│
+├── examples/
+├── docs/
+│   ├── getting-started/
+│   ├── modules/
+│   ├── packs/
+│   ├── integrations/
+│   ├── workflows/
+│   ├── api/
+│   ├── standards/
+│   └── operations/
+│
+└── .github/workflows/
+```
+
+This is a target logical structure, not permission to rename or move existing directories indiscriminately. Preserve stable Maven artifact coordinates and compatibility wherever possible.
+
+---
+
+# 13. DEVELOPMENT EXECUTION ORDER
+
+Execute in dependency order.
+
+**Phase 1 — Foundation stabilization**
+- Resolve Maven build failures.
+- Repair critical security and durability defects.
+- Ensure reproducible builds and migrations.
+- Introduce capability manifests and dependency checks.
+
+**Phase 2 — Core SDK contracts**
+- Finalize module APIs.
+- Define extension points.
+- Standardize errors, events and audit conventions.
+- Remove competing implementations.
+
+**Phase 3 — Independent pharmacy and diagnostic packs**
+- Strengthen the existing pharmacy and LIS modules.
+- Complete missing standalone functionality.
+- Create isolated example integrations.
+- Verify package independence.
+
+**Phase 4 — Pharmaceutical manufacturing**
+- Build manufacturing-specific domain modules.
+- Implement production, batch, QC, QA, document-control and traceability workflows.
+- Add appropriate validation evidence.
+
+**Phase 5 — Life sciences**
+- Build LIMS, ELN, biobank, genomics and clinical-research modules.
+- Add scientific provenance, sample genealogy and research governance.
+
+**Phase 6 — EMR/EHR/HIS/HIE compositions**
+- Assemble existing domain modules into appropriate optional packs.
+- Remove duplicated clinical implementations.
+- Verify end-to-end composability and integration examples.
+
+**Phase 7 — Developer experience and publication**
+- Complete integration guides.
+- Build SDK documentation and examples.
+- Publish versioned artifacts through an authenticated Maven package registry.
+- Document installation, compatibility and upgrades.
+
+**Phase 8 — Quality assurance and release**
+- Execute independent module tests.
+- Execute composition tests.
+- Verify security and standards claims.
+- Complete release-readiness documentation.
+- Publish only modules that pass their gates.
+
+Phases may be developed in parallel when dependencies permit, but no incomplete prerequisite may be presented as completed.
+
+---
+
+# 14. GITHUB AND DELIVERY RULES
+
+For every implemented module:
+
+1. Work in a dedicated branch.
+2. Keep changes scoped to the assigned capability.
+3. Add or update tests.
+4. Update the capability manifest.
+5. Update installation and integration documentation.
+6. Add a runnable reference example.
+7. Run the relevant verification steps.
+8. Create a pull request with actual evidence.
+9. Record blockers and known limitations.
+10. Merge only when required checks pass and repository governance permits.
+
+Do not silently overwrite other agents' changes.
+
+Do not create placeholder classes merely to increase module counts.
+
+Do not return simulated successful responses for unimplemented workflows.
+
+Do not advertise regulatory conformance that has not been demonstrated.
+
+Use deterministic synthetic records in examples and automated tests. Never use identifiable real patient records for seed data.
+
+---
+
+# 15. REQUIRED FINAL DELIVERABLES
+
+Produce and maintain these repository artifacts:
+
+1. `HEALTHCORE_MODULE_INVENTORY.md`
+2. `HEALTHCORE_DEPENDENCY_MATRIX.md`
+3. `HEALTHCORE_CAPABILITY_PACKS.md`
+4. `HEALTHCORE_INDUSTRY_WORKFLOW_CATALOG.md`
+5. `HEALTHCORE_PUBLIC_API_CATALOG.md`
+6. `HEALTHCORE_EXTENSION_POINT_REGISTER.md`
+7. `HEALTHCORE_STANDARDS_APPLICABILITY_MATRIX.md`
+8. `HEALTHCORE_INTEGRATION_GUIDE_INDEX.md`
+9. `HEALTHCORE_TEST_EVIDENCE_REGISTER.md`
+10. `HEALTHCORE_RELEASE_READINESS.md`
+
+Each deliverable must refer to actual source files, implemented contracts and verification evidence.
+
+The capability-pack catalog must explicitly distinguish existing functionality, newly implemented functionality, partially implemented functionality and planned functionality.
+
+# 16. ULTIMATE SUCCESS CRITERIA
+
+A developer must be able to:
+
+- Build standalone pharmacy software without installing an HIS.
+- Build diagnostic laboratory software without installing pharmacy or inpatient modules.
+- Build radiology software without deploying a complete LIS.
+- Build pharmaceutical manufacturing software without needing patient records or EMR services.
+- Build a life-science LIMS or ELN without hospital dependencies.
+- Build an EMR using a small selection of clinical modules.
+- Build an EHR using longitudinal care and interoperability modules.
+- Build a hospital HIS by composing relevant modules.
+- Build an HIE without deploying hospital business workflows.
+- Integrate selected HealthCore capabilities into an existing independent application through stable Java APIs or documented REST interfaces.
+
+Every example must perform real persisted operations, pass its required tests and have working integration documentation.
+
+**The final objective is an industry-grade reusable SDK that reduces development effort, preserves developer independence, and supplies trustworthy, well-tested healthcare and life-science building blocks.**
+
+Begin by auditing the current repository against this directive, stabilizing existing functionality and implementing the missing reusable capabilities in dependency order. Do not confuse the framework with an end-user application. Do not claim success without verification evidence.

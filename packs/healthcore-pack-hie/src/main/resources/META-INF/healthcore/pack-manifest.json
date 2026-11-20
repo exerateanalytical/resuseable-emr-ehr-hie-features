@@ -1,0 +1,31 @@
+{
+  "packId": "healthcore-pack-hie",
+  "packNumber": "PACK-08",
+  "version": "1.0.0",
+  "industryDomain": "REGIONAL_NATIONAL_HIE",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-mpi",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-hie-interop",
+    "healthcore-starter-fhir-hie",
+    "healthcore-starter-interoperability-ihe",
+    "healthcore-starter-integration-ops",
+    "healthcore-starter-api-product"
+  ],
+  "optionalModules": [
+    "healthcore-starter-disease-surveillance",
+    "healthcore-starter-deidentification-research",
+    "healthcore-starter-analytics"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-uhc-billing",
+    "healthcore-starter-pharmacy-commerce",
+    "healthcore-starter-pharmacy-lis",
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-biobanking"
+  ]
+}

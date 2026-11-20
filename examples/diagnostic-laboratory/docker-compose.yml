@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: healthcore_lab
+      POSTGRES_USER: healthcore
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_local_only}
+    ports:
+      - "5432:5432"

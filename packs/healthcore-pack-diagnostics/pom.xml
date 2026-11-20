@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>healthcore-pack-diagnostics</artifactId>
+    <name>Opes HealthCore Capability Pack 02 — Diagnostic Centers (Lab &amp; Radiology)</name>
+    <description>
+        Modality-neutral diagnostics capability pack aligned with ISO 15189 technical controls.
+        Base pack includes diagnostics-core only; add healthcore-starter-lis-diagnostics (lab-only),
+        healthcore-starter-radiology (radiology-only), or both via optional profiles without cross-coupling.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-diagnostics-core</artifactId>
+        </dependency>
+    </dependencies>
+    <profiles>
+        <profile>
+            <id>lab-only</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-lis-diagnostics</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-hl7-astm-dicom</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>radiology-only</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-radiology</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-hl7-astm-dicom</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>combined-diagnostics</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-lis-diagnostics</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-radiology</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.opeshealth.healthcore</groupId>
+                    <artifactId>healthcore-starter-hl7-astm-dicom</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>

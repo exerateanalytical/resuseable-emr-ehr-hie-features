@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>healthcore-pack-ehr</artifactId>
+    <name>Opes HealthCore Capability Pack 06 — Longitudinal EHR</name>
+    <description>
+        Longitudinal multi-facility EHR capability pack extending healthcore-pack-emr with
+        cross-facility provenance, FHIR R4/IPS patient summary portability, patient portal access,
+        and clinical document templates. Excludes inpatient bed/OT/mortuary modules by default.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-pack-emr</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-hie-interop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-fhir-hie</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-patient-portal</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-templates-dashboards</artifactId>
+        </dependency>
+    </dependencies>
+</project>

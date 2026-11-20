@@ -1,0 +1,30 @@
+{
+  "packId": "healthcore-pack-emr",
+  "packNumber": "PACK-05",
+  "version": "1.0.0",
+  "industryDomain": "OUTPATIENT_EMR",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-mpi",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-scheduling",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-orders-results",
+    "healthcore-starter-workflow-engine"
+  ],
+  "optionalModules": [
+    "healthcore-starter-telemedicine",
+    "healthcore-starter-uhc-billing",
+    "healthcore-starter-patient-portal",
+    "healthcore-starter-offline-sync"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-crvs-mortuary",
+    "healthcore-starter-workforce-roster",
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-biobanking"
+  ]
+}

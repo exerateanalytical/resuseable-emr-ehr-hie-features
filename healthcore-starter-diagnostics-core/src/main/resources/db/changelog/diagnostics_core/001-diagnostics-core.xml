@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="diagcore-001-referring-partners" author="opeshealth">
+        <createTable tableName="hc_diag_referring_partners">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="partner_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="partner_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="partner_type" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="report_delivery_channel" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="active" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="diagcore-002-diagnostic-orders" author="opeshealth">
+        <createTable tableName="hc_diag_service_orders">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="accession_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="modality_domain" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="catalog_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="subject_ref" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="referring_partner_code" type="varchar(64)"/>
+            <column name="tat_sla_minutes" type="integer" defaultValueNumeric="180"><constraints nullable="false"/></column>
+            <column name="rejection_reason" type="varchar(240)"/>
+            <column name="recollection_requested" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="ordered_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="verified_at" type="${timestamp_type}"/>
+            <column name="tat_breached" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="diagcore-003-iso15189-quality" author="opeshealth">
+        <createTable tableName="hc_diag_quality_incidents">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="incident_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="phase" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="accession_number" type="varchar(64)"/>
+            <column name="description" type="clob"><constraints nullable="false"/></column>
+            <column name="corrective_action" type="clob"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="reported_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

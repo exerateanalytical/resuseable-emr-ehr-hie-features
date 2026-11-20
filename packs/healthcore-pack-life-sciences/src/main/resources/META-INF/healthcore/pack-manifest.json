@@ -1,0 +1,28 @@
+{
+  "packId": "healthcore-pack-life-sciences",
+  "packNumber": "PACK-04",
+  "version": "1.0.0",
+  "industryDomain": "LIFE_SCIENCES_RESEARCH",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-life-sciences-lims",
+    "healthcore-starter-biobanking",
+    "healthcore-starter-genomics-research",
+    "healthcore-starter-clinical-research"
+  ],
+  "optionalModules": [
+    "healthcore-starter-api-product",
+    "healthcore-starter-analytics",
+    "healthcore-starter-deidentification-research"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-uhc-billing",
+    "healthcore-starter-pharmacy-commerce",
+    "healthcore-starter-crvs-mortuary"
+  ]
+}

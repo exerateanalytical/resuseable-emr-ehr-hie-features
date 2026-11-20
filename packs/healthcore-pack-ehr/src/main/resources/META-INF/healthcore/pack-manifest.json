@@ -1,0 +1,25 @@
+{
+  "packId": "healthcore-pack-ehr",
+  "packNumber": "PACK-06",
+  "version": "1.0.0",
+  "industryDomain": "LONGITUDINAL_EHR",
+  "requiredModules": [
+    "healthcore-pack-emr",
+    "healthcore-starter-hie-interop",
+    "healthcore-starter-fhir-hie",
+    "healthcore-starter-patient-portal",
+    "healthcore-starter-templates-dashboards"
+  ],
+  "optionalModules": [
+    "healthcore-starter-interoperability-ihe",
+    "healthcore-starter-analytics",
+    "healthcore-starter-offline-sync"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-crvs-mortuary",
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-biobanking"
+  ]
+}

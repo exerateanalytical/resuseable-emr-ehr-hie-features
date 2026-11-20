@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>healthcore-pack-life-sciences</artifactId>
+    <name>Opes HealthCore Capability Pack 04 — Life Sciences, Biotech, Biobanking &amp; Clinical Research</name>
+    <description>
+        Independent life-sciences capability pack assembling Research LIMS/ELN, ISO 20387 Biobanking,
+        Genomics Research Metadata, and ICH E6(R3)/CDISC Clinical Research EDC.
+        Strictly isolated: ZERO clinical EMR, MPI, or HIS dependencies.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-life-sciences-lims</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-biobanking</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-genomics-research</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-clinical-research</artifactId>
+        </dependency>
+    </dependencies>
+</project>

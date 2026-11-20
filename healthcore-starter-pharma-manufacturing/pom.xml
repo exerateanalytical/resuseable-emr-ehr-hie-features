@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>healthcore-starter-pharma-manufacturing</artifactId>
+    <name>Opes HealthCore Starter — Pharmaceutical Manufacturing &amp; eBMR/eBPR</name>
+    <description>
+        Independent pharmaceutical manufacturing starter (ZERO clinical/MPI/EMR dependencies):
+        API/excipient product master, master formulas and BOM, production orders, batch numbering,
+        electronic batch manufacturing &amp; packaging records (eBMR/eBPR), weighing verification,
+        line clearance, in-process controls (IPC), yield reconciliation, and batch genealogy.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

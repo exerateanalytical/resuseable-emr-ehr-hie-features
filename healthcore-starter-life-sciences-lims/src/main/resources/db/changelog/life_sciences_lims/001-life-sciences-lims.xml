@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="lslims-001-studies-protocols" author="opeshealth">
+        <createTable tableName="hc_lslims_studies">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="study_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="principal_investigator" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="protocol_version" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="ethics_approval_ref" type="varchar(120)"/>
+            <column name="ethics_approved" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="lslims-002-scientific-samples" author="opeshealth">
+        <createTable tableName="hc_lslims_scientific_samples">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="study_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="sample_barcode" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="source_classification" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="source_identifier" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="material_type" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="parent_sample_id" type="${uuid_type}"/>
+            <column name="custodian" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="storage_location" type="varchar(120)"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="registered_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="lslims-003-eln-experiments" author="opeshealth">
+        <createTable tableName="hc_lslims_eln_experiments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="study_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="experiment_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="revision_number" type="integer" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="protocol_version" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="instrument_id" type="varchar(64)"/>
+            <column name="notebook_markdown" type="clob"><constraints nullable="false"/></column>
+            <column name="observations_json" type="clob"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="author_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="reviewer_id" type="varchar(120)"/>
+            <column name="review_sig_sha256" type="varchar(64)"/>
+            <column name="updated_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

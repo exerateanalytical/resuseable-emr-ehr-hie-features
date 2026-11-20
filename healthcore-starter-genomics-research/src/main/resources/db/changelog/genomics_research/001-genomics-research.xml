@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="genomics-001-sequencing-runs" author="opeshealth">
+        <createTable tableName="hc_gen_sequencing_runs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="run_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="sample_barcode" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="library_prep_kit" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="sequencer_platform" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="q30_pct" type="decimal(5,2)"><constraints nullable="false"/></column>
+            <column name="qc_passed" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="executed_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="genomics-002-pipeline-datasets" author="opeshealth">
+        <createTable tableName="hc_gen_pipeline_datasets">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="sequencing_run_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="dataset_accession" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="pipeline_name_version" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="reference_genome" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="vcf_uri" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="vcf_sha256" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="access_tier" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="approved_by" type="varchar(120)"/>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

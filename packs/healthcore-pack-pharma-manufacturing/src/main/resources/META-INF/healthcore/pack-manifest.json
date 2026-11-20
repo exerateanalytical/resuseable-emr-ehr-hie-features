@@ -1,0 +1,27 @@
+{
+  "packId": "healthcore-pack-pharma-manufacturing",
+  "packNumber": "PACK-03",
+  "version": "1.0.0",
+  "industryDomain": "PHARMACEUTICAL_MANUFACTURING",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-pharma-qms",
+    "healthcore-starter-pharma-serialization"
+  ],
+  "optionalModules": [
+    "healthcore-starter-api-product",
+    "healthcore-starter-analytics",
+    "healthcore-starter-integration-ops"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-radiology",
+    "healthcore-starter-patient-portal",
+    "healthcore-starter-crvs-mortuary"
+  ]
+}

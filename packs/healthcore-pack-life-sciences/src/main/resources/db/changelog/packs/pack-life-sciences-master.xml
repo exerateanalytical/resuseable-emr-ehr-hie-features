@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <property name="uuid_type" value="UUID" dbms="postgresql,h2"/>
+    <property name="uuid_type" value="UNIQUEIDENTIFIER" dbms="mssql"/>
+    <property name="uuid_type" value="BINARY(16)" dbms="mysql"/>
+    <property name="ts_type" value="TIMESTAMPTZ" dbms="postgresql"/>
+    <property name="ts_type" value="TIMESTAMP WITH TIME ZONE" dbms="h2"/>
+    <property name="ts_type" value="DATETIMEOFFSET" dbms="mssql"/>
+    <property name="ts_type" value="DATETIME(6)" dbms="mysql"/>
+    <property name="timestamp_type" value="TIMESTAMPTZ" dbms="postgresql"/>
+    <property name="timestamp_type" value="TIMESTAMP WITH TIME ZONE" dbms="h2"/>
+    <property name="timestamp_type" value="DATETIMEOFFSET" dbms="mssql"/>
+    <property name="timestamp_type" value="DATETIME(6)" dbms="mysql"/>
+    <property name="clob_type" value="TEXT" dbms="postgresql,h2"/>
+    <property name="clob_type" value="NVARCHAR(MAX)" dbms="mssql"/>
+    <property name="clob_type" value="LONGTEXT" dbms="mysql"/>
+    <property name="bool_type" value="BOOLEAN" dbms="postgresql,h2"/>
+    <property name="bool_type" value="BIT" dbms="mssql"/>
+    <property name="bool_type" value="TINYINT(1)" dbms="mysql"/>
+
+    <include file="classpath:db/changelog/core/000-persistence-master.xml"/>
+    <include file="classpath:db/changelog/security/001-security-audit.xml"/>
+    <include file="classpath:db/changelog/life_sciences_lims/001-life-sciences-lims.xml"/>
+    <include file="classpath:db/changelog/biobanking/001-biobanking.xml"/>
+    <include file="classpath:db/changelog/genomics_research/001-genomics-research.xml"/>
+    <include file="classpath:db/changelog/clinical_research/001-clinical-research.xml"/>
+</databaseChangeLog>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="clinres-001-trial-subjects" author="opeshealth">
+        <createTable tableName="hc_cr_trial_subjects">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="protocol_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="site_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="subject_pseudonym" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="arm_code" type="varchar(32)"/>
+            <column name="eligibility_passed" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="econsent_version" type="varchar(24)"/>
+            <column name="econsent_signed_at" type="${timestamp_type}"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="enrolled_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="clinres-002-ecrf-entries" author="opeshealth">
+        <createTable tableName="hc_cr_ecrf_entries">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="subject_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="visit_code" type="varchar(48)"><constraints nullable="false"/></column>
+            <column name="sdtm_domain" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="form_payload_json" type="clob"><constraints nullable="false"/></column>
+            <column name="open_query_count" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="investigator_id" type="varchar(120)"/>
+            <column name="pi_sig_sha256" type="varchar(64)"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="captured_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="clinres-003-safety-events" author="opeshealth">
+        <createTable tableName="hc_cr_safety_events">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="subject_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="event_category" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="meddra_term" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="serious" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="causality" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="expedited_report_required" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="reported_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="reported_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

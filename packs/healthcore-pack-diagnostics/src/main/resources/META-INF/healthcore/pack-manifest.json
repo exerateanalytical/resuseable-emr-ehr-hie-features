@@ -1,0 +1,25 @@
+{
+  "packId": "healthcore-pack-diagnostics",
+  "packNumber": "PACK-02",
+  "version": "1.0.0",
+  "industryDomain": "DIAGNOSTIC_CENTERS",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-diagnostics-core"
+  ],
+  "optionalModules": [
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-radiology",
+    "healthcore-starter-hl7-astm-dicom",
+    "healthcore-starter-api-product"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-crvs-mortuary",
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-pharmacy-commerce"
+  ]
+}

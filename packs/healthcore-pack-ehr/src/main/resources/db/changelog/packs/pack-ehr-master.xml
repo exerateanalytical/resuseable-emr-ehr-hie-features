@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <include file="classpath:db/changelog/packs/pack-emr-master.xml"/>
+    <include file="classpath:db/changelog/hie/001-hie-interop.xml"/>
+    <include file="classpath:db/changelog/hie/002-hie-ihe-docs.xml"/>
+    <include file="classpath:db/changelog/patient_portal/001-patient-portal.xml"/>
+    <include file="classpath:db/changelog/templates_dashboards/001-templates-dashboards.xml"/>
+    <include file="classpath:db/changelog/templates_dashboards/002-templates-responses.xml"/>
+</databaseChangeLog>

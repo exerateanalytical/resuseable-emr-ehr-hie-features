@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="pser-001-serialized-units" author="opeshealth">
+        <createTable tableName="hc_pser_serialized_units">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="gtin14" type="varchar(14)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="serial_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="date"><constraints nullable="false"/></column>
+            <column name="packaging_level" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="parent_sscc" type="varchar(32)"/>
+            <column name="gs1_ai_string" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="commissioned_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="commissioned_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_pser_serialized_units" indexName="idx_pser_units_fac_serial">
+            <column name="facility_id"/><column name="serial_number"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="pser-002-warehouse-lots" author="opeshealth">
+        <createTable tableName="hc_pser_warehouse_lots">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="gtin14" type="varchar(14)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="date"><constraints nullable="false"/></column>
+            <column name="warehouse_zone" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="quantity_units" type="integer"><constraints nullable="false"/></column>
+            <column name="min_temp_c" type="decimal(6,2)"><constraints nullable="false"/></column>
+            <column name="max_temp_c" type="decimal(6,2)"><constraints nullable="false"/></column>
+            <column name="last_recorded_temp_c" type="decimal(6,2)"/>
+            <column name="cold_chain_excursion" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="lot_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="qa_release_sig_sha256" type="varchar(64)"/>
+            <column name="updated_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_pser_warehouse_lots" indexName="idx_pser_lots_fac_batch">
+            <column name="facility_id"/><column name="batch_number"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="pser-003-shipments" author="opeshealth">
+        <createTable tableName="hc_pser_shipments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="shipment_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="sscc_pallet_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="destination_partner" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="unit_count" type="integer"><constraints nullable="false"/></column>
+            <column name="cold_chain_verified" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="dispatched_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="dispatched_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

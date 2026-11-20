@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="biobank-001-biospecimens" author="opeshealth">
+        <createTable tableName="hc_biobank_specimens">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="specimen_barcode" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="donor_pseudonym" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="consent_scope" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="consent_active" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="specimen_type" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="volume_ul" type="decimal(12,2)"><constraints nullable="false"/></column>
+            <column name="parent_aliquot_id" type="${uuid_type}"/>
+            <column name="freezer_id" type="varchar(48)"><constraints nullable="false"/></column>
+            <column name="rack_box_slot" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="target_temp_c" type="decimal(6,2)"><constraints nullable="false"/></column>
+            <column name="freeze_thaw_cycles" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="temp_excursion_flagged" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="collected_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_biobank_specimens" indexName="idx_biobank_fac_barcode">
+            <column name="facility_id"/><column name="specimen_barcode"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="biobank-002-mta-requests" author="opeshealth">
+        <createTable tableName="hc_biobank_mta_requests">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="mta_reference" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="recipient_institution" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="specimen_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="requested_purpose" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="ethics_verified" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="approved_by" type="varchar(120)"/>
+            <column name="approval_sig_sha256" type="varchar(64)"/>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

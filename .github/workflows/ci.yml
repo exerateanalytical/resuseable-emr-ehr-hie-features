@@ -163,10 +163,39 @@ jobs:
               if not (root / ops_file).is_file():
                   errors.append(f'Missing production container/DR artifact: {ops_file}')
 
+          # 8. Universal SDK Deliverables (10 root docs + 8 pack manifests + 11 standalone examples)
+          for sdk_doc in [
+              'HEALTHCORE_MODULE_INVENTORY.md',
+              'HEALTHCORE_DEPENDENCY_MATRIX.md',
+              'HEALTHCORE_CAPABILITY_PACKS.md',
+              'HEALTHCORE_INDUSTRY_WORKFLOW_CATALOG.md',
+              'HEALTHCORE_PUBLIC_API_CATALOG.md',
+              'HEALTHCORE_EXTENSION_POINT_REGISTER.md',
+              'HEALTHCORE_STANDARDS_APPLICABILITY_MATRIX.md',
+              'HEALTHCORE_INTEGRATION_GUIDE_INDEX.md',
+              'HEALTHCORE_TEST_EVIDENCE_REGISTER.md',
+              'HEALTHCORE_RELEASE_READINESS.md',
+          ]:
+              sp = root / sdk_doc
+              if not sp.is_file() or sp.stat().st_size < 100:
+                  errors.append(f'Missing or incomplete SDK deliverable: {sdk_doc}')
+
+          import json
+          for pack_dir in sorted((root / 'packs').glob('healthcore-pack-*')):
+              mf = pack_dir / 'src/main/resources/META-INF/healthcore/pack-manifest.json'
+              if not mf.is_file():
+                  errors.append(f'Missing pack-manifest.json in {pack_dir}')
+              else:
+                  json.loads(mf.read_text(encoding='utf-8'))
+
+          example_poms = sorted((root / 'examples').glob('*/pom.xml'))
+          if len(example_poms) < 11:
+              errors.append(f'Expected 11 standalone examples under examples/, found {len(example_poms)}')
+
           if errors:
               print('\n'.join(errors), file=sys.stderr)
               sys.exit(1)
-          print(f'All static security, migration, DR, and {len(modules)}-module documentation guardrails passed.')
+          print(f'All static security, migration, DR, {len(modules)}-module, 8-pack, and {len(example_poms)}-example guardrails passed.')
           PY
 
   container-build:

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>healthcore-pack-pharma-manufacturing</artifactId>
+    <name>Opes HealthCore Capability Pack 03 — Pharmaceutical Manufacturing, QMS &amp; Serialization</name>
+    <description>
+        Independent pharmaceutical manufacturing &amp; quality pack (eBMR/eBPR, QMS/QC/CoA/CAPA,
+        GS1 serialization &amp; cold-chain distribution). Strictly isolated: ZERO MPI, EMR, LIS, or HIS dependencies.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-pharma-manufacturing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-pharma-qms</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-pharma-serialization</artifactId>
+        </dependency>
+    </dependencies>
+</project>

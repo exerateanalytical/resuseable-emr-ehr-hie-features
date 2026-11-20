@@ -95,6 +95,23 @@
         <module>healthcore-starter-analytics</module>
         <module>healthcore-starter-integration-ops</module>
         <module>healthcore-starter-revenue-coding-claims</module>
+        <module>healthcore-starter-pharmacy-commerce</module>
+        <module>healthcore-starter-diagnostics-core</module>
+        <module>healthcore-starter-pharma-manufacturing</module>
+        <module>healthcore-starter-pharma-qms</module>
+        <module>healthcore-starter-pharma-serialization</module>
+        <module>healthcore-starter-life-sciences-lims</module>
+        <module>healthcore-starter-biobanking</module>
+        <module>healthcore-starter-genomics-research</module>
+        <module>healthcore-starter-clinical-research</module>
+        <module>packs/healthcore-pack-pharmacy</module>
+        <module>packs/healthcore-pack-diagnostics</module>
+        <module>packs/healthcore-pack-pharma-manufacturing</module>
+        <module>packs/healthcore-pack-life-sciences</module>
+        <module>packs/healthcore-pack-emr</module>
+        <module>packs/healthcore-pack-ehr</module>
+        <module>packs/healthcore-pack-his</module>
+        <module>packs/healthcore-pack-hie</module>
         <module>healthcore-quickstart-host</module>
     </modules>
 

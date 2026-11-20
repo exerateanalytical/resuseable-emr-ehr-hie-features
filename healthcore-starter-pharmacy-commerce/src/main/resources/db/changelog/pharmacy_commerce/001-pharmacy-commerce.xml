@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="phcom-001-products" author="opeshealth">
+        <createTable tableName="hc_phcom_products">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="sku_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="generic_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="brand_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="strength" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="dosage_form" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="atc_or_rxnorm_code" type="varchar(64)"/>
+            <column name="controlled_substance" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="reorder_threshold" type="integer" defaultValueNumeric="20"><constraints nullable="false"/></column>
+            <column name="unit_price" type="decimal(12,2)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="phcom-002-lots" author="opeshealth">
+        <createTable tableName="hc_phcom_inventory_lots">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="product_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="supplier_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="purchase_order_ref" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="gtin14" type="varchar(14)"/>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="date"><constraints nullable="false"/></column>
+            <column name="quantity_on_hand" type="integer"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="received_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="phcom-003-dispenses" author="opeshealth">
+        <createTable tableName="hc_phcom_dispenses">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="prescription_ref" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="customer_ref" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="product_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="lot_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="quantity_dispensed" type="integer"><constraints nullable="false"/></column>
+            <column name="refills_remaining" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="pharmacist_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="witness_id" type="varchar(120)"/>
+            <column name="total_amount" type="decimal(12,2)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="dispensed_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

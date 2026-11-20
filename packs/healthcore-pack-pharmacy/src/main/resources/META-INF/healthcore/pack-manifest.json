@@ -1,0 +1,26 @@
+{
+  "packId": "healthcore-pack-pharmacy",
+  "packNumber": "PACK-01",
+  "version": "1.0.0",
+  "industryDomain": "INDEPENDENT_PHARMACY",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-pharmacy-commerce"
+  ],
+  "optionalModules": [
+    "healthcore-starter-api-product",
+    "healthcore-starter-offline-sync",
+    "healthcore-starter-uhc-billing"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-pharmacy-lis",
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-crvs-mortuary",
+    "healthcore-starter-pharma-manufacturing"
+  ]
+}

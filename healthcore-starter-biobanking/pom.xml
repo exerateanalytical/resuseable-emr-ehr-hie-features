@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>healthcore-starter-biobanking</artifactId>
+    <name>Opes HealthCore Starter — Biobanking &amp; Biospecimen Repository (ISO 20387-Aligned)</name>
+    <description>
+        Independent biobanking and biospecimen repository starter aligned with ISO 20387 technical
+        controls: pseudonymous donor consent &amp; withdrawal, freezer/rack/box/slot coordinate mapping,
+        cryogenic temperature excursion monitoring, aliquot genealogy, Material Transfer Agreement (MTA)
+        fulfillment, and audited disposal. Zero clinical EMR/MPI/HIS dependencies.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

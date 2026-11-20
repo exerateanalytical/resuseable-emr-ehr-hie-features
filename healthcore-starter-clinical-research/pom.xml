@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>healthcore-starter-clinical-research</artifactId>
+    <name>Opes HealthCore Starter — Clinical Trials &amp; EDC (ICH E6(R3) &amp; CDISC-Aligned)</name>
+    <description>
+        Independent clinical research &amp; Electronic Data Capture (EDC) starter aligned with ICH E6(R3)
+        and CDISC (CDASH/SDTM/ADaM) technical structures: pseudonymous subject screening &amp; eConsent,
+        visit schedule &amp; eCRF entry with query resolution, AE/SAE expedited safety reporting,
+        investigational product accountability, and de-identified CDISC SDTM export.
+        Zero clinical EMR/MPI/HIS dependencies.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

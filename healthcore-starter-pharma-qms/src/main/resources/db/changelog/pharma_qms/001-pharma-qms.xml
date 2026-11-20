@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="pharma-qms-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_pqms_controlled_docs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="document_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="document_version" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="document_type" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="content_sha256" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="authored_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="approved_by" type="varchar(120)"/>
+            <column name="approval_sig_sha256" type="varchar(64)"/>
+            <column name="effective_date" type="date"/>
+            <column name="review_due_date" type="date"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pqms_controlled_docs" columnNames="facility_id,document_code,document_version" constraintName="uq_pqms_doc_ver"/>
+
+        <createTable tableName="hc_pqms_qc_certificates">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="certificate_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="product_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="sample_stage" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="test_results_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="oos_detected" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="qc_disposition" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="analyst_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="qa_approver_id" type="varchar(120)"/>
+            <column name="coa_sig_sha256" type="varchar(64)"/>
+            <column name="issued_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pqms_qc_certificates" columnNames="facility_id,certificate_number" constraintName="uq_pqms_coa_no"/>
+
+        <createTable tableName="hc_pqms_deviations_capa">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="record_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="record_category" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="severity" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="affected_batch_number" type="varchar(64)"/>
+            <column name="description" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="root_cause" type="${clob_type}"/>
+            <column name="capa_plan" type="${clob_type}"/>
+            <column name="effectiveness_verified" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="reported_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="closed_by" type="varchar(120)"/>
+            <column name="closure_sig_sha256" type="varchar(64)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="closed_at" type="${ts_type}"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pqms_deviations_capa" columnNames="facility_id,record_number" constraintName="uq_pqms_capa_no"/>
+    </changeSet>
+</databaseChangeLog>

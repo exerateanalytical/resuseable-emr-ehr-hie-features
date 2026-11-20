@@ -1,0 +1,41 @@
+{
+  "packId": "healthcore-pack-his",
+  "packNumber": "PACK-07",
+  "version": "1.0.0",
+  "industryDomain": "COMPOSABLE_HOSPITAL_HIS",
+  "profiles": [
+    "outpatient-hospital",
+    "general-hospital",
+    "multispecialty",
+    "tertiary-referral",
+    "multi-facility-network"
+  ],
+  "requiredModules": [
+    "healthcore-pack-ehr",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-emergency-nursing",
+    "healthcore-starter-pharmacy-lis",
+    "healthcore-starter-uhc-billing"
+  ],
+  "optionalModules": [
+    "healthcore-starter-radiology",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-blood-bank",
+    "healthcore-starter-biomedical-coldchain",
+    "healthcore-starter-crvs-mortuary",
+    "healthcore-starter-workforce-roster",
+    "healthcore-starter-revenue-coding-claims",
+    "healthcore-starter-tenant-governance",
+    "healthcore-starter-offline-sync",
+    "healthcore-starter-integration-ops",
+    "healthcore-starter-analytics"
+  ],
+  "forbiddenTransitiveModules": [
+    "healthcore-starter-pharma-manufacturing",
+    "healthcore-starter-pharma-qms",
+    "healthcore-starter-pharma-serialization",
+    "healthcore-starter-life-sciences-lims",
+    "healthcore-starter-biobanking",
+    "healthcore-starter-genomics-research"
+  ]
+}

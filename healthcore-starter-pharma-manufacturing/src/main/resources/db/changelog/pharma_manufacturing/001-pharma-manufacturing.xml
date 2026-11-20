@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="pharma-mfg-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_pmfg_product_master">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="product_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="product_name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="material_class" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="dosage_form" type="varchar(64)"/>
+            <column name="strength_spec" type="varchar(80)"/>
+            <column name="storage_condition" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="shelf_life_months" type="int" defaultValueNumeric="24"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pmfg_product_master" columnNames="facility_id,product_code" constraintName="uq_pmfg_product_code"/>
+
+        <createTable tableName="hc_pmfg_master_formulas">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="product_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="formula_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="formula_version" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="standard_batch_size" type="decimal(14,4)"><constraints nullable="false"/></column>
+            <column name="batch_unit" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="bom_spec_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="instructions_json" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="approval_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="authored_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="approved_by" type="varchar(120)"/>
+            <column name="approval_sig_sha256" type="varchar(64)"/>
+            <column name="approved_at" type="${ts_type}"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pmfg_master_formulas" columnNames="facility_id,formula_code,formula_version" constraintName="uq_pmfg_formula_ver"/>
+
+        <createTable tableName="hc_pmfg_batch_records">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="formula_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="production_order_no" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="record_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="equipment_line_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="line_clearance_verified" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="line_cleared_by" type="varchar(120)"/>
+            <column name="theoretical_yield" type="decimal(14,4)"><constraints nullable="false"/></column>
+            <column name="actual_yield" type="decimal(14,4)"/>
+            <column name="yield_percent" type="decimal(6,2)"/>
+            <column name="batch_status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="operator_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="qa_reviewer_id" type="varchar(120)"/>
+            <column name="qa_signature_sha256" type="varchar(64)"/>
+            <column name="manufactured_date" type="date"><constraints nullable="false"/></column>
+            <column name="expiry_date" type="date"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pmfg_batch_records" columnNames="facility_id,batch_number" constraintName="uq_pmfg_batch_number"/>
+
+        <createTable tableName="hc_pmfg_material_dispensing">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="batch_record_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="material_product_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="source_material_lot" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="target_quantity" type="decimal(14,4)"><constraints nullable="false"/></column>
+            <column name="actual_weighed_quantity" type="decimal(14,4)"><constraints nullable="false"/></column>
+            <column name="unit_of_measure" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="scale_equipment_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="weighed_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="verified_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="dispensed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_pmfg_material_dispensing" indexName="idx_pmfg_disp_batch">
+            <column name="facility_id"/><column name="batch_record_id"/>
+        </createIndex>
+
+        <createTable tableName="hc_pmfg_in_process_controls">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="batch_record_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="stage_code" type="varchar(48)"><constraints nullable="false"/></column>
+            <column name="parameter_name" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="measured_value" type="decimal(14,4)"><constraints nullable="false"/></column>
+            <column name="min_limit" type="decimal(14,4)"/>
+            <column name="max_limit" type="decimal(14,4)"/>
+            <column name="unit_of_measure" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="within_spec" type="${bool_type}"><constraints nullable="false"/></column>
+            <column name="recorded_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_pmfg_in_process_controls" indexName="idx_pmfg_ipc_batch">
+            <column name="facility_id"/><column name="batch_record_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>
