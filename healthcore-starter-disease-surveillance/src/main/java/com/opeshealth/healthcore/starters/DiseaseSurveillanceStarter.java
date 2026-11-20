@@ -101,7 +101,7 @@ public class DiseaseSurveillanceStarter {
             int confirmed = 0;
             Map<String, Integer> byIcd10 = new LinkedHashMap<>();
             for (SurveillanceCaseEntity c : cases) {
-                if ("CONFIRMED".equalsIgnoreCase(c.getClassification())) {
+                if ("CONFIRMED".equalsIgnoreCase(c.getCaseClassification())) {
                     confirmed++;
                 }
                 if (c.getDiseaseIcd10() != null) {
@@ -148,7 +148,7 @@ public class DiseaseSurveillanceStarter {
 
             for (ContactTracingLinkEntity link : links) {
                 ids.add(link.getId());
-                if ("HIGH".equalsIgnoreCase(link.getExposureRisk())) {
+                if ("HIGH".equalsIgnoreCase(link.getExposureType())) {
                     highRisk++;
                 }
                 if ("SYMPTOMATIC_CONVERTED".equalsIgnoreCase(link.getFollowUpStatus())) {

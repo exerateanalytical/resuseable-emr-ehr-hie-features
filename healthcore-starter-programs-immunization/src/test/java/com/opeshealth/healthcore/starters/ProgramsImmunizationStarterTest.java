@@ -23,8 +23,9 @@ class ProgramsImmunizationStarterTest {
 
         ImmunizationRecordEntity bcg = new ImmunizationRecordEntity();
         bcg.setPatientId(patientId);
-        bcg.setVaccineCode("BCG");
-        bcg.setAdministeredDate(LocalDate.now().minusMonths(4));
+        bcg.setCvxCode("BCG");
+        bcg.setDoseNumber(1);
+        bcg.setNextDueDate(LocalDate.now().minusDays(30));
         when(immRepo.findAll()).thenReturn(List.of(bcg));
         when(cascadeRepo.findAll()).thenReturn(List.of());
 
