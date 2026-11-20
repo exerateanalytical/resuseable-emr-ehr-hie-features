@@ -25,18 +25,18 @@ class PharmacyInventoryStarterTest {
         MedicationBatchEntity soon = new MedicationBatchEntity();
         soon.setFacilityId(facId);
         soon.setDrugCode("AMOX500");
-        soon.setBatchNumber("B-SOON");
+        soon.setLotNumber("B-SOON");
         soon.setExpiryDate(LocalDate.now().plusDays(15));
-        soon.setQuantityRemaining(40);
+        soon.setQuantityOnHand(40);
 
         MedicationBatchEntity expired = new MedicationBatchEntity();
         expired.setFacilityId(facId);
         expired.setDrugCode("INSULIN");
-        expired.setBatchNumber("B-EXP");
+        expired.setLotNumber("B-EXP");
         expired.setExpiryDate(LocalDate.now().minusDays(2));
-        expired.setQuantityRemaining(10);
+        expired.setQuantityOnHand(10);
 
-        when(batchRepo.findAll()).thenReturn(List.of(soon, expired));
+        when(batchRepo.findByFacilityId(facId)).thenReturn(List.of(soon, expired));
         PharmacyFefoAndColdStockGovernanceService service = new PharmacyFefoAndColdStockGovernanceService(
                 mock(PharmacyLisService.class), batchRepo, dispenseRepo);
 

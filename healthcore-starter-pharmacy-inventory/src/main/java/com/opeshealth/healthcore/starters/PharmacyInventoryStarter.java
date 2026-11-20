@@ -16,6 +16,8 @@ import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.MedicationBatchRepository;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.PharmacyDispenseRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -89,6 +91,17 @@ public class PharmacyInventoryStarter {
             this.pharmacyDispenseRepository = Objects.requireNonNull(pharmacyDispenseRepository, "PharmacyDispenseRepository is required");
         }
 
+        private static UUID requireFacilityScope(UUID requestedFacilityId) {
+            UUID active = FacilityContext.getFacilityId().orElse(null);
+            if (active != null && requestedFacilityId != null && !active.equals(requestedFacilityId)) {
+                throw new AccessDeniedException("Cross-facility pharmacy inventory access denied");
+            }
+            if (requestedFacilityId == null && active == null) {
+                throw new AccessDeniedException("Facility scope is required for pharmacy inventory access");
+            }
+            return requestedFacilityId != null ? requestedFacilityId : active;
+        }
+
         /**
          * Analyzes facility medication stock batches in PostgreSQL (`hc_medication_batches`)
          * to compute available FEFO quantities by RxNorm/ATC code, identify stock-outs, and
@@ -101,9 +114,8 @@ public class PharmacyInventoryStarter {
             LocalDate today = LocalDate.now();
             LocalDate horizonDate = today.plusDays(windowDays);
 
-            List<MedicationBatchEntity> batches = medicationBatchRepository.findAll().stream()
-                    .filter(b -> facilityId == null || facilityId.equals(b.getFacilityId()))
-                    .toList();
+            UUID checkedFacilityId = requireFacilityScope(facilityId);
+            List<MedicationBatchEntity> batches = medicationBatchRepository.findByFacilityId(checkedFacilityId);
 
             int activeBatches = 0;
             int quarantinedBatches = 0;
@@ -125,7 +137,7 @@ public class PharmacyInventoryStarter {
                     alerts.add(new NearExpiryBatchAlert(
                             b.getId(),
                             b.getDrugCode(),
-                            b.getBatchNumber(),
+                            b.getLotNumber(),
                             b.getExpiryDate(),
                             daysLeft,
                             b.getQuantityOnHand(),
@@ -153,10 +165,10 @@ public class PharmacyInventoryStarter {
          */
         @Transactional(readOnly = true)
         public List<PharmacyDispenseEntity> getControlledSubstanceDispenseLedger(UUID facilityId) {
-            return pharmacyDispenseRepository.findAll().stream()
-                    .filter(d -> (facilityId == null || facilityId.equals(d.getFacilityId()))
-                            && d.getControlledSubstanceWitnessId() != null
-                            && !d.getControlledSubstanceWitnessId().isBlank())
+            UUID checkedFacilityId = requireFacilityScope(facilityId);
+            return pharmacyDispenseRepository.findByFacilityId(checkedFacilityId).stream()
+                    .filter(d -> d.getControlledWitnessId() != null
+                            && !d.getControlledWitnessId().isBlank())
                     .toList();
         }
     }
@@ -178,14 +190,22 @@ public class PharmacyInventoryStarter {
         public FacilityPharmacyStockHealth getStockHealth(
                 @RequestParam(required = false) UUID facilityId,
                 @RequestParam(defaultValue = "90") int horizonDays) {
-            return governanceService.evaluateFacilityStockHealth(facilityId, horizonDays);
+            UUID authorizedFacilityId = FacilityContext.requireFacilityId();
+            if (facilityId != null && !authorizedFacilityId.equals(facilityId)) {
+                throw new AccessDeniedException("Cross-facility pharmacy inventory access denied");
+            }
+            return governanceService.evaluateFacilityStockHealth(authorizedFacilityId, horizonDays);
         }
 
         @GetMapping("/controlled-substance-ledger")
         @PreAuthorize("hasAuthority('PERM_pharmacy:controlled:witness') or hasAuthority('PERM_audit:read')")
         @Operation(summary = "Retrieve dual-witness Schedule II/III controlled substance dispense ledger")
         public List<PharmacyDispenseEntity> getControlledLedger(@RequestParam(required = false) UUID facilityId) {
-            return governanceService.getControlledSubstanceDispenseLedger(facilityId);
+            UUID authorizedFacilityId = FacilityContext.requireFacilityId();
+            if (facilityId != null && !authorizedFacilityId.equals(facilityId)) {
+                throw new AccessDeniedException("Cross-facility controlled-substance ledger access denied");
+            }
+            return governanceService.getControlledSubstanceDispenseLedger(authorizedFacilityId);
         }
     }
 }
