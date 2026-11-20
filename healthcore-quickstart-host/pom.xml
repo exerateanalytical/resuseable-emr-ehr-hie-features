@@ -40,6 +40,7 @@
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-templates-dashboards</artifactId></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-api-product</artifactId></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-workflow-engine</artifactId></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-queue-management</artifactId></dependency>
 
         <!-- 15 Specialized Granular Clinical, Operational & Interoperability Starters -->
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-pharmacy-inventory</artifactId></dependency>

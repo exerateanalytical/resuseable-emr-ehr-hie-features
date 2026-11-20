@@ -1,0 +1,108 @@
+{
+  "workflowId": "LAB_ORDER_FULFILLMENT",
+  "version": "1.0.0",
+  "applicableDomain": "Clinical Laboratory & ISO 15189 Diagnostic Specimen Fulfillment",
+  "careSetting": "HOSPITAL_LIS_OR_STANDALONE_DIAGNOSTIC_CENTER",
+  "descriptionAndPurpose": "Independently executable child subworkflow routing signed laboratory orders into phlebotomy/specimen collection and analytical processing queues, evaluating service-level financial clearance, preventing duplicate active tasks on replay, and routing verified or amended results back to the responsible clinician inbox.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "optionalModules": [
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-diagnostics-core",
+    "healthcore-starter-orders-results",
+    "healthcore-starter-hl7-astm-dicom",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": ["OPD_CONSULTATION_FLOW", "EMERGENCY_RESUSCITATION_ESCALATION", "IPD_ADMISSION_FLOW"],
+    "childSubworkflows": ["CLINICIAN_CRITICAL_RESULT_ESCALATION"]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "loincPanelCodes",
+    "idempotencyKey"
+  ],
+  "responsibleRoleOrTeam": "PHLEBOTOMIST -> MEDICAL_LABORATORY_SCIENTIST -> PATHOLOGIST_VERIFIER",
+  "allowedStatesAndTransitions": {
+    "ROUTED": ["ON_FINANCIAL_HOLD", "LAB_COLLECTION_QUEUED", "CANCELLED"],
+    "ON_FINANCIAL_HOLD": ["LAB_COLLECTION_QUEUED", "CANCELLED"],
+    "LAB_COLLECTION_QUEUED": ["SPECIMEN_COLLECTED", "SPECIMEN_REJECTED", "NO_SHOW"],
+    "SPECIMEN_COLLECTED": ["LAB_PROCESSING_QUEUED"],
+    "LAB_PROCESSING_QUEUED": ["ANALYZING", "SPECIMEN_REJECTED"],
+    "ANALYZING": ["PRELIMINARY_RESULT", "RESULT_VERIFIED"],
+    "PRELIMINARY_RESULT": ["RESULT_VERIFIED", "AMENDED"],
+    "RESULT_VERIFIED": ["DELIVERED_TO_CLINICIAN_INBOX", "AMENDED"],
+    "AMENDED": ["DELIVERED_TO_CLINICIAN_INBOX"],
+    "DELIVERED_TO_CLINICIAN_INBOX": [],
+    "SPECIMEN_REJECTED": ["LAB_COLLECTION_QUEUED", "CANCELLED"],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Signed laboratory order exists with valid LOINC test identifier.",
+    "Idempotency key verified in DurableProcessedEventRepository to prevent duplicate task creation."
+  ],
+  "safetyChecks": [
+    "Two-identifier patient verification at specimen collection.",
+    "Delta-check and critical panic-value detection immediately triggers CLINICIAN_CRITICAL_RESULT_ESCALATION.",
+    "Amended results reopen clinician inbox review even if initial result was previously acknowledged."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Service-level LABORATORY clearance evaluated via WorkflowBillingClearancePolicySpi.",
+    "Emergency STAT orders receive EMERGENCY_OVERRIDE.",
+    "Financial hold retains order intact and activates LAB_COLLECTION queue immediately upon ServiceCleared."
+  ],
+  "tasksToCreate": [
+    "SPECIMEN_COLLECTION_TASK",
+    "ANALYTICAL_TESTING_TASK",
+    "PATHOLOGY_VERIFICATION_TASK"
+  ],
+  "queuesToUpdate": [
+    "BILLING_CASHIER",
+    "LAB_COLLECTION",
+    "LAB_PROCESSING"
+  ],
+  "eventsToPublish": [
+    "FinancialClearanceRequired",
+    "ServiceCleared",
+    "LaboratoryOrderAccepted",
+    "SpecimenCollected",
+    "LaboratoryResultVerified",
+    "CriticalResultDetected",
+    "ClinicianReviewRequired"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY (privacy-minimized, policy-gated)",
+    "CRITICAL_FOLLOWUP (immediate clinical escalation)"
+  ],
+  "outputsAndClinicalRecords": [
+    "SpecimenAccessionRecord",
+    "VerifiedObservationReport (LOINC/UCUM)",
+    "ClinicianInboxEntry"
+  ],
+  "exceptionRoutes": [
+    "SPECIMEN_RECOLLECTION_REQUEST on hemolyzed/clotted/unlabeled sample",
+    "CLINICIAN_CRITICAL_RESULT_ESCALATION on panic values"
+  ],
+  "cancellationAndResumptionRules": "Order cancellation before specimen collection marks queue entry CANCELLED; recollection resumes at LAB_COLLECTION_QUEUED under the same orderId without duplicating billing.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statCollectionMinutes": 15,
+    "routineCollectionMinutes": 45,
+    "statResultVerificationMinutes": 60,
+    "criticalResultNotificationMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "ISO 15189 chain-of-custody audit log capturing collector, accession barcode, analyzer ID, verifier credentials, and timestamp.",
+  "completionCriteria": "Final laboratory report verified by authorized laboratory scientist/pathologist and durably delivered to responsible clinician inbox.",
+  "apiExamples": [
+    "POST /api/v1/queues/entries (department=LAB_COLLECTION)",
+    "POST /api/v1/queues/entries/{queueEntryId}/transfer (targetDepartment=LAB_PROCESSING)"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_B_D_E_F_G; PENDING_LOCAL_ISO15189_LAB_DIRECTOR_SIGN_OFF"
+}

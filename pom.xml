@@ -85,6 +85,7 @@
         <module>healthcore-starter-hl7-astm-dicom</module>
         <module>healthcore-starter-interoperability-ihe</module>
         <module>healthcore-starter-workflow-engine</module>
+        <module>healthcore-starter-queue-management</module>
         <module>healthcore-starter-clinical-ai</module>
         <module>healthcore-starter-tenant-governance</module>
         <module>healthcore-starter-scheduling</module>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="wf-journey-001-subflow-links" author="opes-healthcore">
+        <createTable tableName="hc_workflow_subflow_links">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="parent_workflow_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="child_workflow_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="subflow_type" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="order_id" type="${uuid_type}"/>
+            <column name="status" type="VARCHAR(24)" defaultValue="ACTIVE"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_workflow_subflow_links"
+                             columnNames="facility_id, parent_workflow_id, child_workflow_id"
+                             constraintName="uq_hc_wf_subflow_link"/>
+    </changeSet>
+
+    <changeSet id="wf-journey-002-order-routing" author="opes-healthcore">
+        <createTable tableName="hc_order_routing_tasks">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="parent_workflow_id" type="${uuid_type}"/>
+            <column name="child_workflow_id" type="${uuid_type}"/>
+            <column name="queue_entry_id" type="${uuid_type}"/>
+            <column name="target_department" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="external_pharmacy_code" type="VARCHAR(80)"/>
+            <column name="financial_clearance" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="routing_status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="completed_at" type="${ts_type}"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_order_routing_tasks"
+                             columnNames="facility_id, idempotency_key"
+                             constraintName="uq_hc_order_routing_idemp"/>
+    </changeSet>
+
+    <changeSet id="wf-journey-003-clinician-inbox" author="opes-healthcore">
+        <createTable tableName="hc_clinician_result_inbox">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="result_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="result_domain" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="responsible_clinician_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="care_team_code" type="VARCHAR(64)"/>
+            <column name="fallback_clinician_id" type="VARCHAR(120)"/>
+            <column name="inbox_status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="critical_flag" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="amended_result" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="electronic_notification_sent" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="grouped_readiness_key" type="VARCHAR(120)"/>
+            <column name="return_to_queue_required" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="escalation_deadline_at" type="${ts_type}"/>
+            <column name="acknowledged_by" type="VARCHAR(120)"/>
+            <column name="acknowledged_at" type="${ts_type}"/>
+            <column name="acknowledgment_notes" type="VARCHAR(400)"/>
+            <column name="received_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_clinician_result_inbox"
+                             columnNames="facility_id, result_id, responsible_clinician_id"
+                             constraintName="uq_hc_clinician_inbox_result"/>
+    </changeSet>
+
+    <changeSet id="wf-journey-004-durable-notifications" author="opes-healthcore">
+        <createTable tableName="hc_durable_notifications">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="channel" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="template_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="language_code" type="VARCHAR(8)" defaultValue="en"><constraints nullable="false"/></column>
+            <column name="recipient_address" type="VARCHAR(180)"><constraints nullable="false"/></column>
+            <column name="rendered_message" type="VARCHAR(500)"><constraints nullable="false"/></column>
+            <column name="delivery_state" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="provider_receipt_id" type="VARCHAR(160)"/>
+            <column name="idempotency_key" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="attempt_count" type="INT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="emergency_override" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="privacy_minimized" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="last_error" type="VARCHAR(300)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="submitted_at" type="${ts_type}"/>
+            <column name="delivered_at" type="${ts_type}"/>
+        </createTable>
+        <addUniqueConstraint tableName="hc_durable_notifications"
+                             columnNames="facility_id, idempotency_key"
+                             constraintName="uq_hc_durable_notif_idemp"/>
+    </changeSet>
+
+    <changeSet id="wf-journey-005-processed-events" author="opes-healthcore">
+        <createTable tableName="hc_workflow_processed_events">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="event_type" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="processed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_workflow_processed_events"
+                             columnNames="facility_id, idempotency_key"
+                             constraintName="uq_hc_wf_processed_evt"/>
+    </changeSet>
+</databaseChangeLog>

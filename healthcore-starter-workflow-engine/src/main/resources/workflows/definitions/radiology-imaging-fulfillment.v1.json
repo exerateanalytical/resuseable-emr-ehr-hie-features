@@ -1,0 +1,101 @@
+{
+  "workflowId": "RADIOLOGY_IMAGING_FULFILLMENT",
+  "version": "1.0.0",
+  "applicableDomain": "Diagnostic Radiology & DICOM Modality Imaging Fulfillment",
+  "careSetting": "HOSPITAL_RIS_OR_IMAGING_CENTER",
+  "descriptionAndPurpose": "Independently executable child subworkflow routing signed imaging orders into radiology modality queues, applying service-level billing clearance, managing DICOM study acquisition and radiologist report signing, and routing final or critical imaging reports back to the ordering clinician.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "optionalModules": [
+    "healthcore-starter-radiology",
+    "healthcore-starter-hl7-astm-dicom",
+    "healthcore-starter-orders-results",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": ["OPD_CONSULTATION_FLOW", "EMERGENCY_RESUSCITATION_ESCALATION", "IPD_ADMISSION_FLOW"],
+    "childSubworkflows": ["CLINICIAN_CRITICAL_RESULT_ESCALATION"]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "modalityCode (CR | CT | MR | US | DX)",
+    "idempotencyKey"
+  ],
+  "responsibleRoleOrTeam": "RADIOLOGY_TECHNOLOGIST -> DIAGNOSTIC_RADIOLOGIST",
+  "allowedStatesAndTransitions": {
+    "ROUTED": ["ON_FINANCIAL_HOLD", "RADIOLOGY_QUEUED", "CANCELLED"],
+    "ON_FINANCIAL_HOLD": ["RADIOLOGY_QUEUED", "CANCELLED"],
+    "RADIOLOGY_QUEUED": ["EXAM_IN_PROGRESS", "NO_SHOW", "CANCELLED"],
+    "EXAM_IN_PROGRESS": ["IMAGES_ACQUIRED", "EXAM_ABORTED"],
+    "IMAGES_ACQUIRED": ["PRELIMINARY_READ", "REPORT_SIGNED"],
+    "PRELIMINARY_READ": ["REPORT_SIGNED", "ADDENDUM_SIGNED"],
+    "REPORT_SIGNED": ["DELIVERED_TO_CLINICIAN_INBOX", "ADDENDUM_SIGNED"],
+    "ADDENDUM_SIGNED": ["DELIVERED_TO_CLINICIAN_INBOX"],
+    "DELIVERED_TO_CLINICIAN_INBOX": [],
+    "EXAM_ABORTED": ["RADIOLOGY_QUEUED", "CANCELLED"],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Signed imaging order with clinical indication and modality specified.",
+    "Replay-safe idempotency verified prior to creating radiology worklist entry."
+  ],
+  "safetyChecks": [
+    "Pregnancy, contrast allergy, and eGFR renal safety screening prior to contrast or ionizing radiation.",
+    "Critical incidental or acute findings (e.g., pneumothorax, intracranial hemorrhage) immediately trigger CLINICIAN_CRITICAL_RESULT_ESCALATION."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Service-level IMAGING clearance evaluated via WorkflowBillingClearancePolicySpi.",
+    "Trauma/emergency imaging bypasses prepayment via EMERGENCY_OVERRIDE."
+  ],
+  "tasksToCreate": [
+    "MODALITY_ACQUISITION_TASK",
+    "RADIOLOGY_REPORTING_TASK"
+  ],
+  "queuesToUpdate": [
+    "BILLING_CASHIER",
+    "RADIOLOGY"
+  ],
+  "eventsToPublish": [
+    "FinancialClearanceRequired",
+    "ServiceCleared",
+    "ImagingOrderAccepted",
+    "RadiologyReportSigned",
+    "CriticalResultDetected",
+    "ClinicianReviewRequired"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY (policy-gated)",
+    "CRITICAL_FOLLOWUP (immediate clinical escalation)"
+  ],
+  "outputsAndClinicalRecords": [
+    "DicomStudyReference",
+    "SignedRadiologyDiagnosticReport",
+    "ClinicianInboxEntry"
+  ],
+  "exceptionRoutes": [
+    "CONTRAST_SAFETY_HOLD requiring ordering clinician confirmation",
+    "CLINICIAN_CRITICAL_RESULT_ESCALATION on urgent radiological finding"
+  ],
+  "cancellationAndResumptionRules": "Unperformed studies may be placed ON_HOLD for patient preparation (e.g., fasting/renal hydration) and resumed on the same orderId without re-billing.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statImagingAcquisitionMinutes": 20,
+    "statReportTurnaroundMinutes": 45,
+    "routineReportTurnaroundMinutes": 1440,
+    "criticalFindingAckMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "Audit trail captures technologist ID, radiation dose / contrast lot where applicable, DICOM StudyInstanceUID, and signing radiologist credentials.",
+  "completionCriteria": "Radiologist-signed diagnostic report durably delivered to responsible clinician inbox.",
+  "apiExamples": [
+    "POST /api/v1/queues/entries (department=RADIOLOGY)",
+    "POST /api/v1/queues/entries/{queueEntryId}/claim"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_B_D_F_G; PENDING_LOCAL_CHIEF_RADIOLOGIST_SIGN_OFF"
+}

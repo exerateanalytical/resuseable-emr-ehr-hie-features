@@ -49,6 +49,8 @@
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-analytics</artifactId><optional>true</optional></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-integration-ops</artifactId><optional>true</optional></dependency>
         <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-revenue-coding-claims</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-workflow-engine</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-queue-management</artifactId><optional>true</optional></dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

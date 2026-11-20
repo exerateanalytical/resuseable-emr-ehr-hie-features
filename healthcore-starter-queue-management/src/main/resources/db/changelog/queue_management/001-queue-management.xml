@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="queue-001-counters" author="opes-healthcore">
+        <createTable tableName="hc_queue_counters">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="department_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="service_date" type="DATE"><constraints nullable="false"/></column>
+            <column name="last_ticket_seq" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_queue_counters"
+                             columnNames="facility_id, department_code, service_date"
+                             constraintName="uq_hc_queue_counter_scope"/>
+    </changeSet>
+
+    <changeSet id="queue-002-department-entries" author="opes-healthcore">
+        <createTable tableName="hc_department_queue_entries">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="department_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="ticket_number" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="ticket_sequence" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(160)"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="encounter_id" type="${uuid_type}"/>
+            <column name="order_id" type="${uuid_type}"/>
+            <column name="task_id" type="${uuid_type}"/>
+            <column name="workflow_instance_id" type="${uuid_type}"/>
+            <column name="queue_status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="priority" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="urgency_score" type="INT"><constraints nullable="false"/></column>
+            <column name="financial_clearance_state" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="eligible_for_activation" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="assigned_staff_id" type="VARCHAR(120)"/>
+            <column name="claimed_by" type="VARCHAR(120)"/>
+            <column name="claimed_at" type="${ts_type}"/>
+            <column name="check_in_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="called_at" type="${ts_type}"/>
+            <column name="service_started_at" type="${ts_type}"/>
+            <column name="completed_at" type="${ts_type}"/>
+            <column name="sla_deadline_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="sla_breached" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="reentry_count" type="INT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="hold_reason" type="VARCHAR(240)"/>
+            <column name="transfer_target_department" type="VARCHAR(64)"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_department_queue_entries"
+                             columnNames="facility_id, idempotency_key"
+                             constraintName="uq_hc_queue_idempotency"/>
+        <createIndex tableName="hc_department_queue_entries" indexName="idx_hc_queue_dept_worklist">
+            <column name="facility_id"/>
+            <column name="department_code"/>
+            <column name="queue_status"/>
+            <column name="urgency_score"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="queue-003-pause-controls" author="opes-healthcore">
+        <createTable tableName="hc_queue_pause_controls">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="department_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="paused" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="pause_reason" type="VARCHAR(240)"/>
+            <column name="updated_by" type="VARCHAR(120)"/>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_queue_pause_controls"
+                             columnNames="facility_id, department_code"
+                             constraintName="uq_hc_queue_pause_dept"/>
+    </changeSet>
+</databaseChangeLog>

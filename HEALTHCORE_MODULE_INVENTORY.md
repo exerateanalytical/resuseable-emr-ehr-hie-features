@@ -1,6 +1,6 @@
 # OPES HealthCore — Complete Module Inventory
 
-**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **59** (+ `healthcore-mobile-kmp` companion + 11 standalone `examples/*`).
+**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **60** (+ `healthcore-mobile-kmp` companion + 11 standalone `examples/*`).
 
 ## 1. Platform Core, Testing & Governance (5 Modules)
 | Artifact ID | Category | Purpose |
@@ -8,7 +8,7 @@
 | `healthcore-bom` | BOM | Centralized Maven Bill of Materials for all starters, packs, Spring Boot 4, FHIR/HL7, Liquibase, DB drivers, and Testcontainers |
 | `healthcore-persistence-core` | Core | UUIDv7 generator, multi-DB Liquibase base, Hibernate `facilityFilter`, domain-neutral SDK primitives (`ElectronicSignatureSpi`, `TraceableLotPrimitive`, `CapabilityPackManifestContract`) |
 | `healthcore-security-audit` | Core | OIDC/JWT security, RBAC permissions, `FacilityContext`, break-glass controls, tamper-evident `@ClinicalAudit` chain |
-| `healthcore-testing` | Testing | Centralized ISO/HL7-compliant `HealthCoreDataFixture` & `IsoHl7StandardSampleData` (`<optional>true</optional>` starter bindings) for isolated workflow verification of all 8 Reference Hospital consoles and both new backend starters |
+| `healthcore-testing` | Testing | Centralized ISO/HL7-compliant `HealthCoreDataFixture`, `WorkflowVerificationService`, and `PatientJourneyEndToEndAcceptanceTest` (Tests A–J) with `<optional>true</optional>` starter bindings |
 | `healthcore-starter-tenant-governance` | Governance | Multi-facility tenant lifecycle, licensing/tier quotas, cross-facility isolation policies |
 
 ## 2. Standalone Pharmacy & Diagnostics Starters (2 New Isolated Starters + 4 Clinical Starters)
@@ -37,8 +37,8 @@
 | `healthcore-starter-clinical-research` | Zero MPI/EMR/HIS | ICH E6(R3) & CDISC EDC: pseudonymous subject screening/eConsent, SDTM eCRF & query lock, SAE expedited flagging, de-identified CDISC SDTM export |
 | `healthcore-starter-deidentification-research` | Bridge | Safe-harbor de-identification & cohort export bridge from clinical EHR to research |
 
-## 5. EMR, EHR, Hospital Operations, Billing, Interoperability & Public Health Starters (28 Modules)
-`healthcore-starter-mpi`, `healthcore-starter-terminology-cdss`, `healthcore-starter-scheduling`, `healthcore-starter-emr-clinical`, `healthcore-starter-orders-results`, `healthcore-starter-workflow-engine`, `healthcore-starter-patient-portal`, `healthcore-starter-templates-dashboards`, `healthcore-starter-hospital-ops`, `healthcore-starter-emergency-nursing`, `healthcore-starter-surgery-ot`, `healthcore-starter-blood-bank`, `healthcore-starter-biomedical-coldchain`, `healthcore-starter-crvs-mortuary`, `healthcore-starter-workforce-roster`, `healthcore-starter-telemedicine`, `healthcore-starter-uhc-billing`, `healthcore-starter-revenue-coding-claims`, `healthcore-starter-hie-interop`, `healthcore-starter-fhir-hie`, `healthcore-starter-hl7-astm-dicom`, `healthcore-starter-interoperability-ihe`, `healthcore-starter-integration-ops`, `healthcore-starter-api-product`, `healthcore-starter-offline-sync`, `healthcore-starter-public-health`, `healthcore-starter-chw-homecare`, `healthcore-starter-programs-immunization`, `healthcore-starter-disease-surveillance`, `healthcore-starter-analytics`, `healthcore-starter-clinical-ai`.
+## 5. EMR, EHR, Hospital Operations, Queue, Billing, Interoperability & Public Health Starters (32 Modules)
+`healthcore-starter-mpi`, `healthcore-starter-terminology-cdss`, `healthcore-starter-scheduling`, `healthcore-starter-emr-clinical`, `healthcore-starter-orders-results`, `healthcore-starter-workflow-engine` (includes composable `OPD_CONSULTATION_FLOW` v2.0.0, `WorkflowBillingClearancePolicySpi`, `ClinicianResultInbox`, and `DurableNotification`), `healthcore-starter-queue-management` (zero-EMR-coupling concurrency-safe departmental queue starter), `healthcore-starter-patient-portal`, `healthcore-starter-templates-dashboards`, `healthcore-starter-hospital-ops`, `healthcore-starter-emergency-nursing`, `healthcore-starter-surgery-ot`, `healthcore-starter-blood-bank`, `healthcore-starter-biomedical-coldchain`, `healthcore-starter-crvs-mortuary`, `healthcore-starter-workforce-roster`, `healthcore-starter-telemedicine`, `healthcore-starter-uhc-billing`, `healthcore-starter-revenue-coding-claims`, `healthcore-starter-hie-interop`, `healthcore-starter-fhir-hie`, `healthcore-starter-hl7-astm-dicom`, `healthcore-starter-interoperability-ihe`, `healthcore-starter-integration-ops`, `healthcore-starter-api-product`, `healthcore-starter-offline-sync`, `healthcore-starter-public-health`, `healthcore-starter-chw-homecare`, `healthcore-starter-programs-immunization`, `healthcore-starter-disease-surveillance`, `healthcore-starter-analytics`, `healthcore-starter-clinical-ai`.
 
 ## 6. Composable Industry Capability Packs (8 Modules under `packs/`)
 `healthcore-pack-pharmacy`, `healthcore-pack-diagnostics`, `healthcore-pack-pharma-manufacturing`, `healthcore-pack-life-sciences`, `healthcore-pack-emr`, `healthcore-pack-ehr`, `healthcore-pack-his`, `healthcore-pack-hie`.

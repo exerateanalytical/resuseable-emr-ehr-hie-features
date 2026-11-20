@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Reusable Departmental Queue Management Starter
+  =============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>healthcore-starter-queue-management</artifactId>
+    <name>Opes HealthCore Departmental Queue Management Starter</name>
+    <description>
+        Reusable, concurrency-safe departmental queue management starter serving reception,
+        triage, nursing, cashier, consultation, lab, radiology, pharmacy, procedures,
+        admissions, and discharge without duplicating patient demographic records.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

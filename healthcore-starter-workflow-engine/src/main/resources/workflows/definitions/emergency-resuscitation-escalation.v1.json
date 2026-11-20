@@ -1,0 +1,107 @@
+{
+  "workflowId": "EMERGENCY_RESUSCITATION_ESCALATION",
+  "version": "1.0.0",
+  "applicableDomain": "Emergency Department Resuscitation & Unstable Patient Escalation",
+  "careSetting": "EMERGENCY_DEPARTMENT_OR_URGENT_TRIAGE",
+  "descriptionAndPurpose": "High-priority clinical escalation workflow activated when triage detects an unstable patient (ESI 1-2 or red-flag vital signs), supporting provisional emergency MPI identities, mandatory EMERGENCY_OVERRIDE bypassing financial gates, STAT ancillary routing, and audited post-stabilization financial reconciliation.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "optionalModules": [
+    "healthcore-starter-emergency-nursing",
+    "healthcore-starter-mpi",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-blood-bank",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "ClinicalPriorityChanged",
+  "parentChildRelations": {
+    "parentWorkflow": ["OPD_CONSULTATION_FLOW"],
+    "childSubworkflows": [
+      "LAB_ORDER_FULFILLMENT",
+      "RADIOLOGY_IMAGING_FULFILLMENT",
+      "PHARMACY_PRESCRIPTION_FULFILLMENT",
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId (verified or provisional emergency MPI identity)",
+    "encounterId",
+    "triageAcuityLevel (ESI_1_RESUSCITATION | ESI_2_EMERGENT)",
+    "clinicalEscalationReason"
+  ],
+  "responsibleRoleOrTeam": "EMERGENCY_PHYSICIAN_AND_RESUSCITATION_TEAM",
+  "allowedStatesAndTransitions": {
+    "EMERGENCY_ACTIVATED": ["RESUSCITATION_IN_PROGRESS"],
+    "RESUSCITATION_IN_PROGRESS": ["STABILIZED_FOR_DISPOSITION", "TRANSFERRED_TO_OT_OR_ICU", "DECEASED"],
+    "STABILIZED_FOR_DISPOSITION": ["ADMITTED", "DISCHARGED_WITH_FOLLOWUP", "REFERRED_OUT"],
+    "TRANSFERRED_TO_OT_OR_ICU": ["ADMITTED"],
+    "ADMITTED": [],
+    "DISCHARGED_WITH_FOLLOWUP": [],
+    "REFERRED_OUT": [],
+    "DECEASED": []
+  },
+  "prerequisiteConditions": [
+    "Triage nurse or clinician triggers emergency acuity escalation.",
+    "Provisional emergency identity allowed when patient is unconscious or unidentified; audited MPI merge occurs once identity is confirmed."
+  ],
+  "safetyChecks": [
+    "Routine prepayment and insurance prior-authorization rules are NEVER permitted to block stabilization or STAT orders.",
+    "Emergency override reason and authorizing actor are recorded in immutable @ClinicalAudit trail."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "WorkflowBillingClearancePolicySpi MUST return EMERGENCY_OVERRIDE with fulfillmentEligible=true and routeToCashierWorklist=false.",
+    "Deferred financial reconciliation occurs only after clinical stabilization."
+  ],
+  "tasksToCreate": [
+    "IMMEDIATE_RESUSCITATION_TASK",
+    "STAT_DIAGNOSTIC_AND_MEDICATION_TASKS",
+    "POST_STABILIZATION_BILLING_RECONCILIATION_TASK"
+  ],
+  "queuesToUpdate": [
+    "TRIAGE",
+    "DOCTOR_CONSULTATION (EMERGENCY_PRIORITY_1)",
+    "LAB_COLLECTION",
+    "RADIOLOGY",
+    "PHARMACY",
+    "ADMISSIONS"
+  ],
+  "eventsToPublish": [
+    "ClinicalPriorityChanged",
+    "ServiceCleared",
+    "QueueEntryCreated",
+    "ConsultationStarted",
+    "ClinicalOrderSigned",
+    "CriticalResultDetected"
+  ],
+  "notificationsToGenerate": [
+    "RESUSCITATION_TEAM_INTERNAL_ALERT",
+    "CRITICAL_FOLLOWUP (when clinically appropriate)"
+  ],
+  "outputsAndClinicalRecords": [
+    "EmergencyResuscitationFlowsheet",
+    "EmergencyOverrideAuditRecord",
+    "StabilizationAndDispositionNote"
+  ],
+  "exceptionRoutes": [
+    "PROVISIONAL_MPI_MERGE_WORKFLOW once next-of-kin or ID documents arrive",
+    "EXTERNAL_TRAUMA_TRANSFER when tertiary capability required"
+  ],
+  "cancellationAndResumptionRules": "Emergency escalations cannot be silently cancelled; downgrade to routine care requires explicit attending clinician attestation.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "resuscitationClinicianResponseMinutes": 2,
+    "statLabAndImagingActivationMinutes": 5,
+    "criticalResultAckMinutes": 10
+  },
+  "auditAndProvenanceRequirements": "Mandatory @ClinicalAudit logging of every EMERGENCY_OVERRIDE event, provisional identity creation, and subsequent MPI merge/reassociation.",
+  "completionCriteria": "Patient stabilized and transitioned to inpatient admission, operating theatre, safe discharge, or documented transfer.",
+  "apiExamples": [
+    "POST /api/v1/queues/entries (department=DOCTOR_CONSULTATION, priorityLevel=1, financialClearanceState=EMERGENCY_OVERRIDE)"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_C; PENDING_LOCAL_EMERGENCY_MEDICINE_DIRECTOR_SIGN_OFF"
+}

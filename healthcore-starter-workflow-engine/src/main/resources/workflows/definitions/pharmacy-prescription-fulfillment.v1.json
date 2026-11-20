@@ -1,0 +1,105 @@
+{
+  "workflowId": "PHARMACY_PRESCRIPTION_FULFILLMENT",
+  "version": "1.0.0",
+  "applicableDomain": "In-House & External Pharmacy Prescription Verification & Dispensing",
+  "careSetting": "HOSPITAL_PHARMACY_OR_RETAIL_COMMUNITY_PHARMACY",
+  "descriptionAndPurpose": "Independently executable child subworkflow routing signed medication orders to either an in-house pharmacy queue or an external pharmacy handoff contract, enforcing clinical verification, FEFO batch/lot traceability, billing clearance, dispensing, and privacy-minimized pickup notifications.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "optionalModules": [
+    "healthcore-starter-pharmacy-lis",
+    "healthcore-starter-pharmacy-commerce",
+    "healthcore-starter-pharmacy-inventory",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": ["OPD_CONSULTATION_FLOW", "EMERGENCY_RESUSCITATION_ESCALATION", "IPD_ADMISSION_FLOW"],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "fulfillmentMode (PHARMACY_IN_HOUSE | PHARMACY_EXTERNAL)",
+    "externalPharmacyCode (if external)",
+    "idempotencyKey"
+  ],
+  "responsibleRoleOrTeam": "PHARMACIST -> PHARMACY_TECHNICIAN",
+  "allowedStatesAndTransitions": {
+    "ROUTED": ["ON_FINANCIAL_HOLD", "PHARMACY_QUEUED", "EXTERNAL_HANDOFF_SENT", "CANCELLED"],
+    "ON_FINANCIAL_HOLD": ["PHARMACY_QUEUED", "EXTERNAL_HANDOFF_SENT", "CANCELLED"],
+    "PHARMACY_QUEUED": ["CLINICAL_VERIFICATION", "CANCELLED"],
+    "CLINICAL_VERIFICATION": ["PREPARING_DISPENSE", "PRESCRIBER_CLARIFICATION_HOLD", "REJECTED"],
+    "PRESCRIBER_CLARIFICATION_HOLD": ["CLINICAL_VERIFICATION", "CANCELLED"],
+    "PREPARING_DISPENSE": ["READY_FOR_PICKUP"],
+    "READY_FOR_PICKUP": ["DISPENSED", "RETURNED_TO_STOCK"],
+    "EXTERNAL_HANDOFF_SENT": ["EXTERNAL_DISPENSE_CONFIRMED", "CANCELLED"],
+    "DISPENSED": [],
+    "EXTERNAL_DISPENSE_CONFIRMED": [],
+    "RETURNED_TO_STOCK": [],
+    "REJECTED": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Signed medication prescription with dose, route, frequency, and duration.",
+    "Idempotency key verified to guarantee single active dispense task per order."
+  ],
+  "safetyChecks": [
+    "Drug-allergy, drug-drug interaction, duplicate therapy, and weight/renal dose-range check via CDSS.",
+    "Controlled substance schedule and witness verification when applicable.",
+    "FEFO lot/expiry check prohibiting expired stock dispensing."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Service-level PHARMACY clearance evaluated via WorkflowBillingClearancePolicySpi.",
+    "Emergency stabilization medications receive EMERGENCY_OVERRIDE.",
+    "External pharmacy handoff records transfer provenance cleanly without creating an orphan in-house dispense task."
+  ],
+  "tasksToCreate": [
+    "PHARMACIST_VERIFICATION_TASK",
+    "DISPENSE_AND_COUNSEL_TASK (in-house) OR EXTERNAL_PHARMACY_HANDOFF_TASK"
+  ],
+  "queuesToUpdate": [
+    "BILLING_CASHIER",
+    "PHARMACY"
+  ],
+  "eventsToPublish": [
+    "FinancialClearanceRequired",
+    "ServiceCleared",
+    "PrescriptionRouted",
+    "MedicationDispensed",
+    "PatientNotificationRequested",
+    "PatientNotificationDelivered"
+  ],
+  "notificationsToGenerate": [
+    "MEDICATION_READY (privacy-minimized — never lists sensitive medication names in plaintext SMS)"
+  ],
+  "outputsAndClinicalRecords": [
+    "MedicationDispenseRecord (with batch/lot/expiry)",
+    "PatientCounselingAttestation",
+    "ExternalPrescriptionTransferReceipt (when external)"
+  ],
+  "exceptionRoutes": [
+    "PRESCRIBER_CLARIFICATION_HOLD when CDSS flags severe contraindication",
+    "OUT_OF_STOCK_EXTERNAL_TRANSFER when in-house inventory unavailable"
+  ],
+  "cancellationAndResumptionRules": "Uncollected prescriptions returned to stock after facility grace period without mutating signed clinical prescription; prescriber clarification resumes verification under the original orderId.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statDispenseMinutes": 15,
+    "outpatientDispenseMinutes": 30,
+    "prescriberClarificationEscalationMinutes": 60
+  },
+  "auditAndProvenanceRequirements": "Full pharmacy dispense audit capturing verifying pharmacist, lot number, quantity dispensed, counseling flag, and recipient verification.",
+  "completionCriteria": "Medication dispensed and patient counseled in-house, OR external pharmacy handoff receipt recorded.",
+  "apiExamples": [
+    "POST /api/v1/queues/entries (department=PHARMACY)",
+    "POST /api/v1/queues/entries/{queueEntryId}/complete"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_B_C_D_G; PENDING_LOCAL_CHIEF_PHARMACIST_SIGN_OFF"
+}

@@ -1,0 +1,95 @@
+{
+  "workflowId": "CLINICIAN_CRITICAL_RESULT_ESCALATION",
+  "version": "1.0.0",
+  "applicableDomain": "Closed-Loop Critical Finding Escalation & Clinician Result Inbox Governance",
+  "careSetting": "CROSS_DEPARTMENTAL_CLINICAL_SAFETY",
+  "descriptionAndPurpose": "Closed-loop safety subworkflow guaranteeing that critical laboratory or imaging findings are durably routed to the responsible clinician inbox, monitored against strict acknowledgment SLA deadlines, escalated to a fallback clinician or care team if unacknowledged, and never blocked by financial status.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine"
+  ],
+  "optionalModules": [
+    "healthcore-starter-queue-management",
+    "healthcore-starter-orders-results",
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-radiology"
+  ],
+  "startingEvent": "CriticalResultDetected",
+  "parentChildRelations": {
+    "parentWorkflow": ["OPD_CONSULTATION_FLOW", "LAB_ORDER_FULFILLMENT", "RADIOLOGY_IMAGING_FULFILLMENT", "EMERGENCY_RESUSCITATION_ESCALATION"],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "resultId",
+    "responsibleClinicianId",
+    "fallbackClinicianId",
+    "criticalEscalationMinutes"
+  ],
+  "responsibleRoleOrTeam": "ORDERING_CLINICIAN -> FALLBACK_ON_CALL_CLINICIAN -> DEPARTMENT_MEDICAL_DIRECTOR",
+  "allowedStatesAndTransitions": {
+    "CRITICAL_UNACKNOWLEDGED": ["VIEWED", "ACKNOWLEDGED", "ESCALATED", "RETURNED_TO_QUEUE"],
+    "VIEWED": ["ACKNOWLEDGED", "ACTION_TAKEN", "ESCALATED"],
+    "ESCALATED": ["VIEWED", "ACKNOWLEDGED", "ACTION_TAKEN", "RETURNED_TO_QUEUE"],
+    "ACKNOWLEDGED": ["ACTION_TAKEN", "RETURNED_TO_QUEUE", "AMENDED"],
+    "ACTION_TAKEN": ["RETURNED_TO_QUEUE", "AMENDED"],
+    "RETURNED_TO_QUEUE": ["ACTION_TAKEN"],
+    "AMENDED": ["VIEWED", "ACKNOWLEDGED", "ESCALATED"]
+  },
+  "prerequisiteConditions": [
+    "Verified critical resultId linked to authoritative patientId, encounterId, and orderId.",
+    "Responsible clinician and fallback escalation target resolved."
+  ],
+  "safetyChecks": [
+    "Notification delivery NEVER equals clinical acknowledgment; explicit clinician acknowledgment with documented clinical decision is mandatory.",
+    "Financial hold or unpaid balance NEVER blocks critical result visibility, escalation, or patient urgent recall.",
+    "Amended results reopen clinician acknowledgment even after prior closure."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "CRITICAL_RESULT_COMMUNICATION always resolves to EMERGENCY_OVERRIDE in WorkflowBillingClearancePolicySpi."
+  ],
+  "tasksToCreate": [
+    "CLINICIAN_CRITICAL_ACK_TASK",
+    "FALLBACK_ESCALATION_TASK (on SLA breach)",
+    "URGENT_PATIENT_RECALL_TASK (if outpatient already left facility)"
+  ],
+  "queuesToUpdate": [
+    "DOCTOR_CONSULTATION (high-priority re-entry when returnToQueueRequired=true)"
+  ],
+  "eventsToPublish": [
+    "CriticalResultDetected",
+    "ClinicianReviewRequired",
+    "ClinicianResultAcknowledged",
+    "FollowUpRequired",
+    "PatientNotificationRequested"
+  ],
+  "notificationsToGenerate": [
+    "CLINICIAN_CRITICAL_ALERT",
+    "FALLBACK_CLINICIAN_ESCALATION_ALERT",
+    "CRITICAL_FOLLOWUP (privacy-minimized urgent patient recall)"
+  ],
+  "outputsAndClinicalRecords": [
+    "ClinicianResultInboxEntity (with acknowledgedBy, acknowledgedAt, clinicalActionNote)",
+    "EscalationAuditTrail"
+  ],
+  "exceptionRoutes": [
+    "AUTOMATIC_FALLBACK_ESCALATION when escalationDeadlineAt elapses without acknowledgment",
+    "DEPARTMENT_CHIEF_ESCALATION if fallback clinician also fails to acknowledge"
+  ],
+  "cancellationAndResumptionRules": "Critical inbox entries cannot be dismissed without documented acknowledgment; amended results re-enter AMENDED state and reset review requirement.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "primaryClinicianAckMinutes": 15,
+    "fallbackClinicianEscalationMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "Immutable @ClinicalAudit logs for receipt, first view, escalation trigger, fallback reassignment, explicit acknowledgment, and documented clinical action.",
+  "completionCriteria": "Authorized clinician explicitly records acknowledgment and clinical decision/action (or initiates patient return-to-queue / urgent recall).",
+  "apiExamples": [
+    "POST /api/v1/clinical-inbox/{inboxId}/acknowledge",
+    "POST /api/v1/clinical-inbox/escalate-overdue"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_E_F; PENDING_LOCAL_PATIENT_SAFETY_COMMITTEE_SIGN_OFF"
+}

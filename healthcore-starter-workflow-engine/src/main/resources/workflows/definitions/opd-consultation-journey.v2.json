@@ -1,0 +1,153 @@
+{
+  "workflowId": "OPD_CONSULTATION_FLOW",
+  "version": "2.0.0",
+  "applicableDomain": "Outpatient Clinical Consultation & Parallel Ancillary Care Coordination",
+  "careSetting": "OUTPATIENT_CLINIC_HOSPITAL_OPD",
+  "descriptionAndPurpose": "Canonical composable parent patient journey coordinating MPI identity verification, arrival/check-in, single encounter creation, triage escalation, configurable billing clearance, departmental consultation queuing, clinician assessment, parallel lab/radiology/pharmacy subworkflows, result inbox review, return-to-queue follow-up, and safe encounter finalization without forcing concurrent departmental tasks into a single linear state machine.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-mpi",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-queue-management"
+  ],
+  "optionalModules": [
+    "healthcore-starter-scheduling",
+    "healthcore-starter-emergency-nursing",
+    "healthcore-starter-orders-results",
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-radiology",
+    "healthcore-starter-pharmacy-lis",
+    "healthcore-starter-pharmacy-commerce",
+    "healthcore-starter-uhc-billing",
+    "healthcore-starter-revenue-coding-claims",
+    "healthcore-starter-patient-portal",
+    "healthcore-starter-terminology-cdss"
+  ],
+  "startingEvent": "PatientArrived",
+  "parentChildRelations": {
+    "parentWorkflow": [],
+    "childSubworkflows": [
+      "LAB_ORDER_FULFILLMENT",
+      "RADIOLOGY_IMAGING_FULFILLMENT",
+      "PHARMACY_PRESCRIPTION_FULFILLMENT",
+      "EMERGENCY_RESUSCITATION_ESCALATION",
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId (verified via MPI)",
+    "encounterId (newly opened for visit)",
+    "arrivalMode (SCHEDULED | WALK_IN | EMERGENCY_REFERRAL)",
+    "originatingActorId"
+  ],
+  "responsibleRoleOrTeam": "RECEPTION -> TRIAGE_NURSE -> CONSULTING_CLINICIAN -> ANCILLARY_DEPARTMENTS",
+  "allowedStatesAndTransitions": {
+    "ARRIVED": ["MPI_VERIFIED", "PROVISIONAL_EMERGENCY_IDENTIFIED", "CANCELLED"],
+    "MPI_VERIFIED": ["ENCOUNTER_OPENED", "DUPLICATE_REVIEW_REQUIRED"],
+    "PROVISIONAL_EMERGENCY_IDENTIFIED": ["ENCOUNTER_OPENED"],
+    "ENCOUNTER_OPENED": ["TRIAGE_PENDING", "EMERGENCY_ESCALATED"],
+    "TRIAGE_PENDING": ["TRIAGE_COMPLETED", "EMERGENCY_ESCALATED"],
+    "EMERGENCY_ESCALATED": ["CONSULTATION_ACTIVE", "ADMITTED", "TRANSFERRED"],
+    "TRIAGE_COMPLETED": ["BILLING_CLEARANCE_EVALUATION", "CONSULTATION_QUEUED"],
+    "BILLING_CLEARANCE_EVALUATION": ["CONSULTATION_QUEUED", "FINANCIAL_HOLD_CASHIER"],
+    "FINANCIAL_HOLD_CASHIER": ["CONSULTATION_QUEUED", "CANCELLED"],
+    "CONSULTATION_QUEUED": ["CONSULTATION_ACTIVE", "NO_SHOW", "TRANSFERRED"],
+    "CONSULTATION_ACTIVE": ["AWAITING_ANCILLARY_RESULTS", "READY_FOR_DISPOSITION", "ADMITTED"],
+    "AWAITING_ANCILLARY_RESULTS": ["RESULT_REVIEW_REQUIRED", "CONSULTATION_REENTRY_QUEUED", "READY_FOR_DISPOSITION"],
+    "RESULT_REVIEW_REQUIRED": ["CONSULTATION_REENTRY_QUEUED", "READY_FOR_DISPOSITION"],
+    "CONSULTATION_REENTRY_QUEUED": ["CONSULTATION_ACTIVE"],
+    "READY_FOR_DISPOSITION": ["DISCHARGED", "ADMITTED", "REFERRED_OUT"],
+    "DISCHARGED": [],
+    "ADMITTED": [],
+    "REFERRED_OUT": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Authoritative MPI search executed prior to registration; never silently duplicate patient identity.",
+    "Single active Encounter opened for the visit and linked across all child subworkflows.",
+    "Facility tenant context verified on every command and repository query."
+  ],
+  "safetyChecks": [
+    "Clinically unstable triage acuity immediately activates EMERGENCY_OVERRIDE bypassing prepayment holds.",
+    "Allergies, active medications, and prior critical results surfaced prior to signing orders.",
+    "Encounter finalization blocked while unacknowledged critical results or required active departmental tasks remain open."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Evaluated via WorkflowBillingClearancePolicySpi against facility policy configuration.",
+    "Supports all 11 PaymentClearanceOutcome states without creating a duplicate ledger.",
+    "Financial hold routes patient/order to CASHIER worklist while strictly preserving underlying clinical order."
+  ],
+  "tasksToCreate": [
+    "TRIAGE_ASSESSMENT_TASK",
+    "DOCTOR_CONSULTATION_TASK",
+    "PARALLEL_ANCILLARY_ORDER_TASKS (LAB, RADIOLOGY, PHARMACY)",
+    "CLINICIAN_RESULT_REVIEW_TASK"
+  ],
+  "queuesToUpdate": [
+    "RECEPTION",
+    "TRIAGE",
+    "BILLING_CASHIER",
+    "DOCTOR_CONSULTATION",
+    "LAB_COLLECTION",
+    "RADIOLOGY",
+    "PHARMACY",
+    "DISCHARGE_PROCESSING"
+  ],
+  "eventsToPublish": [
+    "PatientMatched",
+    "PatientRegistered",
+    "PatientArrived",
+    "EncounterStarted",
+    "TriageCompleted",
+    "ClinicalPriorityChanged",
+    "VitalSignsRecorded",
+    "QueueEntryCreated",
+    "QueueEntryCalled",
+    "ConsultationStarted",
+    "ConsultationCompleted",
+    "ClinicalOrderSigned",
+    "FinancialClearanceRequired",
+    "ServiceCleared",
+    "FollowUpRequired",
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "QUEUE_CALL_PRIVACY_MINIMIZED",
+    "RESULT_READY",
+    "MEDICATION_READY",
+    "FOLLOW_UP_REMINDER"
+  ],
+  "outputsAndClinicalRecords": [
+    "EncounterRecord",
+    "TriageObservationSet",
+    "ClinicalAssessmentAndPlan",
+    "SignedClinicalOrders",
+    "ClinicianResultAcknowledgments",
+    "DischargeSummaryOrReferralLetter"
+  ],
+  "exceptionRoutes": [
+    "EMERGENCY_RESUSCITATION_ESCALATION on unstable vital signs or ESI Level 1-2",
+    "MPI_DUPLICATE_STEWARDSHIP_QUEUE on ambiguous patient match score",
+    "NO_SHOW_RECALL_POLICY on missed consultation calls"
+  ],
+  "cancellationAndResumptionRules": "Non-emergency encounters may be paused or cancelled prior to disposition with mandatory audit reason; financial holds suspend activation without deleting orders and automatically resume upon idempotent ServiceCleared event.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "triageWaitRoutineMinutes": 20,
+    "triageWaitUrgentMinutes": 5,
+    "consultationWaitRoutineMinutes": 45,
+    "criticalResultAckMinutes": 15,
+    "ancillaryOrderClearanceMinutes": 30
+  },
+  "auditAndProvenanceRequirements": "Every state transition, billing override, queue claim, order route, result acknowledgment, and discharge emits immutable hash-chained @ClinicalAudit records carrying facilityId, patientId, encounterId, actorId, and correlationId.",
+  "completionCriteria": "All mandatory clinician result reviews acknowledged (zero unacknowledged critical results), all active blocking departmental fulfillment tasks resolved or explicitly deferred to outpatient follow-up, and disposition recorded.",
+  "apiExamples": [
+    "POST /api/v1/workflows/instances (workflowCode=OPD_CONSULTATION_FLOW)",
+    "POST /api/v1/queues/entries (department=TRIAGE)",
+    "POST /api/v1/queues/entries/{queueEntryId}/claim",
+    "GET /api/v1/queues/worklists?facilityId={id}&department=DOCTOR_CONSULTATION"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_AND_ACCEPTANCE_VERIFIED_A_THROUGH_J; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}
