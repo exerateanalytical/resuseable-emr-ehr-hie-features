@@ -88,4 +88,18 @@ public final class IsoHl7StandardSampleData {
     public static final String PAYER_CNPS_UHC = "CM-CNPS-UHC";
     public static final String CLAIM_CONTROL_NUMBER = "CLM-ISO-2026-0001";
     public static final String ERA_TRACE_NUMBER = "ERA-835-2026-0001";
+
+    // SNOMED-CT, Additional LOINC/UCUM, HL7 v2.5.1 ORU^R01 & Canonical Patient Journey Constants
+    public static final String SNOMED_SYSTEM = "http://snomed.info/sct";
+    public static final String SNOMED_CHEST_PAIN = "29857009";
+    public static final String LOINC_HEMOGLOBIN = "718-7";
+    public static final String UCUM_G_DL = "g/dL";
+    public static final String OPD_CANONICAL_WORKFLOW_ID = "OPD_CONSULTATION_FLOW";
+    public static final String OPD_CANONICAL_WORKFLOW_VERSION = "2.0.0";
+
+    public static final String HL7_V251_ORU_R01_CRITICAL_POTASSIUM =
+            "MSH|^~\\&|REF_LIS|SYN_LAB|HEALTHCORE_HIS|ISO-DLA-REF-001|20261120102500||ORU^R01|SYNORU0001|P|2.5.1\r"
+            + "PID|1||SYN-HL7-MRN-1002^^^ISO-DLA-REF-001^MR||SYNTHETIQUE^JEAN-LUC||19610219|M\r"
+            + "OBR|1|ORD-SYN-2823|ACC-SYN-2823|2823-3^Potassium [Moles/volume] in Serum or Plasma^LN|||20261120102000\r"
+            + "OBX|1|NM|2823-3^Potassium^LN||6.4|mmol/L|3.5-5.1|HH|||F\r";
 }

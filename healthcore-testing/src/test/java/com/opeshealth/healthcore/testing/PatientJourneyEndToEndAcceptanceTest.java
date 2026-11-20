@@ -741,12 +741,19 @@ class PatientJourneyEndToEndAcceptanceTest {
     @Test
     @DisplayName("All 22 module versioned JSON workflow definitions and YAML registry validate against WorkflowChecklistDefinition")
     void allTwentyTwoModuleWorkflowJsonDefinitionsDeserializeCleanly() throws Exception {
-        Path docsDir = Files.isDirectory(Path.of("docs/workflows/definitions"))
-                ? Path.of("docs/workflows/definitions")
-                : Path.of("../docs/workflows/definitions");
+        Path repoRoot = Files.isDirectory(Path.of("docs/workflows/definitions"))
+                ? Path.of(".")
+                : Path.of("..");
+        Path docsDir = repoRoot.resolve("docs/workflows/definitions");
         assertTrue(Files.isDirectory(docsDir), "Expected docs/workflows/definitions directory to exist");
-        assertTrue(Files.isRegularFile(docsDir.resolve("workflow-registry.v1.yaml")),
+        Path registryFile = docsDir.resolve("workflow-registry.v1.yaml");
+        assertTrue(Files.isRegularFile(registryFile),
                 "Expected versioned workflow-registry.v1.yaml alongside JSON definitions");
+
+        String registryYaml = Files.readString(registryFile);
+        Set<String> canonicalEvents = Arrays.stream(CanonicalWorkflowEventType.values())
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.toSet());
 
         ObjectMapper mapper = new ObjectMapper();
         List<Path> jsonFiles;
@@ -762,6 +769,25 @@ class PatientJourneyEndToEndAcceptanceTest {
             assertFalse(def.allowedStatesAndTransitions().isEmpty(), jsonFile.getFileName() + " missing state transitions");
             assertFalse(def.safetyChecks().isEmpty(), jsonFile.getFileName() + " missing safetyChecks");
             assertFalse(def.eventsToPublish().isEmpty(), jsonFile.getFileName() + " missing eventsToPublish");
+            assertTrue(canonicalEvents.contains(def.startingEvent()),
+                    jsonFile.getFileName() + " uses non-canonical startingEvent: " + def.startingEvent());
+            for (String publishedEvent : def.eventsToPublish()) {
+                assertTrue(canonicalEvents.contains(publishedEvent),
+                        jsonFile.getFileName() + " publishes non-canonical event: " + publishedEvent);
+            }
+            assertTrue(registryYaml.contains(def.workflowId()),
+                    "workflow-registry.v1.yaml missing entry for " + def.workflowId());
+            String moduleId = def.requiredModules().stream()
+                    .filter(m -> m.startsWith("healthcore-starter-"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("No starter module declared in " + jsonFile.getFileName()));
+            Path classpathMirror = repoRoot.resolve(moduleId)
+                    .resolve("src/main/resources/workflows")
+                    .resolve(jsonFile.getFileName());
+            assertTrue(Files.isRegularFile(classpathMirror),
+                    "Missing module classpath mirror: " + classpathMirror);
+            assertArrayEquals(Files.readAllBytes(jsonFile), Files.readAllBytes(classpathMirror),
+                    "Docs/classpath parity mismatch for " + jsonFile.getFileName());
         }
     }
 }

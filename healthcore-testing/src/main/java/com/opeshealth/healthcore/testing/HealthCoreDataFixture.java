@@ -66,10 +66,23 @@ import com.opeshealth.healthcore.revenueclaims.service.RevenueCodingClaimsServic
 import com.opeshealth.healthcore.revenueclaims.service.RevenueCodingClaimsService.PostEraRemittanceRequest;
 import com.opeshealth.healthcore.revenueclaims.service.RevenueCodingClaimsService.SubmitClaimRequest;
 import com.opeshealth.healthcore.revenueclaims.service.RevenueCodingClaimsService.UpsertTariffRequest;
+import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.DepartmentQueueEntryEntity;
+import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.QueuePriority;
+import com.opeshealth.healthcore.queue.service.QueueManagementService;
+import com.opeshealth.healthcore.queue.service.QueueManagementService.EnqueueRequest;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.starters.BloodBankStarter;
 import com.opeshealth.healthcore.starters.SurgeryOtStarter;
 import com.opeshealth.healthcore.testing.data.IsoHl7StandardSampleData;
+import com.opeshealth.healthcore.workflow.domain.WorkflowEntities.WorkflowInstanceEntity;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.BillingClearanceDecision;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.BillingClearanceEvaluationRequest;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.FacilityBillingPolicyConfig;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.ServiceClearanceCategory;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.DepartmentOrderRoutingEntity;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.OrderTargetDepartment;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService.RouteSignedOrderCommand;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -111,6 +124,8 @@ public class HealthCoreDataFixture {
     private final ClinicalAiGovernanceService aiGovernanceService;
     private final HospitalAnalyticsService analyticsService;
     private final RevenueCodingClaimsService revenueClaimsService;
+    private final PatientJourneyOrchestratorService patientJourneyService;
+    private final QueueManagementService queueManagementService;
 
     private HealthCoreDataFixture(Builder b) {
         this.governanceService = b.governanceService;
@@ -131,6 +146,8 @@ public class HealthCoreDataFixture {
         this.aiGovernanceService = b.aiGovernanceService;
         this.analyticsService = b.analyticsService;
         this.revenueClaimsService = b.revenueClaimsService;
+        this.patientJourneyService = b.patientJourneyService;
+        this.queueManagementService = b.queueManagementService;
     }
 
     public static Builder builder() {
@@ -239,6 +256,18 @@ public class HealthCoreDataFixture {
     public ConsoleSeedSummary seedRevenueCodingClaimsStarter(UUID facilityId, UUID patientId, UUID encounterId) {
         Objects.requireNonNull(revenueClaimsService, "revenueClaimsService is required for Revenue Coding/Claims seeding");
         return withinFacility(facilityId, () -> RevenueCodingClaimsSeeder.seed(revenueClaimsService, patientId, encounterId));
+    }
+
+    /**
+     * Master Patient Journey &amp; Departmental Queue Engine ({@code OPD_CONSULTATION_FLOW} v2.0.0 +
+     * {@code healthcore-starter-queue-management}) — starts the parent journey, evaluates triage/billing
+     * clearance, enqueues &amp; claims the consultation ticket, and routes an ISO/LOINC lab order.
+     */
+    public ConsoleSeedSummary seedMasterPatientJourneyAndQueues(UUID facilityId, UUID patientId, UUID encounterId) {
+        Objects.requireNonNull(patientJourneyService, "patientJourneyService is required for Master Patient Journey seeding");
+        Objects.requireNonNull(queueManagementService, "queueManagementService is required for Departmental Queue seeding");
+        return withinFacility(facilityId, () -> PatientJourneyQueueSeeder.seed(
+                patientJourneyService, queueManagementService, facilityId, patientId, encounterId));
     }
 
     // =========================================================================
@@ -477,6 +506,42 @@ public class HealthCoreDataFixture {
         }
     }
 
+    private static final class PatientJourneyQueueSeeder {
+        static ConsoleSeedSummary seed(PatientJourneyOrchestratorService journeyService,
+                                       QueueManagementService queueService,
+                                       UUID facilityId, UUID patientId, UUID encounterId) {
+            WorkflowInstanceEntity parent = journeyService.startParentOutpatientJourney(
+                    facilityId, patientId, encounterId, true, false, FIXTURE_ACTOR);
+            FacilityBillingPolicyConfig policy = FacilityBillingPolicyConfig.defaultFacilityPolicy();
+            BillingClearanceDecision clearance = journeyService.evaluateTriageAndConsultationClearance(
+                    facilityId, patientId, encounterId, parent.getId(), 3, false,
+                    new BillingClearanceEvaluationRequest(
+                            facilityId, patientId, encounterId, null,
+                            ServiceClearanceCategory.CONSULTATION, false, false,
+                            true, false, false, false, 25000L, 0L),
+                    policy, FIXTURE_ACTOR);
+            DepartmentQueueEntryEntity consultationEntry = queueService.enqueue(
+                    facilityId,
+                    new EnqueueRequest(
+                            "DOCTOR_CONSULTATION", patientId, encounterId, null, null, parent.getId(),
+                            QueuePriority.ROUTINE, clearance.outcome().name(), null, 45,
+                            "FIXTURE-DOC-" + encounterId),
+                    FIXTURE_ACTOR);
+            queueService.claimTask(facilityId, consultationEntry.getId(), "dr.iso.ngono");
+
+            UUID labOrderId = UUID.randomUUID();
+            DepartmentOrderRoutingEntity labRoute = journeyService.routeSignedOrder(
+                    new RouteSignedOrderCommand(
+                            facilityId, patientId, encounterId, parent.getId(), labOrderId,
+                            OrderTargetDepartment.LABORATORY, null, false, true, false, false, false,
+                            12000L, 0L, "dr.iso.ngono", "FIXTURE-LAB-" + labOrderId),
+                    policy);
+
+            return new ConsoleSeedSummary("patient-journey-queues",
+                    List.of(parent.getId(), consultationEntry.getId(), labRoute.getId()), 4);
+        }
+    }
+
     private static final class FullHospitalSeeder {
         static SeededHospitalFixtureResult seed(HealthCoreDataFixture f) {
             TenantOrganizationEntity org = f.orgRepo.findByOrgCode(IsoHl7StandardSampleData.ORG_CODE)
@@ -549,6 +614,9 @@ public class HealthCoreDataFixture {
                 if (f.revenueClaimsService != null) {
                     summaries.put("revenue-coding-claims", f.seedRevenueCodingClaimsStarter(facilityId, impPatient.getId(), savedEncounter.getId()));
                 }
+                if (f.patientJourneyService != null && f.queueManagementService != null) {
+                    summaries.put("patient-journey-queues", f.seedMasterPatientJourneyAndQueues(facilityId, ambPatient.getId(), savedEncounter.getId()));
+                }
 
                 return new SeededHospitalFixtureResult(
                         org.getId(), facilityId, ambPatient.getId(), impPatient.getId(),
@@ -600,6 +668,8 @@ public class HealthCoreDataFixture {
         private ClinicalAiGovernanceService aiGovernanceService;
         private HospitalAnalyticsService analyticsService;
         private RevenueCodingClaimsService revenueClaimsService;
+        private PatientJourneyOrchestratorService patientJourneyService;
+        private QueueManagementService queueManagementService;
 
         public Builder governance(TenantGovernanceService service,
                                   TenantGovernanceService.OrganizationRepository orgRepo,
@@ -625,6 +695,8 @@ public class HealthCoreDataFixture {
         public Builder aiGovernanceService(ClinicalAiGovernanceService aiGovernanceService) { this.aiGovernanceService = aiGovernanceService; return this; }
         public Builder analyticsService(HospitalAnalyticsService analyticsService) { this.analyticsService = analyticsService; return this; }
         public Builder revenueClaimsService(RevenueCodingClaimsService revenueClaimsService) { this.revenueClaimsService = revenueClaimsService; return this; }
+        public Builder patientJourneyService(PatientJourneyOrchestratorService patientJourneyService) { this.patientJourneyService = patientJourneyService; return this; }
+        public Builder queueManagementService(QueueManagementService queueManagementService) { this.queueManagementService = queueManagementService; return this; }
 
         public HealthCoreDataFixture build() {
             return new HealthCoreDataFixture(this);

@@ -41,12 +41,19 @@ import com.opeshealth.healthcore.revenueclaims.domain.RevenueCodingClaimsEntitie
 import com.opeshealth.healthcore.revenueclaims.domain.RevenueCodingClaimsEntities.InsuranceAuthorizationEntity;
 import com.opeshealth.healthcore.revenueclaims.domain.RevenueCodingClaimsEntities.PayerClaimEntity;
 import com.opeshealth.healthcore.revenueclaims.service.RevenueCodingClaimsService;
+import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.DepartmentQueueEntryEntity;
+import com.opeshealth.healthcore.queue.service.QueueManagementService;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.starters.BloodBankStarter;
 import com.opeshealth.healthcore.starters.SurgeryOtStarter;
 import com.opeshealth.healthcore.testing.HealthCoreDataFixture.ConsoleSeedSummary;
 import com.opeshealth.healthcore.testing.HealthCoreDataFixture.SeededHospitalFixtureResult;
 import com.opeshealth.healthcore.testing.data.IsoHl7StandardSampleData;
+import com.opeshealth.healthcore.workflow.domain.WorkflowEntities.WorkflowInstanceEntity;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.BillingClearanceDecision;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.PaymentClearanceOutcome;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.DepartmentOrderRoutingEntity;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -277,6 +284,46 @@ class HealthCoreDataFixtureTest {
         result.assertAllConsolesAndStartersSeeded();
         assertEquals(9, result.consoleSummaries().size());
         assertEquals(1, aiGov.listDrafts(facId, null).size());
+        assertTrue(FacilityContext.getFacilityId().isEmpty());
+    }
+
+    @Test
+    void seedsMasterPatientJourneyAndDepartmentalQueuesInIsolation() {
+        UUID facId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+
+        PatientJourneyOrchestratorService journeySvc = mock(PatientJourneyOrchestratorService.class);
+        QueueManagementService queueSvc = mock(QueueManagementService.class);
+
+        WorkflowInstanceEntity parentWf = mock(WorkflowInstanceEntity.class);
+        when(parentWf.getId()).thenReturn(UUID.randomUUID());
+        when(journeySvc.startParentOutpatientJourney(eq(facId), eq(patientId), eq(encounterId), eq(true), eq(false), anyString()))
+                .thenReturn(parentWf);
+        when(journeySvc.evaluateTriageAndConsultationClearance(eq(facId), eq(patientId), eq(encounterId),
+                eq(parentWf.getId()), eq(3), eq(false), any(), any(), anyString()))
+                .thenReturn(new BillingClearanceDecision(PaymentClearanceOutcome.INSURANCE_AUTHORIZED, true, false, true, "Pre-authorized"));
+
+        DepartmentQueueEntryEntity qEntry = mock(DepartmentQueueEntryEntity.class);
+        when(qEntry.getId()).thenReturn(UUID.randomUUID());
+        when(queueSvc.enqueue(eq(facId), any(), anyString())).thenReturn(qEntry);
+
+        DepartmentOrderRoutingEntity routedOrder = mock(DepartmentOrderRoutingEntity.class);
+        when(routedOrder.getId()).thenReturn(UUID.randomUUID());
+        when(journeySvc.routeSignedOrder(any(), any())).thenReturn(routedOrder);
+
+        HealthCoreDataFixture isolatedFixture = HealthCoreDataFixture.builder()
+                .patientJourneyService(journeySvc)
+                .queueManagementService(queueSvc)
+                .build();
+
+        ConsoleSeedSummary summary = isolatedFixture.seedMasterPatientJourneyAndQueues(facId, patientId, encounterId);
+
+        assertEquals("patient-journey-queues", summary.consoleKey());
+        assertEquals(4, summary.operationsExecuted());
+        assertEquals(3, summary.createdIds().size());
+        verify(queueSvc, times(1)).claimTask(eq(facId), eq(qEntry.getId()), eq("dr.iso.ngono"));
+        verify(journeySvc, times(1)).routeSignedOrder(any(), any());
         assertTrue(FacilityContext.getFacilityId().isEmpty());
     }
 }

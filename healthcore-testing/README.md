@@ -37,4 +37,8 @@ WorkflowVerificationService verifier = WorkflowVerificationService.builder(fixtu
 var result = verifier.seedAndVerifyIsolatedWorkflow("integration-ops", facilityId, null, null);
 ```
 
+## Master Patient Journey, Queues & 22-Module Workflow Alignment
+- **Optional Master Patient Journey & Departmental Queues**: Wire `.patientJourneyService(...)` and `.queueManagementService(...)` on `HealthCoreDataFixture.builder()` to invoke `seedMasterPatientJourneyAndQueues(facilityId, patientId, encounterId)` (or include `"patient-journey-queues"` automatically in `seedAllReferenceConsolesAndStarters()`).
+- **22-Module Versioned JSON Workflow Verification**: `PatientJourneyEndToEndAcceptanceTest` verifies all 6 core patient journey blueprints (`OPD_CONSULTATION_FLOW` v2.0.0 + 5 subworkflows), all 22 module versioned JSON definitions (`docs/workflows/definitions/*.v1.json` + `<module>/src/main/resources/workflows/*.v1.json`), canonical `CanonicalWorkflowEventType` alignment, and `workflow-registry.v1.yaml` completeness.
+
 All starter dependencies in `healthcore-testing/pom.xml` are declared `<optional>true</optional>`, guaranteeing zero transitive coupling when imported in `<scope>test</scope>` and allowing all 8 Industry Capability Packs to initialize cleanly in isolation (verified by `IndustryPackFixtureIsolationTest` and `.github/workflows/pack-isolation-and-test-suites.yml`).
