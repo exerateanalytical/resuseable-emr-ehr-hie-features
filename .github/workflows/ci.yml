@@ -25,8 +25,19 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Verify Maven build and unit/regression test suite
-        run: mvn -B -ntp clean verify -DskipITs=true
+      - name: Verify Maven build, dependency convergence, and unit/regression test suite
+        run: |
+          mvn -B -ntp dependency:tree -DoutputFile=target/dependency-tree.txt
+          mvn -B -ntp clean verify -DskipITs=true
+
+      - name: Generate release SHA-256 checksums and optional artifact signature
+        run: bash scripts/ci-verify-docs-and-sign.sh target/release-attestation
+
+      - name: Upload release attestation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-attestation
+          path: target/release-attestation/**
 
       - name: Upload Surefire test reports on failure
         if: failure()

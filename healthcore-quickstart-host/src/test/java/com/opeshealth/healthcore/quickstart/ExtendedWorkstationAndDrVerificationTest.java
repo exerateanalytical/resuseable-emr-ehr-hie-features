@@ -58,7 +58,7 @@ class ExtendedWorkstationAndDrVerificationTest {
         UUID facId = UUID.randomUUID();
         TenantFacilityEntity fac = new TenantFacilityEntity();
         fac.setFacilityCode("DLA-REF-001");
-        fac.setFacilityName("Douala Reference Hospital");
+        fac.setName("Douala Reference Hospital");
 
         TenantGovernanceService gov = mock(TenantGovernanceService.class);
         TenantGovernanceService.FacilityRepository facRepo = mock(TenantGovernanceService.FacilityRepository.class);
