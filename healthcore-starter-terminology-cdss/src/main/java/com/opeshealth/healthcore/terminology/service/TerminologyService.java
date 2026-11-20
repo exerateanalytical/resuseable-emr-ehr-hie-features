@@ -753,6 +753,12 @@ public class TerminologyService implements ApplicationRunner {
             throw new IllegalArgumentException("value, fromUnit, and toUnit are required for UCUM conversion");
         }
         if (fromUnit.equalsIgnoreCase(toUnit)) return value;
+        if ("mg".equalsIgnoreCase(fromUnit) && "g".equalsIgnoreCase(toUnit)) {
+            return value.divide(new BigDecimal("1000"));
+        }
+        if ("g".equalsIgnoreCase(fromUnit) && "mg".equalsIgnoreCase(toUnit)) {
+            return value.multiply(new BigDecimal("1000"));
+        }
         if ("Cel".equalsIgnoreCase(fromUnit) && "[degF]".equalsIgnoreCase(toUnit)) {
             return value.multiply(new BigDecimal("1.8")).add(new BigDecimal("32")).setScale(2, RoundingMode.HALF_UP);
         }

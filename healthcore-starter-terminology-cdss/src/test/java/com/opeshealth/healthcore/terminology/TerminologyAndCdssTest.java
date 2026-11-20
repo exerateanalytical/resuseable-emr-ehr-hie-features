@@ -40,8 +40,8 @@ class TerminologyAndCdssTest {
         assertTrue(terminologyService.isValidIcd10Syntax("J18.9"));
         assertFalse(terminologyService.isValidIcd10Syntax("999.9"));
 
-        Map<String, Object> conv = terminologyService.convertUcum(BigDecimal.valueOf(1000), "mg", "g");
-        assertEquals(1.0, ((Number) conv.get("convertedValue")).doubleValue(), 0.001);
+        BigDecimal conv = terminologyService.convertUcum(BigDecimal.valueOf(1000), "mg", "g");
+        assertEquals(0, BigDecimal.ONE.compareTo(conv));
     }
 
     @Test
