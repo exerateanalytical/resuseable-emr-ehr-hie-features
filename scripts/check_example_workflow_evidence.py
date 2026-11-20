@@ -26,7 +26,7 @@ def audit_example(name: str) -> tuple[bool, str]:
         tagged = 'workflow-it' in source
         container = ("PostgreSQLContainer" in source or "@Testcontainers" in source
                      or "jdbc:postgresql:" in source)
-        assertion = bool(re.search(r"\\bassert(?:Equals|True|False|Throws|NotNull|NotEquals|All)\\s*\\(", source))
+        assertion = bool(re.search(r"\bassert(?:Equals|True|False|Throws|NotNull|NotEquals|All)\s*\(", source))
         # Neither static presence nor a mocked core service proves DB behavior.
         if has_test and tagged and container and assertion:
             return True, str(path.relative_to(ROOT))
