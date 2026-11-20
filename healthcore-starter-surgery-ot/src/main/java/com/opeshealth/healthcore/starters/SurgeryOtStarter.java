@@ -103,7 +103,8 @@ public class SurgeryOtStarter {
 
         /**
          * Verifies all 3 phases of the WHO Surgical Safety Checklist before marking
-         * the surgical schedule checklist complete and authorizing incision.
+         * the entire checklist complete. Sign-out/count verification is a postoperative
+         * requirement and must not be misrepresented as a pre-incision check.
          */
         @Transactional
         @ClinicalAudit(action = "SURGERY_WHO_CHECKLIST_VERIFY", resourceType = "SurgicalSchedule")
@@ -126,6 +127,9 @@ public class SurgeryOtStarter {
             if (!submission.teamTimeOutCompleted()) {
                 failedGates.add("TIME_OUT: Surgical team verbal Time-Out not completed");
             }
+            if (!submission.spongeNeedleInstrumentCountCorrect()) {
+                failedGates.add("SIGN_OUT: Sponge, needle and instrument count not reconciled");
+            }
             if (!failedGates.isEmpty()) {
                 throw new IllegalStateException("WHO Surgical Safety Checklist gate blocked incision: "
                         + String.join("; ", failedGates));
@@ -135,7 +139,7 @@ public class SurgeryOtStarter {
             if (submission.implantUdiBarcode() != null && !submission.implantUdiBarcode().isBlank()) {
                 schedule.setImplantUdi(submission.implantUdiBarcode().trim());
             }
-            schedule.setStatus(submission.spongeNeedleInstrumentCountCorrect() ? "COMPLETED_COUNT_VERIFIED" : "IN_SURGERY");
+            schedule.setStatus("COMPLETED_COUNT_VERIFIED");
             return surgicalScheduleRepository.save(schedule);
         }
 
