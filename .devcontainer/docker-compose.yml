@@ -1,0 +1,44 @@
+# Isolated Java 25 + Maven + PostgreSQL 16 developer environment.
+# The Docker socket mount enables Testcontainers on Docker Desktop/WSL2.
+# Do not use this configuration on an untrusted or shared Docker host.
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    init: true
+    working_dir: /workspace/healthcore
+    volumes:
+      - ..:/workspace/healthcore:cached
+      - maven_cache:/root/.m2
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: sleep infinity
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcore
+      SPRING_DATASOURCE_USERNAME: healthcore_dev
+      SPRING_DATASOURCE_PASSWORD: local_dev_only_change_before_deployment
+      DOCKER_HOST: unix:///var/run/docker.sock
+      MAVEN_OPTS: -Xmx1536m
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: healthcore
+      POSTGRES_USER: healthcore_dev
+      POSTGRES_PASSWORD: local_dev_only_change_before_deployment
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthcore_dev -d healthcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  maven_cache:
+  postgres_data:
