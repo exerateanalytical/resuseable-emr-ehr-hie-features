@@ -7,6 +7,7 @@ import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientAggregateEntity;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import org.junit.jupiter.api.AfterEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,10 +36,10 @@ class DicomWebAndIheStandardsFixtureTest {
         service = new HieInteropService(
                 patientRepo,
                 mock(FhirSubscriptionRepository.class),
-                docRepo,
                 dicomRepo,
-                mock(Hl7MessageLogRepository.class),
-                mock(Hl7DlqRepository.class));
+                mock(HieDlqRepository.class),
+                docRepo,
+                mock(JdbcTemplate.class));
         facilityId = UUID.randomUUID();
         FacilityContext.setFacilityId(facilityId);
     }
@@ -59,7 +60,7 @@ class DicomWebAndIheStandardsFixtureTest {
         patient.setGender("male");
         when(patientRepo.findByIdAndFacilityId(patient.getId(), facilityId)).thenReturn(Optional.of(patient));
 
-        String cdaXml = service.generateCdaR2Xml(patient.getId());
+        String cdaXml = service.generateCdaR2Xml(patient.getId(), "Synthetic patient summary");
         assertTrue(cdaXml.contains("<ClinicalDocument"));
         assertTrue(cdaXml.contains("MRN-CDA-01"));
 
@@ -78,14 +79,14 @@ class DicomWebAndIheStandardsFixtureTest {
         study.setPatientId(UUID.randomUUID());
         study.setStudyInstanceUid("1.2.826.0.1.3680043.10.942.777");
         study.setModality("MR");
-        assertDoesNotThrow(() -> service.enforcePayloadFacilityMatchesTenant(study.getFacilityId()));
+        assertDoesNotThrow(() -> HieInteropService.enforcePayloadFacilityMatchesTenant(study.getFacilityId(), facilityId));
 
         UUID foreignFacility = UUID.randomUUID();
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
-                () -> service.enforcePayloadFacilityMatchesTenant(foreignFacility));
+                () -> HieInteropService.enforcePayloadFacilityMatchesTenant(foreignFacility, facilityId));
 
         IheDocumentEntity doc = new IheDocumentEntity();
         doc.setFacilityId(facilityId);
-        assertDoesNotThrow(() -> service.enforcePayloadFacilityMatchesTenant(doc.getFacilityId()));
+        assertDoesNotThrow(() -> HieInteropService.enforcePayloadFacilityMatchesTenant(doc.getFacilityId(), facilityId));
     }
 }
