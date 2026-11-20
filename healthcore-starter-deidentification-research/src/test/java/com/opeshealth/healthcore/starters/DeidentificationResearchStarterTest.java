@@ -28,6 +28,10 @@ class DeidentificationResearchStarterTest {
         assertTrue(result.kAnonymitySatisfied());
         assertEquals(3, result.exportedRecordCount());
         assertEquals(1, result.suppressedForKAnonymityCount());
+        assertTrue(result.cohort().stream().allMatch(r -> r.scrubbedClinicalSummary().isEmpty()));
+        assertTrue(result.cohort().stream().allMatch(r -> "SUPPRESSED".equals(r.region3DigitPrefix())));
+        assertThrows(IllegalArgumentException.class, () -> service.exportSafeHarborCohort(
+                new SafeHarborCohortExportRequest("STUDY-2026", "", 3, rows)));
         assertFalse(result.cohort().get(0).scrubbedClinicalSummary().contains("a@b.com"));
     }
 }
