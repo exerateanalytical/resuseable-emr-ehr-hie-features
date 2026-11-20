@@ -7,6 +7,8 @@ import com.opeshealth.healthcore.ops.service.HospitalOpsService.BiomedMaintenanc
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.ColdChainRepository;
 import com.opeshealth.healthcore.starters.BiomedicalColdChainStarter.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,29 +19,36 @@ import static org.mockito.Mockito.*;
 
 class BiomedicalColdChainStarterTest {
 
+    @AfterEach
+    void clearFacility() { FacilityContext.clear(); }
+
     @Test
     void detectsThermalExcursionAndOverdueBiomedicalCalibration() {
         UUID facId = UUID.randomUUID();
+        FacilityContext.setFacilityId(facId);
         ColdChainRepository coldRepo = mock(ColdChainRepository.class);
         BiomedMaintenanceRepository biomedRepo = mock(BiomedMaintenanceRepository.class);
 
         ColdChainTelemetryEntity reading = new ColdChainTelemetryEntity();
-        reading.setSensorId("FRIDGE-EPI-01");
-        reading.setTemperatureCelsius(new BigDecimal("11.4"));
+        reading.setFacilityId(facId);
+        reading.setEquipmentTag("FRIDGE-EPI-01");
+        reading.setTempCelsius(new BigDecimal("11.4"));
         reading.setExcursionAlert(true);
-        when(coldRepo.findAll()).thenReturn(List.of(reading));
+        when(coldRepo.findByFacilityIdAndEquipmentTagOrderByRecordedAtAsc(facId, "FRIDGE-EPI-01"))
+                .thenReturn(List.of(reading));
 
         BiomedMaintenanceEntity asset = new BiomedMaintenanceEntity();
         asset.setFacilityId(facId);
-        asset.setAssetTag("VENT-ICU-01");
-        asset.setNextCalibrationDue(LocalDate.now().minusDays(5));
-        when(biomedRepo.findAll()).thenReturn(List.of(asset));
+        asset.setEquipmentTag("VENT-ICU-01");
+        asset.setEquipmentName("ICU ventilator");
+        asset.setCalibrationDueOn(LocalDate.now().minusDays(5));
+        when(biomedRepo.findByFacilityId(facId)).thenReturn(List.of(asset));
 
         BiomedicalColdChainGovernanceService service = new BiomedicalColdChainGovernanceService(
                 mock(HospitalOpsService.class), coldRepo, biomedRepo);
 
         ColdChainStabilityReport report = service.analyzeSensorThermalStability("FRIDGE-EPI-01");
-        assertTrue(report.excursionCount() >= 1);
+        assertTrue(report.heatExcursionReadingsAbove8C() >= 1);
 
         BiomedicalComplianceSummary audit = service.auditFacilityBiomedicalCompliance(facId);
         assertEquals(1, audit.overdueCalibrationAssets());

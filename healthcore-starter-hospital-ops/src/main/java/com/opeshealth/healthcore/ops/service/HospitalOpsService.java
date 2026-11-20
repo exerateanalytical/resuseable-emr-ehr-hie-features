@@ -41,8 +41,12 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
         Optional<AnesthesiaPacuLogEntity> findTopByFacilityIdAndSurgeryIdOrderByRecordedAtDesc(UUID facilityId, UUID surgeryId);
     }
     public interface TelemedicineRepository extends JpaRepository<TelemedicineSessionEntity, UUID> {}
-    public interface ColdChainRepository extends JpaRepository<ColdChainTelemetryEntity, UUID> {}
-    public interface BiomedMaintenanceRepository extends JpaRepository<BiomedMaintenanceEntity, UUID> {}
+    public interface ColdChainRepository extends JpaRepository<ColdChainTelemetryEntity, UUID> {
+        List<ColdChainTelemetryEntity> findByFacilityIdAndEquipmentTagOrderByRecordedAtAsc(UUID facilityId, String equipmentTag);
+    }
+    public interface BiomedMaintenanceRepository extends JpaRepository<BiomedMaintenanceEntity, UUID> {
+        List<BiomedMaintenanceEntity> findByFacilityId(UUID facilityId);
+    }
     public interface CrvsRepository extends JpaRepository<CrvsBirthDeathEntity, UUID> {}
     public interface CredentialRepository extends JpaRepository<PractitionerCredentialEntity, UUID> {
         Optional<PractitionerCredentialEntity> findByFacilityIdAndPractitionerId(UUID facilityId, String practitionerId);
