@@ -1,0 +1,137 @@
+{
+  "workflowId": "UNIFIED_CPOE_ORDERS_RESULTS_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Unified Computerized Provider Order Entry (CPOE), Reflex Rules & Closed-Loop Results",
+  "careSetting": "CROSS_CLINICAL_OPD_ED_IPD",
+  "descriptionAndPurpose": "Coordinates clinician signing of lab, imaging, procedure, and medication orders, evaluates LOINC reflex rules, routes orders replay-safely to departmental subworkflows, and delivers verified or critical results to the clinician inbox.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-orders-results"
+  ],
+  "optionalModules": [
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-radiology"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ],
+    "childSubworkflows": [
+      "LAB_ORDER_FULFILLMENT",
+      "RADIOLOGY_IMAGING_FULFILLMENT",
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderDomain",
+    "loincOrCptCode",
+    "orderPriority"
+  ],
+  "responsibleRoleOrTeam": "ORDERING_CLINICIAN -> ANCILLARY_DEPARTMENT -> VERIFYING_CLINICIAN",
+  "allowedStatesAndTransitions": {
+    "DRAFT": [
+      "SIGNED",
+      "CANCELLED"
+    ],
+    "SIGNED": [
+      "ROUTED_TO_DEPARTMENT",
+      "ON_FINANCIAL_HOLD",
+      "CANCELLED"
+    ],
+    "ON_FINANCIAL_HOLD": [
+      "ROUTED_TO_DEPARTMENT",
+      "CANCELLED"
+    ],
+    "ROUTED_TO_DEPARTMENT": [
+      "SPECIMEN_OR_EXAM_IN_PROGRESS",
+      "CANCELLED"
+    ],
+    "SPECIMEN_OR_EXAM_IN_PROGRESS": [
+      "RESULT_ENTERED",
+      "REJECTED"
+    ],
+    "RESULT_ENTERED": [
+      "RESULT_VERIFIED",
+      "AMENDED"
+    ],
+    "RESULT_VERIFIED": [
+      "CLINICIAN_ACKNOWLEDGED",
+      "AMENDED"
+    ],
+    "AMENDED": [
+      "CLINICIAN_ACKNOWLEDGED"
+    ],
+    "CLINICIAN_ACKNOWLEDGED": [],
+    "REJECTED": [
+      "ROUTED_TO_DEPARTMENT",
+      "CANCELLED"
+    ],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Active encounterId and authoritative patientId.",
+    "CDSS allergy/contraindication check executed before signing."
+  ],
+  "safetyChecks": [
+    "LOINC critical-high/critical-low reflex rules automatically trigger STAT follow-up orders and CLINICIAN_CRITICAL_RESULT_ESCALATION.",
+    "Amended results reopen clinician acknowledgment."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Service-level clearance evaluated via WorkflowBillingClearancePolicySpi; financial holds never erase signed clinical orders."
+  ],
+  "tasksToCreate": [
+    "SIGN_CLINICAL_ORDER",
+    "ROUTE_TO_DEPARTMENT_QUEUE",
+    "VERIFY_AND_DELIVER_RESULT"
+  ],
+  "queuesToUpdate": [
+    "LAB_COLLECTION",
+    "RADIOLOGY",
+    "PROCEDURES",
+    "BILLING_CASHIER"
+  ],
+  "eventsToPublish": [
+    "ClinicalOrderSigned",
+    "FinancialClearanceRequired",
+    "ServiceCleared",
+    "LaboratoryResultVerified",
+    "CriticalResultDetected",
+    "ClinicianReviewRequired",
+    "ClinicianResultAcknowledged"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY",
+    "CRITICAL_FOLLOWUP"
+  ],
+  "outputsAndClinicalRecords": [
+    "UnifiedClinicalOrderEntity",
+    "ClinicalResultEntity",
+    "ClinicianResultInboxEntity"
+  ],
+  "exceptionRoutes": [
+    "CRITICAL_PANIC_VALUE_ESCALATION",
+    "REFLEX_STAT_ORDER_TRIGGER"
+  ],
+  "cancellationAndResumptionRules": "Signed orders may be discontinued prior to completion with mandatory audit reason; completed results are immutable and only amended via versioned addendum.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statOrderRoutingMinutes": 5,
+    "criticalResultAckMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs order signature, reflex trigger, result verification, and clinician acknowledgment.",
+  "completionCriteria": "All ordered services verified and explicitly acknowledged in the responsible clinician inbox.",
+  "apiExamples": [
+    "POST /api/v1/orders",
+    "POST /api/v1/orders/{orderId}/results",
+    "POST /api/v1/orders/results/{resultId}/verify"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (UnifiedOrdersResultsServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

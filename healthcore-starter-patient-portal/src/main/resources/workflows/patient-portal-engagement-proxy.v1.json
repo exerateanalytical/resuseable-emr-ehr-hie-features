@@ -1,0 +1,117 @@
+{
+  "workflowId": "PATIENT_PORTAL_ENGAGEMENT_PROXY_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Patient Portal Enrollment, Scoped Proxy Access, Consent & Privacy-Minimized Result/Queue Views",
+  "careSetting": "PATIENT_SELF_SERVICE_WEB_MOBILE",
+  "descriptionAndPurpose": "Enrolls verified MPI patients with preferred ISO 639-1 language (EN/FR), governs time-bound scoped proxy access (spouse/caregiver), enforces consent/opt-out for notifications, and exposes privacy-minimized waiting-room queue status and released summaries.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-patient-portal"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-queue-management",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-scheduling"
+  ],
+  "startingEvent": "PatientRegistered",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "portalHandle",
+    "languageCode",
+    "verifiedContactAddress"
+  ],
+  "responsibleRoleOrTeam": "PATIENT -> AUTHORIZED_PROXY -> CARE_TEAM_COORDINATOR",
+  "allowedStatesAndTransitions": {
+    "INVITED": [
+      "ENROLLED",
+      "REVOKED"
+    ],
+    "ENROLLED": [
+      "ACTIVE",
+      "SUSPENDED",
+      "OPTED_OUT"
+    ],
+    "ACTIVE": [
+      "PROXY_GRANTED",
+      "THREAD_OPEN",
+      "SUSPENDED"
+    ],
+    "PROXY_GRANTED": [
+      "ACTIVE",
+      "PROXY_REVOKED"
+    ],
+    "PROXY_REVOKED": [
+      "ACTIVE"
+    ],
+    "THREAD_OPEN": [
+      "ACTIVE"
+    ],
+    "OPTED_OUT": [
+      "ACTIVE"
+    ],
+    "SUSPENDED": [
+      "ACTIVE",
+      "REVOKED"
+    ],
+    "REVOKED": []
+  },
+  "prerequisiteConditions": [
+    "Verified MPI identity and authenticated real contact address (zero placeholders)."
+  ],
+  "safetyChecks": [
+    "Proxy grants strictly scoped by PortalScope and expiry timestamp.",
+    "Patient-facing queue status never exposes clinical diagnoses or sensitive PHI.",
+    "Result release respects clinician review and local release policy."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED for self-service portal access."
+  ],
+  "tasksToCreate": [
+    "ENROLL_PORTAL_ACCOUNT",
+    "VERIFY_PROXY_SCOPE",
+    "RESPOND_CARE_TEAM_THREAD"
+  ],
+  "queuesToUpdate": [
+    "RECEPTION"
+  ],
+  "eventsToPublish": [
+    "PatientNotificationRequested",
+    "PatientNotificationDelivered",
+    "FollowUpRequired"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY",
+    "MEDICATION_READY",
+    "FOLLOW_UP_REMINDER"
+  ],
+  "outputsAndClinicalRecords": [
+    "PortalAccountEntity",
+    "PortalProxyGrantEntity",
+    "CareTeamMessageThreadEntity"
+  ],
+  "exceptionRoutes": [
+    "UNAUTHORIZED_CROSS_PATIENT_ACCESS_DENIED",
+    "OPT_OUT_SUPPRESSION"
+  ],
+  "cancellationAndResumptionRules": "Proxy grants and portal accounts can be revoked immediately with zero deletion of historical clinical audit records.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "careTeamMessageResponseMinutes": 1440
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit records portal enrollment, proxy scope grant/revocation, and patient result views.",
+  "completionCriteria": "Patient engaged with verified access, active consent preferences, and closed care-team threads.",
+  "apiExamples": [
+    "POST /api/v1/portal/accounts",
+    "POST /api/v1/portal/proxies",
+    "GET /api/v1/queues/entries/{id}/patient-status"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (PatientPortalServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

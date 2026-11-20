@@ -1,0 +1,117 @@
+{
+  "workflowId": "VERTICAL_PROGRAMS_EPI_IMMUNIZATION_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Vertical Public Health Programs (HIV/ART, TB, ANC/NCD) & EPI Immunization Schedule Tracking",
+  "careSetting": "OUTPATIENT_PROGRAM_CLINIC_AND_IMMUNIZATION_POST",
+  "descriptionAndPurpose": "Enrolls MPI patients into longitudinal vertical care programs and EPI vaccine schedules, validates cold-chain vaccine lot integrity before administration, records doses/adherence, and schedules automated next-dose follow-ups.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-programs-immunization"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-biomedical-coldchain",
+    "healthcore-starter-scheduling",
+    "healthcore-starter-workflow-engine"
+  ],
+  "startingEvent": "EncounterStarted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "programCode (EPI | HIV_ART | TB | ANC)",
+    "vaccineOrRegimenCode",
+    "lotNumber"
+  ],
+  "responsibleRoleOrTeam": "PROGRAM_NURSE -> VACCINATOR -> PROGRAM_COORDINATOR",
+  "allowedStatesAndTransitions": {
+    "PROGRAM_ENROLLED": [
+      "DOSE_OR_VISIT_DUE",
+      "TRANSFERRED_OUT",
+      "COMPLETED_PROGRAM"
+    ],
+    "DOSE_OR_VISIT_DUE": [
+      "LOT_COLDCHAIN_VERIFIED",
+      "DEFAULTER_TRACING"
+    ],
+    "LOT_COLDCHAIN_VERIFIED": [
+      "DOSE_ADMINISTERED",
+      "LOT_QUARANTINED_BLOCKED"
+    ],
+    "LOT_QUARANTINED_BLOCKED": [
+      "DOSE_OR_VISIT_DUE"
+    ],
+    "DOSE_ADMINISTERED": [
+      "NEXT_DOSE_SCHEDULED",
+      "COMPLETED_PROGRAM"
+    ],
+    "NEXT_DOSE_SCHEDULED": [
+      "DOSE_OR_VISIT_DUE"
+    ],
+    "DEFAULTER_TRACING": [
+      "DOSE_OR_VISIT_DUE",
+      "LOST_TO_FOLLOWUP"
+    ],
+    "COMPLETED_PROGRAM": [],
+    "TRANSFERRED_OUT": [],
+    "LOST_TO_FOLLOWUP": []
+  },
+  "prerequisiteConditions": [
+    "Authoritative MPI patientId and verified non-expired, non-excursion vaccine/medication lot."
+  ],
+  "safetyChecks": [
+    "Blocks vaccine administration from excursion-quarantined or expired lots.",
+    "Records Adverse Events Following Immunization (AEFI) immediately.",
+    "Privacy-minimized reminders never disclose HIV/TB status in SMS."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "SPONSORED or PAYMENT_NOT_REQUIRED under national EPI / vertical public health program policy."
+  ],
+  "tasksToCreate": [
+    "VERIFY_COLDCHAIN_LOT",
+    "ADMINISTER_DOSE_AND_RECORD",
+    "SCHEDULE_NEXT_PROGRAM_VISIT"
+  ],
+  "queuesToUpdate": [
+    "NURSING",
+    "PROCEDURES"
+  ],
+  "eventsToPublish": [
+    "EncounterStarted",
+    "MedicationDispensed",
+    "FollowUpRequired",
+    "PatientNotificationRequested"
+  ],
+  "notificationsToGenerate": [
+    "FOLLOW_UP_REMINDER (strictly privacy-minimized)"
+  ],
+  "outputsAndClinicalRecords": [
+    "ProgramEnrollmentEntity",
+    "ImmunizationDoseRecord",
+    "AefiSafetyReport"
+  ],
+  "exceptionRoutes": [
+    "COLDCHAIN_QUARANTINE_BLOCK",
+    "AEFI_URGENT_CLINICAL_ESCALATION",
+    "CHW_DEFAULTER_TRACING"
+  ],
+  "cancellationAndResumptionRules": "Defaulter tracing hands off cleanly to CHW homecare; transfers out preserve longitudinal regimen continuity.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "aefiEscalationMinutes": 15,
+    "defaulterTracingTriggerMinutes": 10080
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs vaccinator, vaccine lot/expiry, dose sequence, and AEFI flags.",
+  "completionCriteria": "Scheduled dose/regimen administered, recorded with lot provenance, and next follow-up scheduled.",
+  "apiExamples": [
+    "POST /api/v1/programs/enrollments",
+    "POST /api/v1/immunization/doses"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (ProgramsImmunizationStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

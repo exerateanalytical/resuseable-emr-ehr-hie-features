@@ -1,0 +1,90 @@
+{
+  "workflowId": "CLINICAL_QUALITY_ANALYTICS_EXPORT_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Hospital Quality Measures (CMS eCQM), Operational SLA Telemetry & k-Anonymized Cohort Export",
+  "careSetting": "HOSPITAL_QUALITY_AND_HEALTH_SYSTEM_ANALYTICS",
+  "descriptionAndPurpose": "Aggregates clinical encounter, queue wait-time, TAT SLA, and eCQM quality indicators (e.g., CMS165) while enforcing DPO governance approval and k-anonymity thresholds before any cohort export.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-analytics"
+  ],
+  "optionalModules": [
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management",
+    "healthcore-starter-deidentification-research"
+  ],
+  "startingEvent": "EncounterDischarged",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "measureCode",
+    "reportingPeriod",
+    "kAnonymityThreshold"
+  ],
+  "responsibleRoleOrTeam": "QUALITY_ANALYST -> DATA_PROTECTION_OFFICER -> MEDICAL_DIRECTOR",
+  "allowedStatesAndTransitions": {
+    "MEASURE_RECORDED": [
+      "VALIDATED",
+      "EXPORT_REQUESTED"
+    ],
+    "VALIDATED": [
+      "PUBLISHED_DASHBOARD"
+    ],
+    "EXPORT_REQUESTED": [
+      "DPO_APPROVED",
+      "DPO_REJECTED"
+    ],
+    "DPO_APPROVED": [
+      "EXPORTED_ANONYMIZED"
+    ],
+    "DPO_REJECTED": [],
+    "PUBLISHED_DASHBOARD": [],
+    "EXPORTED_ANONYMIZED": []
+  },
+  "prerequisiteConditions": [
+    "Facility-scoped clinical records and defined reporting period."
+  ],
+  "safetyChecks": [
+    "Enforces minimum k-anonymity cell suppression (k >= 10) prior to export.",
+    "Requires explicit DPO approval separate from requester."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (internal quality & governance workflow)."
+  ],
+  "tasksToCreate": [
+    "COMPUTE_ECQM_MEASURE",
+    "REVIEW_COHORT_PRIVACY",
+    "RELEASE_ANONYMIZED_EXPORT"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "DPO_EXPORT_APPROVAL_REQUIRED"
+  ],
+  "outputsAndClinicalRecords": [
+    "ClinicalQualityMeasureEntity",
+    "CohortExportRequestEntity"
+  ],
+  "exceptionRoutes": [
+    "K_ANONYMITY_THRESHOLD_VIOLATION_BLOCKED"
+  ],
+  "cancellationAndResumptionRules": "Pending export requests may be withdrawn prior to release; released export hashes remain permanently audited.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "dpoReviewMinutes": 2880
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs requester, cohort query predicate, k-anonymity parameter, and DPO approver.",
+  "completionCriteria": "Quality measures published or k-anonymized cohort export approved and logged.",
+  "apiExamples": [
+    "POST /api/v1/analytics/quality-measures",
+    "POST /api/v1/analytics/cohort-exports/{id}/approve"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (HospitalAnalyticsServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

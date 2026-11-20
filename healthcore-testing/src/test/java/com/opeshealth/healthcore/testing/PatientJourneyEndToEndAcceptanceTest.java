@@ -26,6 +26,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -733,6 +735,33 @@ class PatientJourneyEndToEndAcceptanceTest {
                 assertFalse(def.eventsToPublish().isEmpty(), path + " must declare eventsToPublish");
                 assertNotNull(def.testsAndClinicalReviewStatus());
             }
+        }
+    }
+
+    @Test
+    @DisplayName("All 22 module versioned JSON workflow definitions and YAML registry validate against WorkflowChecklistDefinition")
+    void allTwentyTwoModuleWorkflowJsonDefinitionsDeserializeCleanly() throws Exception {
+        Path docsDir = Files.isDirectory(Path.of("docs/workflows/definitions"))
+                ? Path.of("docs/workflows/definitions")
+                : Path.of("../docs/workflows/definitions");
+        assertTrue(Files.isDirectory(docsDir), "Expected docs/workflows/definitions directory to exist");
+        assertTrue(Files.isRegularFile(docsDir.resolve("workflow-registry.v1.yaml")),
+                "Expected versioned workflow-registry.v1.yaml alongside JSON definitions");
+
+        ObjectMapper mapper = new ObjectMapper();
+        List<Path> jsonFiles;
+        try (var stream = Files.list(docsDir)) {
+            jsonFiles = stream.filter(p -> p.getFileName().toString().endsWith(".json")).sorted().toList();
+        }
+        assertEquals(22, jsonFiles.size(), "Expected exactly 22 module workflow JSON definitions");
+        for (Path jsonFile : jsonFiles) {
+            WorkflowChecklistDefinition def = mapper.readValue(jsonFile.toFile(), WorkflowChecklistDefinition.class);
+            assertNotNull(def.workflowId(), jsonFile.getFileName() + " missing workflowId");
+            assertNotNull(def.version(), jsonFile.getFileName() + " missing version");
+            assertFalse(def.requiredModules().isEmpty(), jsonFile.getFileName() + " missing requiredModules");
+            assertFalse(def.allowedStatesAndTransitions().isEmpty(), jsonFile.getFileName() + " missing state transitions");
+            assertFalse(def.safetyChecks().isEmpty(), jsonFile.getFileName() + " missing safetyChecks");
+            assertFalse(def.eventsToPublish().isEmpty(), jsonFile.getFileName() + " missing eventsToPublish");
         }
     }
 }

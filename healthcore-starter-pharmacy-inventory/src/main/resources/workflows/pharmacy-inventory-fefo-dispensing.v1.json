@@ -1,0 +1,117 @@
+{
+  "workflowId": "PHARMACY_INVENTORY_FEFO_DISPENSING_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Hospital Pharmacy Inventory, FEFO Batch/Lot Dispensing & Controlled-Drug Witness Verification",
+  "careSetting": "HOSPITAL_INPATIENT_AND_OUTPATIENT_PHARMACY",
+  "descriptionAndPurpose": "Routes signed prescriptions into the pharmacy dispensing queue, enforces CDSS interaction screening and FEFO (First-Expired-First-Out) non-expired lot selection, requires dual witness for controlled substances, and issues privacy-minimized pickup alerts.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-pharmacy-inventory"
+  ],
+  "optionalModules": [
+    "healthcore-starter-queue-management",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-terminology-cdss",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "PrescriptionRouted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "PHARMACY_PRESCRIPTION_FULFILLMENT"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "rxNormCode",
+    "quantityPrescribed"
+  ],
+  "responsibleRoleOrTeam": "CLINICAL_PHARMACIST -> PHARMACY_TECHNICIAN -> WITNESS_PHARMACIST",
+  "allowedStatesAndTransitions": {
+    "RX_RECEIVED": [
+      "ON_FINANCIAL_HOLD",
+      "CLINICAL_VERIFICATION",
+      "EXTERNAL_HANDOFF"
+    ],
+    "ON_FINANCIAL_HOLD": [
+      "CLINICAL_VERIFICATION",
+      "CANCELLED"
+    ],
+    "CLINICAL_VERIFICATION": [
+      "FEFO_LOT_ALLOCATED",
+      "PRESCRIBER_CLARIFICATION_HOLD",
+      "REJECTED"
+    ],
+    "PRESCRIBER_CLARIFICATION_HOLD": [
+      "CLINICAL_VERIFICATION",
+      "CANCELLED"
+    ],
+    "FEFO_LOT_ALLOCATED": [
+      "DISPENSED_AND_COUNSELED",
+      "CONTROLLED_WITNESS_PENDING"
+    ],
+    "CONTROLLED_WITNESS_PENDING": [
+      "DISPENSED_AND_COUNSELED"
+    ],
+    "DISPENSED_AND_COUNSELED": [],
+    "EXTERNAL_HANDOFF": [],
+    "REJECTED": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Signed prescription orderId and non-expired, non-quarantined FEFO lot inventory."
+  ],
+  "safetyChecks": [
+    "Expired or recall-quarantined lots are hard-blocked from dispensing.",
+    "Controlled narcotics require independent second-pharmacist witness.",
+    "Privacy-minimized pickup notifications never disclose sensitive drug names in plaintext SMS."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PHARMACY clearance evaluated via WorkflowBillingClearancePolicySpi; emergency resuscitation meds use EMERGENCY_OVERRIDE."
+  ],
+  "tasksToCreate": [
+    "VERIFY_PRESCRIPTION_CDSS",
+    "ALLOCATE_FEFO_LOT",
+    "DISPENSE_AND_COUNSEL_PATIENT"
+  ],
+  "queuesToUpdate": [
+    "PHARMACY",
+    "BILLING_CASHIER"
+  ],
+  "eventsToPublish": [
+    "PrescriptionRouted",
+    "ServiceCleared",
+    "MedicationDispensed",
+    "PatientNotificationRequested",
+    "PatientNotificationDelivered"
+  ],
+  "notificationsToGenerate": [
+    "MEDICATION_READY"
+  ],
+  "outputsAndClinicalRecords": [
+    "PharmacyDispenseRecord",
+    "FefoStockLedgerEntry",
+    "ControlledWitnessAttestation"
+  ],
+  "exceptionRoutes": [
+    "OUT_OF_STOCK_EXTERNAL_PHARMACY_HANDOFF",
+    "RECALL_QUARANTINE_LOT_SKIP"
+  ],
+  "cancellationAndResumptionRules": "Uncollected medications returned to stock reverse inventory allocation cleanly without deleting the signed clinician prescription.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statDispenseMinutes": 15,
+    "outpatientDispenseMinutes": 30
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs verifying pharmacist, lot/expiry dispensed, controlled-drug witness, and counseling confirmation.",
+  "completionCriteria": "Medication dispensed from valid FEFO lot with counseling recorded, or external pharmacy handoff logged.",
+  "apiExamples": [
+    "POST /api/v1/pharmacy/dispense",
+    "GET /api/v1/pharmacy/inventory/fefo"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (PharmacyInventoryStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

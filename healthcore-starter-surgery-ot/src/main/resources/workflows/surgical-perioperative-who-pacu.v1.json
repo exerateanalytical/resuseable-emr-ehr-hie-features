@@ -1,0 +1,111 @@
+{
+  "workflowId": "SURGICAL_PERIOPERATIVE_WHO_PACU_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Operating Theatre Scheduling, WHO Surgical Safety Checklist & PACU Aldrete Recovery",
+  "careSetting": "HOSPITAL_OPERATING_THEATRE_AND_PACU",
+  "descriptionAndPurpose": "Coordinates surgical scheduling, enforces mandatory WHO Surgical Safety Checklist (Sign-In, Time-Out, Sign-Out) gates before incision, records anesthesia/operative events, and evaluates PACU Aldrete score before ward discharge.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-surgery-ot"
+  ],
+  "optionalModules": [
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-blood-bank",
+    "healthcore-starter-emergency-nursing",
+    "healthcore-starter-queue-management"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "theaterRoom",
+    "procedureName",
+    "leadSurgeonId"
+  ],
+  "responsibleRoleOrTeam": "SURGEON -> ANESTHESIOLOGIST -> OT_SCRUB_NURSE -> PACU_NURSE",
+  "allowedStatesAndTransitions": {
+    "SCHEDULED": [
+      "PRE_OP_VERIFIED",
+      "POSTPONED",
+      "CANCELLED"
+    ],
+    "PRE_OP_VERIFIED": [
+      "WHO_TIMEOUT_COMPLETED",
+      "POSTPONED"
+    ],
+    "WHO_TIMEOUT_COMPLETED": [
+      "IN_SURGERY"
+    ],
+    "IN_SURGERY": [
+      "PACU_RECOVERY"
+    ],
+    "PACU_RECOVERY": [
+      "ALDRETE_PASSED_DISCHARGED_TO_WARD",
+      "ICU_ESCALATED"
+    ],
+    "ALDRETE_PASSED_DISCHARGED_TO_WARD": [],
+    "ICU_ESCALATED": [],
+    "POSTPONED": [
+      "SCHEDULED",
+      "CANCELLED"
+    ],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Signed surgical consent, anesthesia clearance, and verified patient/site marking."
+  ],
+  "safetyChecks": [
+    "WHO Surgical Safety Checklist completion mandatory prior to incision.",
+    "PACU discharge blocked until Aldrete score meets recovery threshold (>= 9)."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Emergency trauma surgery receives EMERGENCY_OVERRIDE; elective procedures follow facility clearance policy."
+  ],
+  "tasksToCreate": [
+    "COMPLETE_WHO_CHECKLIST",
+    "RECORD_OPERATIVE_NOTE",
+    "ASSESS_PACU_ALDRETE"
+  ],
+  "queuesToUpdate": [
+    "PROCEDURES",
+    "ADMISSIONS"
+  ],
+  "eventsToPublish": [
+    "ClinicalOrderSigned",
+    "ServiceCleared",
+    "EncounterStarted"
+  ],
+  "notificationsToGenerate": [
+    "OT_THEATER_READY_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "SurgicalScheduleEntity",
+    "WhoSafetyChecklistRecord",
+    "PacuAldreteAssessment"
+  ],
+  "exceptionRoutes": [
+    "EMERGENCY_LIFE_SAVING_OT_PREEMPTION",
+    "LOW_ALDRETE_ICU_ESCALATION"
+  ],
+  "cancellationAndResumptionRules": "Postponed surgeries retain pre-op orders and release theater slot; cancellations require surgeon attestation.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "emergencyTheaterPrepMinutes": 15,
+    "pacuAssessmentIntervalMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs WHO checklist attestations, theater timestamps, surgical team, and PACU Aldrete score.",
+  "completionCriteria": "Patient passes PACU Aldrete assessment and transfers safely to ward or ICU.",
+  "apiExamples": [
+    "POST /api/v1/surgery/schedules",
+    "POST /api/v1/surgery/pacu/aldrete"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (SurgicalPerioperativeTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

@@ -1,0 +1,91 @@
+{
+  "workflowId": "HIPAA_SAFE_HARBOR_DEIDENTIFICATION_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "HIPAA Safe Harbor De-Identification, Pseudonymization & Research Cohort Bridge",
+  "careSetting": "CLINICAL_TO_RESEARCH_DATA_GOVERNANCE",
+  "descriptionAndPurpose": "Strips all 18 HIPAA Safe Harbor direct identifiers, applies cryptographic salted pseudonymization, validates IRB/ethics authorization, and bridges de-identified clinical datasets into life-sciences and clinical research packs.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-deidentification-research"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-clinical-research",
+    "healthcore-starter-analytics"
+  ],
+  "startingEvent": "EncounterDischarged",
+  "parentChildRelations": {
+    "parentWorkflow": [],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "irbProtocolId",
+    "cohortQuery",
+    "deidentificationProfile (SAFE_HARBOR | EXPERT_DETERMINATION)"
+  ],
+  "responsibleRoleOrTeam": "DATA_STEWARD -> PRIVACY_OFFICER -> RESEARCH_INVESTIGATOR",
+  "allowedStatesAndTransitions": {
+    "COHORT_REQUESTED": [
+      "IRB_VERIFIED",
+      "REJECTED"
+    ],
+    "IRB_VERIFIED": [
+      "DEIDENTIFICATION_EXECUTED"
+    ],
+    "DEIDENTIFICATION_EXECUTED": [
+      "REIDENTIFICATION_RISK_PASSED",
+      "REIDENTIFICATION_RISK_FAILED"
+    ],
+    "REIDENTIFICATION_RISK_PASSED": [
+      "DATASET_RELEASED"
+    ],
+    "REIDENTIFICATION_RISK_FAILED": [
+      "COHORT_REQUESTED",
+      "REJECTED"
+    ],
+    "DATASET_RELEASED": [],
+    "REJECTED": []
+  },
+  "prerequisiteConditions": [
+    "Valid active IRB/Ethics protocol ID and explicit privacy officer sign-off."
+  ],
+  "safetyChecks": [
+    "Zero direct PHI fields (name, phone, MRN, exact DOB >89, free-text identifiers) permitted in output payload.",
+    "Pseudonymization salt stored strictly isolated from research dataset."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (research governance pipeline)."
+  ],
+  "tasksToCreate": [
+    "VERIFY_IRB_APPROVAL",
+    "STRIP_18_IDENTIFIERS",
+    "ATTEST_ZERO_PHI_LEAK"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "RESEARCH_DATASET_READY"
+  ],
+  "outputsAndClinicalRecords": [
+    "DeidentifiedCohortManifest",
+    "ZeroPhiValidationReport"
+  ],
+  "exceptionRoutes": [
+    "PHI_RESIDUAL_DETECTED_HARD_BLOCK"
+  ],
+  "cancellationAndResumptionRules": "Revoked IRB protocol immediately blocks pending dataset releases.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "privacyReviewMinutes": 2880
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs IRB ID, cohort size, SHA-256 dataset digest, and privacy officer approval.",
+  "completionCriteria": "Verified zero-PHI dataset released with immutable provenance digest.",
+  "apiExamples": [
+    "POST /api/v1/deidentification/jobs",
+    "GET /api/v1/deidentification/jobs/{id}/audit"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (DeidentificationResearchStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

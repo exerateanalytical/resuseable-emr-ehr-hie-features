@@ -1,0 +1,114 @@
+{
+  "workflowId": "APPOINTMENT_SCHEDULING_CHECKIN_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Outpatient & Specialty Appointment Scheduling, Check-In & No-Show Recovery",
+  "careSetting": "OUTPATIENT_CLINIC_AND_HOSPITAL_OPD",
+  "descriptionAndPurpose": "Manages provider slot templates, appointment booking against authoritative MPI patientId, arrival check-in bridging directly into OPD_CONSULTATION_FLOW and RECEPTION/TRIAGE departmental queues, and no-show recall policies.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-scheduling"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-queue-management",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-patient-portal"
+  ],
+  "startingEvent": "PatientArrived",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId (MPI)",
+    "providerId",
+    "slotId",
+    "visitType"
+  ],
+  "responsibleRoleOrTeam": "SCHEDULING_CLERK -> RECEPTIONIST -> CLINIC_COORDINATOR",
+  "allowedStatesAndTransitions": {
+    "BOOKED": [
+      "CONFIRMED",
+      "RESCHEDULED",
+      "CANCELLED",
+      "CHECKED_IN",
+      "NO_SHOW"
+    ],
+    "CONFIRMED": [
+      "CHECKED_IN",
+      "RESCHEDULED",
+      "CANCELLED",
+      "NO_SHOW"
+    ],
+    "RESCHEDULED": [
+      "CONFIRMED",
+      "CHECKED_IN",
+      "CANCELLED"
+    ],
+    "CHECKED_IN": [
+      "HANDED_OFF_TO_OPD_JOURNEY"
+    ],
+    "NO_SHOW": [
+      "RESCHEDULED",
+      "CLOSED"
+    ],
+    "HANDED_OFF_TO_OPD_JOURNEY": [],
+    "CANCELLED": [],
+    "CLOSED": []
+  },
+  "prerequisiteConditions": [
+    "Authoritative MPI lookup executed prior to booking.",
+    "Active provider schedule template with available capacity."
+  ],
+  "safetyChecks": [
+    "Prevent double-booking overlapping provider slots.",
+    "Preserve single MPI patientId across walk-in conversion and follow-up visits."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Evaluates optional consultation deposit or coverage verification via WorkflowBillingClearancePolicySpi without blocking urgent walk-ins."
+  ],
+  "tasksToCreate": [
+    "VERIFY_MPI_IDENTITY",
+    "CHECK_IN_PATIENT",
+    "OPEN_OPD_ENCOUNTER"
+  ],
+  "queuesToUpdate": [
+    "RECEPTION",
+    "TRIAGE",
+    "DOCTOR_CONSULTATION"
+  ],
+  "eventsToPublish": [
+    "PatientMatched",
+    "PatientArrived",
+    "QueueEntryCreated",
+    "FollowUpRequired"
+  ],
+  "notificationsToGenerate": [
+    "APPOINTMENT_REMINDER_PRIVACY_MINIMIZED",
+    "FOLLOW_UP_REMINDER"
+  ],
+  "outputsAndClinicalRecords": [
+    "ScheduledAppointmentEntity",
+    "ArrivalCheckInRecord"
+  ],
+  "exceptionRoutes": [
+    "WALK_IN_OVERBOOK_APPROVAL",
+    "NO_SHOW_AUTOMATED_RECALL"
+  ],
+  "cancellationAndResumptionRules": "Cancellations release provider slot capacity immediately; rescheduled visits retain original referral/follow-up linkage.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "checkInProcessingMinutes": 10,
+    "lateArrivalGraceMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit records booking, reschedule, check-in, and no-show transitions with facilityId and actorId.",
+  "completionCriteria": "Patient checked in and handed off to OPD_CONSULTATION_FLOW with encounterId created, or appointment closed/cancelled.",
+  "apiExamples": [
+    "POST /api/v1/scheduling/appointments",
+    "POST /api/v1/scheduling/appointments/{id}/check-in"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (SchedulingServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

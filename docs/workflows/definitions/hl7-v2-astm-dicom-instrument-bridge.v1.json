@@ -1,0 +1,117 @@
+{
+  "workflowId": "HL7_ASTM_DICOM_INSTRUMENT_BRIDGE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "HL7 v2.5.1 (ORM/ORU/ADT), ASTM E1381/E1394 Lab Analyzers & DICOM MWL/SR Protocol Bridge",
+  "careSetting": "DIAGNOSTIC_LAB_AND_RADIOLOGY_INSTRUMENT_INTERFACING",
+  "descriptionAndPurpose": "Translates signed clinical orders into outbound HL7 v2.5.1 ORM^O01, ASTM analyzer frames, and DICOM MWL entries, and ingests inbound HL7 ORU^R01 / ASTM result frames replay-safely into LIS/RIS verification and the clinician inbox.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-hl7-astm-dicom"
+  ],
+  "optionalModules": [
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-radiology",
+    "healthcore-starter-integration-ops",
+    "healthcore-starter-workflow-engine"
+  ],
+  "startingEvent": "LaboratoryOrderAccepted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "LAB_ORDER_FULFILLMENT",
+      "RADIOLOGY_IMAGING_FULFILLMENT"
+    ],
+    "childSubworkflows": [
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "orderId",
+    "protocol (HL7_V2 | ASTM | DICOM)",
+    "rawMessageControlId"
+  ],
+  "responsibleRoleOrTeam": "INTERFACE_ENGINE -> LAB_OR_RAD_TECHNOLOGIST",
+  "allowedStatesAndTransitions": {
+    "OUTBOUND_ENCODED": [
+      "TRANSMITTED_TO_INSTRUMENT",
+      "ENCODING_ERROR"
+    ],
+    "TRANSMITTED_TO_INSTRUMENT": [
+      "ACK_RECEIVED",
+      "RETRYING"
+    ],
+    "ACK_RECEIVED": [
+      "INBOUND_RESULT_RECEIVED"
+    ],
+    "INBOUND_RESULT_RECEIVED": [
+      "PARSED_AND_CORRELATED",
+      "UNMATCHED_HOLD"
+    ],
+    "PARSED_AND_CORRELATED": [
+      "ROUTED_FOR_VERIFICATION"
+    ],
+    "ROUTED_FOR_VERIFICATION": [],
+    "UNMATCHED_HOLD": [
+      "PARSED_AND_CORRELATED",
+      "REJECTED"
+    ],
+    "RETRYING": [
+      "ACK_RECEIVED",
+      "DEAD_LETTERED"
+    ],
+    "DEAD_LETTERED": [
+      "TRANSMITTED_TO_INSTRUMENT"
+    ],
+    "ENCODING_ERROR": [],
+    "REJECTED": []
+  },
+  "prerequisiteConditions": [
+    "Valid accession barcode or DICOM StudyInstanceUID linked to active orderId."
+  ],
+  "safetyChecks": [
+    "Strict accession & two-identifier correlation prevents misfiled analyzer results.",
+    "MessageControlId idempotency prevents duplicate result ingestion on MLLP retries."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (technical instrument interface layer)."
+  ],
+  "tasksToCreate": [
+    "ENCODE_OUTBOUND_ORM_OR_MWL",
+    "INGEST_ORU_OR_ASTM_FRAME",
+    "CORRELATE_AND_ROUTE_RESULT"
+  ],
+  "queuesToUpdate": [
+    "LAB_PROCESSING",
+    "RADIOLOGY"
+  ],
+  "eventsToPublish": [
+    "LaboratoryOrderAccepted",
+    "ImagingOrderAccepted",
+    "LaboratoryResultVerified",
+    "CriticalResultDetected"
+  ],
+  "notificationsToGenerate": [
+    "UNMATCHED_INSTRUMENT_RESULT_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "Hl7OrAstmParsedPayload",
+    "InstrumentAckLog"
+  ],
+  "exceptionRoutes": [
+    "UNMATCHED_ACCESSION_MANUAL_RECONCILIATION",
+    "MLLP_TIMEOUT_DLQ"
+  ],
+  "cancellationAndResumptionRules": "Unmatched inbound results are held safely in quarantine queue until verified by laboratory/radiology staff.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "instrumentOrderDispatchMinutes": 2,
+    "inboundResultCorrelationMinutes": 2
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs raw message checksum, MessageControlId, instrument ID, and correlated orderId.",
+  "completionCriteria": "Outbound order acknowledged and inbound instrument result correlated and handed off for clinical verification.",
+  "apiExamples": [
+    "POST /api/v1/interfaces/hl7/ingest",
+    "POST /api/v1/interfaces/astm/frame"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (Hl7AstmDicomFixtureTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

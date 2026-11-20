@@ -1,0 +1,104 @@
+{
+  "workflowId": "PARTNER_API_PRODUCT_WEBHOOK_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "External Partner API Key Governance, Tenant Rate Limiting & Signed Event Webhook Subscriptions",
+  "careSetting": "HEALTHCORE_PLATFORM_API_ECOSYSTEM",
+  "descriptionAndPurpose": "Provisions scoped API keys for external pharmacy, diagnostic, payer, and HIE integrators, enforces Bucket4j tenant rate quotas, and delivers HMAC-signed canonical patient journey webhooks.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-api-product"
+  ],
+  "optionalModules": [
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-integration-ops"
+  ],
+  "startingEvent": "ServiceCleared",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "partnerId",
+    "allowedScopes",
+    "webhookEndpointUrl"
+  ],
+  "responsibleRoleOrTeam": "PLATFORM_API_ADMIN -> EXTERNAL_INTEGRATOR",
+  "allowedStatesAndTransitions": {
+    "PARTNER_REGISTERED": [
+      "API_KEY_ISSUED",
+      "REVOKED"
+    ],
+    "API_KEY_ISSUED": [
+      "WEBHOOK_SUBSCRIBED",
+      "ROTATED",
+      "REVOKED"
+    ],
+    "WEBHOOK_SUBSCRIBED": [
+      "EVENT_DELIVERED",
+      "RETRYING",
+      "DEAD_LETTERED"
+    ],
+    "EVENT_DELIVERED": [
+      "WEBHOOK_SUBSCRIBED"
+    ],
+    "RETRYING": [
+      "EVENT_DELIVERED",
+      "DEAD_LETTERED"
+    ],
+    "DEAD_LETTERED": [
+      "WEBHOOK_SUBSCRIBED"
+    ],
+    "ROTATED": [
+      "API_KEY_ISSUED"
+    ],
+    "REVOKED": []
+  },
+  "prerequisiteConditions": [
+    "Tenant facility provisioned and webhook TLS endpoint validated."
+  ],
+  "safetyChecks": [
+    "Zero hardcoded fallback webhook secrets; cryptographic HMAC signature required.",
+    "Strict facilityId scoping prevents cross-tenant webhook leakage."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "API tier quota governed by tenant subscription policy."
+  ],
+  "tasksToCreate": [
+    "PROVISION_SCOPED_KEY",
+    "VERIFY_WEBHOOK_SIGNATURE",
+    "REPLAY_DEAD_LETTER_WEBHOOK"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "PatientNotificationDelivered",
+    "ServiceCleared",
+    "LaboratoryResultVerified"
+  ],
+  "notificationsToGenerate": [
+    "PARTNER_WEBHOOK_FAILURE_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "ApiClientCredentialRecord",
+    "WebhookDeliveryAuditLog"
+  ],
+  "exceptionRoutes": [
+    "RATE_LIMIT_EXCEEDED_429",
+    "INVALID_SIGNATURE_REJECTED"
+  ],
+  "cancellationAndResumptionRules": "Revoked API keys immediately terminate access and pause outbound webhook subscriptions.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "webhookInitialDeliveryMinutes": 1,
+    "deadLetterAlertMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs key issuance, rotation, revocation, and scoped partner API invocations.",
+  "completionCriteria": "Partner credentials active and webhook events durably delivered or safely dead-lettered.",
+  "apiExamples": [
+    "POST /api/v1/api-product/keys",
+    "POST /api/v1/api-product/webhooks"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (ApiProductServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

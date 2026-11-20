@@ -1,0 +1,127 @@
+{
+  "workflowId": "RADIOLOGY_RIS_DICOM_REPORTING_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Radiology Information System (RIS), DICOM Modality Worklist (MWL/MPPS) & Critical Read-Back",
+  "careSetting": "HOSPITAL_RIS_AND_DIAGNOSTIC_IMAGING_CENTER",
+  "descriptionAndPurpose": "Schedules DICOM imaging exams from signed orders, tracks Modality Performed Procedure Step (MPPS), supports radiologist structured reporting, and enforces closed-loop critical-finding read-back escalation.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-radiology"
+  ],
+  "optionalModules": [
+    "healthcore-starter-queue-management",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-hl7-astm-dicom",
+    "healthcore-starter-uhc-billing"
+  ],
+  "startingEvent": "ImagingOrderAccepted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "RADIOLOGY_IMAGING_FULFILLMENT"
+    ],
+    "childSubworkflows": [
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "modalityCode",
+    "cptCode",
+    "dicomStudyInstanceUid"
+  ],
+  "responsibleRoleOrTeam": "RADIOLOGY_TECHNOLOGIST -> DIAGNOSTIC_RADIOLOGIST -> ORDERING_CLINICIAN",
+  "allowedStatesAndTransitions": {
+    "SCHEDULED": [
+      "MPPS_IN_PROGRESS",
+      "CANCELLED"
+    ],
+    "MPPS_IN_PROGRESS": [
+      "MPPS_COMPLETED",
+      "MPPS_DISCONTINUED"
+    ],
+    "MPPS_COMPLETED": [
+      "REPORT_DRAFT",
+      "REPORT_SIGNED"
+    ],
+    "REPORT_DRAFT": [
+      "REPORT_SIGNED"
+    ],
+    "REPORT_SIGNED": [
+      "CRITICAL_READBACK_CONFIRMED",
+      "DELIVERED_TO_INBOX",
+      "ADDENDUM_SIGNED"
+    ],
+    "CRITICAL_READBACK_CONFIRMED": [
+      "DELIVERED_TO_INBOX"
+    ],
+    "ADDENDUM_SIGNED": [
+      "DELIVERED_TO_INBOX"
+    ],
+    "DELIVERED_TO_INBOX": [],
+    "MPPS_DISCONTINUED": [
+      "SCHEDULED",
+      "CANCELLED"
+    ],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Validated ImagingOrderAccepted with modality and clinical indication.",
+    "Billing clearance or EMERGENCY_OVERRIDE satisfied."
+  ],
+  "safetyChecks": [
+    "Contrast allergy and pregnancy safety check prior to acquisition.",
+    "Critical findings (e.g., Acute PE, Pneumothorax) require documented clinician read-back."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "IMAGING clearance evaluated via WorkflowBillingClearancePolicySpi; trauma/STAT bypasses prepayment via EMERGENCY_OVERRIDE."
+  ],
+  "tasksToCreate": [
+    "ACQUIRE_DICOM_STUDY",
+    "UPDATE_MPPS",
+    "SIGN_RADIOLOGY_REPORT",
+    "CRITICAL_READBACK_ACK"
+  ],
+  "queuesToUpdate": [
+    "RADIOLOGY",
+    "BILLING_CASHIER"
+  ],
+  "eventsToPublish": [
+    "ImagingOrderAccepted",
+    "RadiologyReportSigned",
+    "CriticalResultDetected",
+    "ClinicianReviewRequired",
+    "ClinicianResultAcknowledged"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY",
+    "CRITICAL_FOLLOWUP"
+  ],
+  "outputsAndClinicalRecords": [
+    "ModalityWorklistEntity",
+    "RadiologyReportEntity",
+    "CriticalReadbackAuditRecord"
+  ],
+  "exceptionRoutes": [
+    "CONTRAST_CONTRAINDICATION_HOLD",
+    "CRITICAL_FINDING_FALLBACK_ESCALATION"
+  ],
+  "cancellationAndResumptionRules": "Discontinued MPPS exams preserve radiation exposure metadata and allow rescheduling without duplicating the parent clinical order.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statAcquisitionMinutes": 20,
+    "statReportMinutes": 45,
+    "criticalReadbackMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs DICOM StudyInstanceUID, technologist MPPS transitions, radiologist signature, and verbal read-back.",
+  "completionCriteria": "Radiologist report signed, critical read-back recorded if applicable, and result delivered to ordering clinician inbox.",
+  "apiExamples": [
+    "POST /api/v1/radiology/exams",
+    "PATCH /api/v1/radiology/exams/{id}/mpps",
+    "POST /api/v1/radiology/reports/{id}/acknowledge-critical"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (RadiologyRisServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

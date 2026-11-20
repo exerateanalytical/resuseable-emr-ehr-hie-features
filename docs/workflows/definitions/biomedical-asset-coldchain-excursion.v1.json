@@ -1,0 +1,100 @@
+{
+  "workflowId": "BIOMEDICAL_ASSET_COLDCHAIN_EXCURSION_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Biomedical Equipment Calibration/PM & Vaccine/Reagent Cold-Chain Excursion Containment",
+  "careSetting": "HOSPITAL_BIOMEDICAL_PHARMACY_LAB_COLDCHAIN",
+  "descriptionAndPurpose": "Monitors clinical analyzer/imaging calibration status and cold-chain temperature telemetry, automatically quarantining affected vaccine/reagent lots upon temperature excursion to protect patient safety.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-biomedical-coldchain"
+  ],
+  "optionalModules": [
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-pharmacy-inventory",
+    "healthcore-starter-programs-immunization"
+  ],
+  "startingEvent": "VitalSignsRecorded",
+  "parentChildRelations": {
+    "parentWorkflow": [],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "assetId",
+    "sensorId",
+    "temperatureCelsius",
+    "minThreshold",
+    "maxThreshold"
+  ],
+  "responsibleRoleOrTeam": "BIOMEDICAL_ENGINEER -> COLDCHAIN_OFFICER -> QA_MANAGER",
+  "allowedStatesAndTransitions": {
+    "OPERATIONAL_IN_RANGE": [
+      "CALIBRATION_DUE",
+      "EXCURSION_DETECTED",
+      "MAINTENANCE_OUT_OF_SERVICE"
+    ],
+    "CALIBRATION_DUE": [
+      "OPERATIONAL_IN_RANGE",
+      "MAINTENANCE_OUT_OF_SERVICE"
+    ],
+    "EXCURSION_DETECTED": [
+      "STOCK_QUARANTINED"
+    ],
+    "STOCK_QUARANTINED": [
+      "QA_STABILITY_RELEASED",
+      "LOT_CONDEMNED_DISPOSED"
+    ],
+    "MAINTENANCE_OUT_OF_SERVICE": [
+      "OPERATIONAL_IN_RANGE",
+      "DECOMMISSIONED"
+    ],
+    "QA_STABILITY_RELEASED": [
+      "OPERATIONAL_IN_RANGE"
+    ],
+    "LOT_CONDEMNED_DISPOSED": [],
+    "DECOMMISSIONED": []
+  },
+  "prerequisiteConditions": [
+    "Registered biomedical asset or cold-chain storage unit with calibrated temperature thresholds."
+  ],
+  "safetyChecks": [
+    "Out-of-range temperature excursion immediately places linked lots under quarantine blocking dispensing/administration.",
+    "Expired calibration blocks analyzer diagnostic release."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (operational safety & quality workflow)."
+  ],
+  "tasksToCreate": [
+    "INVESTIGATE_EXCURSION",
+    "EXECUTE_CALIBRATION_PM",
+    "QA_DISPOSITION_QUARANTINED_LOTS"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "CriticalResultDetected"
+  ],
+  "notificationsToGenerate": [
+    "COLDCHAIN_EXCURSION_URGENT_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "BiomedicalAssetRecord",
+    "ColdChainExcursionEvent",
+    "CalibrationCertificateRecord"
+  ],
+  "exceptionRoutes": [
+    "POWER_OUTAGE_BACKUP_TRANSFER"
+  ],
+  "cancellationAndResumptionRules": "Excursion quarantine cannot be cleared without documented QA stability assessment.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "excursionAlertResponseMinutes": 15,
+    "calibrationGraceMinutes": 1440
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs sensor readings, automatic quarantine triggers, and QA release/disposal signatures.",
+  "completionCriteria": "Equipment recalibrated and returned to service, or excursion lots QA-dispositioned.",
+  "apiExamples": [
+    "POST /api/v1/biomedical/telemetry",
+    "POST /api/v1/biomedical/assets/{id}/calibrate"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (BiomedicalColdChainStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

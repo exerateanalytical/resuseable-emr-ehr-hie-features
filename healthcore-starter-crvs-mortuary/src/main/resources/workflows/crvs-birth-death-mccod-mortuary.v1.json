@@ -1,0 +1,106 @@
+{
+  "workflowId": "CRVS_BIRTH_DEATH_MCCOD_MORTUARY_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Civil Registration & Vital Statistics (Birth Notification, WHO MCCOD Death Certification) & Mortuary Custody",
+  "careSetting": "HOSPITAL_MATERNITY_INPATIENT_MORTUARY_CRVS",
+  "descriptionAndPurpose": "Links facility births to new MPI newborn identities and civil registry notifications, enforces physician WHO Medical Certificate of Cause of Death (MCCOD / ICD-11) certification, and tracks mortuary cold-chamber custody and authorized release.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-crvs-mortuary"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-hospital-ops",
+    "healthcore-starter-terminology-cdss"
+  ],
+  "startingEvent": "EncounterDischarged",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "eventType (BIRTH | DEATH)",
+    "certifyingClinicianId"
+  ],
+  "responsibleRoleOrTeam": "ATTENDING_PHYSICIAN -> MIDWIFE -> MORTUARY_OFFICER -> CRVS_REGISTRAR",
+  "allowedStatesAndTransitions": {
+    "EVENT_NOTIFIED": [
+      "BIRTH_MPI_CREATED",
+      "MCCOD_CERTIFICATION_PENDING"
+    ],
+    "BIRTH_MPI_CREATED": [
+      "CRVS_TRANSMITTED"
+    ],
+    "MCCOD_CERTIFICATION_PENDING": [
+      "MCCOD_SIGNED",
+      "MEDICO_LEGAL_HOLD"
+    ],
+    "MEDICO_LEGAL_HOLD": [
+      "MCCOD_SIGNED"
+    ],
+    "MCCOD_SIGNED": [
+      "MORTUARY_ADMITTED",
+      "CRVS_TRANSMITTED"
+    ],
+    "MORTUARY_ADMITTED": [
+      "AUTHORIZED_RELEASE_COMPLETED"
+    ],
+    "AUTHORIZED_RELEASE_COMPLETED": [
+      "CRVS_TRANSMITTED"
+    ],
+    "CRVS_TRANSMITTED": []
+  },
+  "prerequisiteConditions": [
+    "Authoritative patientId and licensed certifying clinician credentials."
+  ],
+  "safetyChecks": [
+    "Mortuary release strictly blocked without signed MCCOD certificate and authorized next-of-kin verification.",
+    "Medico-legal cases placed on mandatory hold pending coroner clearance."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Administrative mortuary fees never delay legally mandated MCCOD certification or CRVS notification."
+  ],
+  "tasksToCreate": [
+    "CERTIFY_WHO_MCCOD",
+    "LOG_MORTUARY_CUSTODY",
+    "TRANSMIT_CRVS_NOTIFICATION"
+  ],
+  "queuesToUpdate": [
+    "DISCHARGE_PROCESSING"
+  ],
+  "eventsToPublish": [
+    "PatientRegistered",
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "CRVS_SUBMISSION_CONFIRMED"
+  ],
+  "outputsAndClinicalRecords": [
+    "BirthNotificationRecord",
+    "WhoMccodCertificate",
+    "MortuaryChainOfCustodyRecord"
+  ],
+  "exceptionRoutes": [
+    "MEDICO_LEGAL_CORONER_HOLD"
+  ],
+  "cancellationAndResumptionRules": "Signed MCCOD certificates are immutable; corrections require formal legal addendum workflow.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "mccodCertificationMinutes": 1440,
+    "crvsTransmissionMinutes": 2880
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs certifying physician, ICD-11 underlying cause of death, custody handovers, and CRVS transmission receipt.",
+  "completionCriteria": "Vital event certified and transmitted to civil registry with complete custody trail.",
+  "apiExamples": [
+    "POST /api/v1/crvs/births",
+    "POST /api/v1/crvs/deaths/mccod",
+    "POST /api/v1/mortuary/release"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (CrvsMortuaryStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

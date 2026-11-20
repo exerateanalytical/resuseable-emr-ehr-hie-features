@@ -1,0 +1,131 @@
+{
+  "workflowId": "LIS_DIAGNOSTICS_SPECIMEN_VERIFICATION_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Clinical Laboratory Information System (ISO 15189 Specimen Accession, Analytical Run & Pathologist Sign-Off)",
+  "careSetting": "HOSPITAL_CLINICAL_LABORATORY_AND_DIAGNOSTIC_CENTER",
+  "descriptionAndPurpose": "Executes laboratory specimen accessioning, sample rejection/recollection, analyzer run verification with IQC/delta checks, and automatic routing of verified or critical results back to the ordering clinician inbox.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-lis-diagnostics"
+  ],
+  "optionalModules": [
+    "healthcore-starter-queue-management",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-diagnostics-core",
+    "healthcore-starter-hl7-astm-dicom"
+  ],
+  "startingEvent": "LaboratoryOrderAccepted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "LAB_ORDER_FULFILLMENT"
+    ],
+    "childSubworkflows": [
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "orderId",
+    "accessionBarcode",
+    "loincPanelCode"
+  ],
+  "responsibleRoleOrTeam": "PHLEBOTOMIST -> MEDICAL_LAB_SCIENTIST -> LAB_DIRECTOR",
+  "allowedStatesAndTransitions": {
+    "ORDER_ACCEPTED": [
+      "SPECIMEN_ACCESSIONED",
+      "ON_FINANCIAL_HOLD",
+      "CANCELLED"
+    ],
+    "ON_FINANCIAL_HOLD": [
+      "SPECIMEN_ACCESSIONED",
+      "CANCELLED"
+    ],
+    "SPECIMEN_ACCESSIONED": [
+      "IN_ANALYTICAL_RUN",
+      "SPECIMEN_REJECTED"
+    ],
+    "SPECIMEN_REJECTED": [
+      "RECOLLECTION_QUEUED",
+      "CANCELLED"
+    ],
+    "RECOLLECTION_QUEUED": [
+      "SPECIMEN_ACCESSIONED"
+    ],
+    "IN_ANALYTICAL_RUN": [
+      "TECHNICAL_VALIDATED",
+      "IQC_HOLD"
+    ],
+    "IQC_HOLD": [
+      "IN_ANALYTICAL_RUN"
+    ],
+    "TECHNICAL_VALIDATED": [
+      "PATHOLOGIST_VERIFIED"
+    ],
+    "PATHOLOGIST_VERIFIED": [
+      "DELIVERED_TO_CLINICIAN_INBOX",
+      "AMENDED"
+    ],
+    "AMENDED": [
+      "DELIVERED_TO_CLINICIAN_INBOX"
+    ],
+    "DELIVERED_TO_CLINICIAN_INBOX": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Cleared laboratory order and unique ISO 15189 specimen accession barcode."
+  ],
+  "safetyChecks": [
+    "Failed IQC Westgard rules block clinical release.",
+    "Specimen rejection preserves original order and triggers recollection without double-billing.",
+    "Critical panic values trigger immediate escalation."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "LABORATORY clearance evaluated via WorkflowBillingClearancePolicySpi; STAT/emergency uses EMERGENCY_OVERRIDE."
+  ],
+  "tasksToCreate": [
+    "ACCESSION_SPECIMEN",
+    "RUN_ANALYTICAL_PANEL",
+    "VERIFY_AND_RELEASE_REPORT"
+  ],
+  "queuesToUpdate": [
+    "LAB_COLLECTION",
+    "LAB_PROCESSING",
+    "BILLING_CASHIER"
+  ],
+  "eventsToPublish": [
+    "LaboratoryOrderAccepted",
+    "SpecimenCollected",
+    "LaboratoryResultVerified",
+    "CriticalResultDetected",
+    "ClinicianReviewRequired"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY",
+    "CRITICAL_FOLLOWUP"
+  ],
+  "outputsAndClinicalRecords": [
+    "SpecimenAccessionEntity",
+    "VerifiedLabReportEntity"
+  ],
+  "exceptionRoutes": [
+    "SPECIMEN_HEMOLYSIS_RECOLLECTION",
+    "IQC_WESTGARD_RELEASE_BLOCK"
+  ],
+  "cancellationAndResumptionRules": "Verified lab reports are immutable; post-release corrections emit versioned amended reports that reopen clinician inbox review.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "statCollectionMinutes": 15,
+    "statVerificationMinutes": 60,
+    "criticalNotificationMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs ISO 15189 collector, accession barcode, IQC status, and verifying credentials.",
+  "completionCriteria": "Final lab report verified and durably delivered to responsible clinician inbox.",
+  "apiExamples": [
+    "POST /api/v1/lis/specimens/accession",
+    "POST /api/v1/lis/results/{id}/verify"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (LisDiagnosticsStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

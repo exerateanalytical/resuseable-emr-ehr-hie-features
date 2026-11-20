@@ -1,0 +1,137 @@
+{
+  "workflowId": "EMERGENCY_TRIAGE_NEWS2_DISCHARGE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Emergency Triage (ESI 1-5), Inpatient Nursing NEWS2 Deterioration & Discharge Readiness Gate",
+  "careSetting": "EMERGENCY_DEPARTMENT_AND_INPATIENT_WARDS",
+  "descriptionAndPurpose": "Captures arrival acuity triage, automatically triggers EMERGENCY_OVERRIDE for ESI 1-2 unstable patients, monitors inpatient NEWS2 physiological deterioration scores, and enforces multi-point nursing discharge readiness checklists.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-emergency-nursing"
+  ],
+  "optionalModules": [
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management",
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-hospital-ops"
+  ],
+  "startingEvent": "PatientArrived",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ],
+    "childSubworkflows": [
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "chiefComplaint",
+    "esiLevel",
+    "vitalSigns"
+  ],
+  "responsibleRoleOrTeam": "TRIAGE_NURSE -> EMERGENCY_PHYSICIAN -> WARD_CHARGE_NURSE",
+  "allowedStatesAndTransitions": {
+    "ARRIVED_ED": [
+      "TRIAGED_ROUTINE",
+      "TRIAGED_EMERGENCY_RESUS"
+    ],
+    "TRIAGED_EMERGENCY_RESUS": [
+      "STABILIZING",
+      "ADMITTED_INPATIENT",
+      "TRANSFERRED"
+    ],
+    "TRIAGED_ROUTINE": [
+      "AWAITING_CLINICIAN",
+      "ADMITTED_INPATIENT",
+      "DISCHARGE_GATE_PENDING"
+    ],
+    "STABILIZING": [
+      "ADMITTED_INPATIENT",
+      "DISCHARGE_GATE_PENDING",
+      "TRANSFERRED"
+    ],
+    "AWAITING_CLINICIAN": [
+      "DISCHARGE_GATE_PENDING",
+      "ADMITTED_INPATIENT"
+    ],
+    "ADMITTED_INPATIENT": [
+      "NEWS2_MONITORING",
+      "DISCHARGE_GATE_PENDING"
+    ],
+    "NEWS2_MONITORING": [
+      "RAPID_RESPONSE_ESCALATED",
+      "DISCHARGE_GATE_PENDING"
+    ],
+    "RAPID_RESPONSE_ESCALATED": [
+      "NEWS2_MONITORING",
+      "ICU_TRANSFER"
+    ],
+    "DISCHARGE_GATE_PENDING": [
+      "DISCHARGED"
+    ],
+    "DISCHARGED": [],
+    "ICU_TRANSFER": [],
+    "TRANSFERRED": []
+  },
+  "prerequisiteConditions": [
+    "Authoritative or provisional emergency MPI patientId and open encounterId."
+  ],
+  "safetyChecks": [
+    "ESI 1-2 immediately invokes EMERGENCY_OVERRIDE bypassing routine payment rules.",
+    "NEWS2 >= 7 or single-parameter score 3 triggers rapid clinical escalation.",
+    "Discharge gate verifies vitals stability, medication reconciliation, and follow-up instructions."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "EMERGENCY_STABILIZATION always resolves to EMERGENCY_OVERRIDE in WorkflowBillingClearancePolicySpi."
+  ],
+  "tasksToCreate": [
+    "RECORD_TRIAGE_ACUITY",
+    "RECORD_NEWS2_OBSERVATION",
+    "VERIFY_DISCHARGE_READINESS"
+  ],
+  "queuesToUpdate": [
+    "TRIAGE",
+    "NURSING",
+    "DOCTOR_CONSULTATION",
+    "ADMISSIONS",
+    "DISCHARGE_PROCESSING"
+  ],
+  "eventsToPublish": [
+    "TriageCompleted",
+    "ClinicalPriorityChanged",
+    "VitalSignsRecorded",
+    "ServiceCleared",
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "RAPID_RESPONSE_INTERNAL_ALERT",
+    "DISCHARGE_INSTRUCTIONS_READY"
+  ],
+  "outputsAndClinicalRecords": [
+    "EmergencyVisitEntity",
+    "News2ObservationEntity",
+    "DischargeReadinessChecklistEntity"
+  ],
+  "exceptionRoutes": [
+    "PROVISIONAL_IDENTITY_REASSOCIATION",
+    "RAPID_RESPONSE_TEAM_ACTIVATION"
+  ],
+  "cancellationAndResumptionRules": "Emergency escalations cannot be silently dismissed; de-escalation requires attending clinician documentation.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "esi1ResponseMinutes": 2,
+    "esi2ResponseMinutes": 10,
+    "news2HighEscalationMinutes": 5
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs triage level, EMERGENCY_OVERRIDE invocation, NEWS2 escalation, and charge-nurse discharge sign-off.",
+  "completionCriteria": "Patient stabilized and safely admitted, transferred, or discharged after passing all readiness checks.",
+  "apiExamples": [
+    "POST /api/v1/emergency/triage",
+    "POST /api/v1/nursing/news2",
+    "POST /api/v1/nursing/discharge-readiness"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (EmergencyNursingServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

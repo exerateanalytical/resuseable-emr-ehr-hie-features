@@ -1,0 +1,93 @@
+{
+  "workflowId": "IHE_XDSB_PIXM_PDQM_ATNA_PROFILE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "IHE XDS.b Document Sharing, PIXm/PDQm Cross-Domain Patient Identity & ATNA Security Audit",
+  "careSetting": "REGIONAL_AND_NATIONAL_HIE",
+  "descriptionAndPurpose": "Executes standards-compliant IHE PIXm/PDQm patient cross-referencing without blindly merging organization IDs, registers/retrieves clinical documents via XDS.b, and emits RFC 3881 / IHE ATNA security audit records.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-interoperability-ihe"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-fhir-hie",
+    "healthcore-starter-hie-interop"
+  ],
+  "startingEvent": "PatientMatched",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "localPatientId",
+    "assigningAuthorityOid",
+    "documentUniqueId"
+  ],
+  "responsibleRoleOrTeam": "HIE_XDS_BROKER -> SECURITY_AUDITOR",
+  "allowedStatesAndTransitions": {
+    "PIXM_QUERY_INITIATED": [
+      "CROSS_DOMAIN_MAPPED",
+      "NO_MATCH_FOUND"
+    ],
+    "CROSS_DOMAIN_MAPPED": [
+      "XDS_DOCUMENT_REGISTERED",
+      "XDS_DOCUMENT_RETRIEVED"
+    ],
+    "XDS_DOCUMENT_REGISTERED": [
+      "ATNA_AUDIT_EMITTED"
+    ],
+    "XDS_DOCUMENT_RETRIEVED": [
+      "ATNA_AUDIT_EMITTED"
+    ],
+    "ATNA_AUDIT_EMITTED": [],
+    "NO_MATCH_FOUND": [
+      "ATNA_AUDIT_EMITTED"
+    ]
+  },
+  "prerequisiteConditions": [
+    "Configured assigning authority OID and mutual-TLS XDS.b registry/repository peer."
+  ],
+  "safetyChecks": [
+    "Never treats distinct organizations' local patient IDs as globally equivalent without explicit PIXm cross-reference.",
+    "Every query and retrieval generates mandatory ATNA audit event."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (standards-based HIE profile)."
+  ],
+  "tasksToCreate": [
+    "EXECUTE_PIXM_LOOKUP",
+    "PROVIDE_AND_REGISTER_XDSB",
+    "EMIT_ATNA_AUDIT"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "PatientMatched",
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [],
+  "outputsAndClinicalRecords": [
+    "PixmCrossReferenceMap",
+    "XdsDocumentSubmissionSet",
+    "AtnaAuditMessage"
+  ],
+  "exceptionRoutes": [
+    "AMBIGUOUS_PIXM_STEWARDSHIP_REVIEW",
+    "XDS_REPOSITORY_UNAVAILABLE"
+  ],
+  "cancellationAndResumptionRules": "Deprecated XDS.b documents are marked deprecated via lifecycle metadata rather than physically erased.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "pixmLookupMinutes": 1,
+    "xdsRegistrationMinutes": 5
+  },
+  "auditAndProvenanceRequirements": "IHE ATNA + @ClinicalAudit record every cross-domain lookup, document submission, and retrieval.",
+  "completionCriteria": "Cross-domain patient mapping resolved, XDS.b transaction completed, and ATNA audit emitted.",
+  "apiExamples": [
+    "GET /api/v1/ihe/pixm/$ihe-pix",
+    "POST /api/v1/ihe/xdsb/provide-and-register"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (IheProfileFixtureTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

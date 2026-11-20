@@ -1,0 +1,126 @@
+{
+  "workflowId": "COMPOSABLE_WORKFLOW_ENGINE_ORCHESTRATION_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Composable Clinical State Machine Orchestration, Billing Clearance SPI & Durable Outbox/Inbox",
+  "careSetting": "UNIVERSAL_MULTI_TENANT_ORCHESTRATION",
+  "descriptionAndPurpose": "Provides facility-versionable workflow blueprints, parent-child subworkflow coordination (OPD_CONSULTATION_FLOW v2.0.0), configurable 11-outcome billing clearance SPI, durable clinician results inbox, durable provider-SPI notifications, and 28 canonical replay-safe domain events.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-workflow-engine"
+  ],
+  "optionalModules": [
+    "healthcore-starter-queue-management",
+    "healthcore-starter-uhc-billing",
+    "healthcore-starter-emr-clinical"
+  ],
+  "startingEvent": "EncounterStarted",
+  "parentChildRelations": {
+    "parentWorkflow": [],
+    "childSubworkflows": [
+      "OPD_CONSULTATION_FLOW",
+      "LAB_ORDER_FULFILLMENT",
+      "RADIOLOGY_IMAGING_FULFILLMENT",
+      "PHARMACY_PRESCRIPTION_FULFILLMENT",
+      "EMERGENCY_RESUSCITATION_ESCALATION",
+      "CLINICIAN_CRITICAL_RESULT_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "workflowCode",
+    "subjectPatientId",
+    "correlationKey",
+    "priority"
+  ],
+  "responsibleRoleOrTeam": "WORKFLOW_ORCHESTRATOR -> FACILITY_ADMIN -> CLINICAL_TEAMS",
+  "allowedStatesAndTransitions": {
+    "DEFINITION_SEEDED": [
+      "INSTANCE_ACTIVE"
+    ],
+    "INSTANCE_ACTIVE": [
+      "STEP_TRANSITIONED",
+      "SUBFLOW_LINKED",
+      "SLA_ESCALATED",
+      "COMPLETED",
+      "CANCELLED"
+    ],
+    "STEP_TRANSITIONED": [
+      "INSTANCE_ACTIVE",
+      "COMPLETED"
+    ],
+    "SUBFLOW_LINKED": [
+      "INSTANCE_ACTIVE"
+    ],
+    "SLA_ESCALATED": [
+      "INSTANCE_ACTIVE",
+      "COMPLETED"
+    ],
+    "COMPLETED": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Valid facilityId tenant context and seeded or custom WorkflowDefinitionEntity."
+  ],
+  "safetyChecks": [
+    "Every transition validated against allowed transitions graph.",
+    "Encounter finalization blocked while parallel orders or critical inbox items remain unresolved.",
+    "Replay-safe idempotency enforced via DurableProcessedEventEntity."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Owns WorkflowBillingClearancePolicySpi (11 outcomes) without creating a duplicate financial ledger."
+  ],
+  "tasksToCreate": [
+    "SEED_WORKFLOW_CATALOG",
+    "START_PARENT_JOURNEY",
+    "ROUTE_CHILD_SUBFLOWS",
+    "MONITOR_SLA_ESCALATIONS"
+  ],
+  "queuesToUpdate": [
+    "RECEPTION",
+    "TRIAGE",
+    "DOCTOR_CONSULTATION",
+    "LAB_COLLECTION",
+    "RADIOLOGY",
+    "PHARMACY",
+    "BILLING_CASHIER"
+  ],
+  "eventsToPublish": [
+    "EncounterStarted",
+    "ClinicalOrderSigned",
+    "ServiceCleared",
+    "CriticalResultDetected",
+    "ClinicianResultAcknowledged",
+    "EncounterDischarged"
+  ],
+  "notificationsToGenerate": [
+    "RESULT_READY",
+    "MEDICATION_READY",
+    "CRITICAL_FOLLOWUP"
+  ],
+  "outputsAndClinicalRecords": [
+    "WorkflowInstanceEntity",
+    "WorkflowStepLogEntity",
+    "WorkflowSubflowLinkEntity",
+    "DepartmentOrderRoutingEntity",
+    "ClinicianResultInboxEntity",
+    "DurableNotificationEntity"
+  ],
+  "exceptionRoutes": [
+    "INVALID_TRANSITION_REJECTED",
+    "SLA_BREACH_HOOK_INVOCATION",
+    "CROSS_FACILITY_ACCESS_DENIED"
+  ],
+  "cancellationAndResumptionRules": "Workflow instances support audited cancellation without mutating immutable step logs or outbox events.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "defaultRoutineWorkflowMinutes": 240,
+    "statEscalationMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit + immutable WorkflowStepLogEntity + TransactionalOutboxEntity on every state mutation.",
+  "completionCriteria": "Parent workflow reaches terminal stage after verifyCanFinalizeEncounter returns zero blocking reasons.",
+  "apiExamples": [
+    "POST /api/v1/workflows/instances",
+    "POST /api/v1/workflows/instances/{id}/transition"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (WorkflowOrchestrationServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

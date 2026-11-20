@@ -1,0 +1,122 @@
+{
+  "workflowId": "BLOOD_BANK_CROSSMATCH_HEMOVIGILANCE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Blood Bank ISBT-128 Inventory, ABO/RhD Crossmatch Compatibility & Hemovigilance",
+  "careSetting": "HOSPITAL_TRANSFUSION_SERVICE_AND_ED_OT",
+  "descriptionAndPurpose": "Governs ISBT-128 blood component inventory, enforces strict ABO/RhD compatibility verification prior to issue, supports emergency O-negative release, and captures transfusion reaction hemovigilance reports.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-blood-bank"
+  ],
+  "optionalModules": [
+    "healthcore-starter-emergency-nursing",
+    "healthcore-starter-surgery-ot",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "startingEvent": "ClinicalOrderSigned",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "recipientAboRhd",
+    "componentType",
+    "isbtUnitCode"
+  ],
+  "responsibleRoleOrTeam": "BLOOD_BANK_SCIENTIST -> TRANSFUSING_CLINICIAN -> HEMOVIGILANCE_OFFICER",
+  "allowedStatesAndTransitions": {
+    "REQUESTED": [
+      "CROSSMATCH_TESTING",
+      "EMERGENCY_ONEG_ISSUED",
+      "CANCELLED"
+    ],
+    "CROSSMATCH_TESTING": [
+      "COMPATIBLE_RESERVED",
+      "INCOMPATIBLE_BLOCKED"
+    ],
+    "COMPATIBLE_RESERVED": [
+      "ISSUED_TO_WARD",
+      "RETURNED_TO_STOCK"
+    ],
+    "EMERGENCY_ONEG_ISSUED": [
+      "TRANSFUSION_IN_PROGRESS"
+    ],
+    "ISSUED_TO_WARD": [
+      "TRANSFUSION_IN_PROGRESS",
+      "RETURNED_TO_STOCK"
+    ],
+    "TRANSFUSION_IN_PROGRESS": [
+      "TRANSFUSION_COMPLETED",
+      "ADVERSE_REACTION_REPORTED"
+    ],
+    "ADVERSE_REACTION_REPORTED": [
+      "HEMOVIGILANCE_INVESTIGATED"
+    ],
+    "TRANSFUSION_COMPLETED": [],
+    "HEMOVIGILANCE_INVESTIGATED": [],
+    "INCOMPATIBLE_BLOCKED": [
+      "CROSSMATCH_TESTING",
+      "CANCELLED"
+    ],
+    "RETURNED_TO_STOCK": [],
+    "CANCELLED": []
+  },
+  "prerequisiteConditions": [
+    "Verified patient blood group and non-expired screened ISBT-128 unit."
+  ],
+  "safetyChecks": [
+    "Hard algorithmic block on ABO/RhD incompatible transfusions.",
+    "Dual bedside verification prior to transfusion start.",
+    "Emergency uncrossmatched O-negative release bypasses billing via EMERGENCY_OVERRIDE."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "Emergency massive transfusion bypasses prepayment via EMERGENCY_OVERRIDE; routine crossmatch follows facility billing policy."
+  ],
+  "tasksToCreate": [
+    "PERFORM_CROSSMATCH",
+    "ISSUE_BLOOD_COMPONENT",
+    "MONITOR_TRANSFUSION_VITALS"
+  ],
+  "queuesToUpdate": [
+    "LAB_PROCESSING",
+    "PROCEDURES"
+  ],
+  "eventsToPublish": [
+    "ClinicalOrderSigned",
+    "ServiceCleared",
+    "CriticalResultDetected"
+  ],
+  "notificationsToGenerate": [
+    "BLOOD_UNIT_READY_FOR_ISSUE",
+    "HEMOVIGILANCE_REACTION_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "BloodComponentUnitEntity",
+    "CrossmatchCompatibilityRecord",
+    "HemovigilanceReport"
+  ],
+  "exceptionRoutes": [
+    "ABO_INCOMPATIBILITY_HARD_BLOCK",
+    "TRANSFUSION_REACTION_IMMEDIATE_STOP"
+  ],
+  "cancellationAndResumptionRules": "Unused units returned within cold-chain window may be re-inventoried; breached units are quarantined and discarded with audit.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "emergencyReleaseMinutes": 5,
+    "routineCrossmatchMinutes": 45
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs ISBT-128 unit code, compatibility matrix result, issuing scientist, and bedside witnesses.",
+  "completionCriteria": "Transfusion completed without incident or hemovigilance investigation closed.",
+  "apiExamples": [
+    "POST /api/v1/blood-bank/compatibility",
+    "POST /api/v1/blood-bank/units/{id}/issue"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (BloodBankCompatibilityTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

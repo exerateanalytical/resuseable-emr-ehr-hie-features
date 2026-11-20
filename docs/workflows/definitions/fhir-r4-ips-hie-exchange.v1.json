@@ -1,0 +1,102 @@
+{
+  "workflowId": "FHIR_R4_IPS_HIE_EXCHANGE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "HL7 FHIR R4 Resource Mapping, International Patient Summary (IPS) & Cross-Facility HIE Exchange",
+  "careSetting": "MULTI_FACILITY_EHR_AND_REGIONAL_HIE",
+  "descriptionAndPurpose": "Maps HealthCore MPI, encounter, allergy, medication, and verified result entities into compliant HL7 FHIR R4 Bundles and International Patient Summary (IPS) documents with cross-facility consent verification and patient identity mapping.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-fhir-hie"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-hie-interop",
+    "healthcore-starter-interoperability-ihe",
+    "healthcore-starter-integration-ops"
+  ],
+  "startingEvent": "EncounterDischarged",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "targetOrganizationOid",
+    "consentArtifactId"
+  ],
+  "responsibleRoleOrTeam": "HIE_GATEWAY -> RECEIVING_FACILITY_CLINICIAN",
+  "allowedStatesAndTransitions": {
+    "CONSENT_CHECKED": [
+      "FHIR_BUNDLE_GENERATED",
+      "CONSENT_DENIED"
+    ],
+    "FHIR_BUNDLE_GENERATED": [
+      "VALIDATED_R4",
+      "MAPPING_FAILED"
+    ],
+    "VALIDATED_R4": [
+      "TRANSMITTED_TO_HIE",
+      "RETRYING"
+    ],
+    "RETRYING": [
+      "TRANSMITTED_TO_HIE",
+      "DEAD_LETTERED"
+    ],
+    "TRANSMITTED_TO_HIE": [
+      "ACKNOWLEDGED_BY_RECEIVER"
+    ],
+    "ACKNOWLEDGED_BY_RECEIVER": [],
+    "CONSENT_DENIED": [],
+    "MAPPING_FAILED": [],
+    "DEAD_LETTERED": [
+      "VALIDATED_R4"
+    ]
+  },
+  "prerequisiteConditions": [
+    "Verified cross-facility consent and MPI organization-scoped identity mapping (never blindly conflating external IDs)."
+  ],
+  "safetyChecks": [
+    "Blocks HIE disclosure when active patient opt-out or consent restriction applies.",
+    "Preserves source facility provenance on every FHIR resource."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (interoperability exchange)."
+  ],
+  "tasksToCreate": [
+    "VERIFY_HIE_CONSENT",
+    "BUILD_FHIR_IPS_BUNDLE",
+    "TRANSMIT_AND_TRACK_RECEIPT"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "EncounterDischarged",
+    "LaboratoryResultVerified",
+    "RadiologyReportSigned"
+  ],
+  "notificationsToGenerate": [],
+  "outputsAndClinicalRecords": [
+    "FhirR4IpsBundlePayload",
+    "HieTransmissionReceipt"
+  ],
+  "exceptionRoutes": [
+    "CONSENT_OPT_OUT_BLOCK",
+    "EXTERNAL_HIE_TIMEOUT_DLQ"
+  ],
+  "cancellationAndResumptionRules": "Failed transmissions enter Integration Ops DLQ for deterministic replay without altering clinical source records.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "ipsGenerationMinutes": 5,
+    "hieTransmissionMinutes": 15
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs consenting patientId, receiving organization, FHIR Bundle ID, and HTTP/ATNA receipt.",
+  "completionCriteria": "Valid FHIR R4 IPS Bundle transmitted and acknowledged by receiving HIE peer.",
+  "apiExamples": [
+    "GET /api/v1/fhir/Patient/{patientId}/$summary",
+    "POST /api/v1/fhir/Bundle"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (FhirHieStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

@@ -1,0 +1,40 @@
+# OPES HealthCore — 22-Module Versioned Workflow Definitions Index
+
+This index pairs all **22 core, platform, and specialty starter modules** with their versioned machine-readable JSON workflow definitions (`WorkflowChecklistDefinition` — all 25 Section 9 attributes) and the master YAML registry ([`workflow-registry.v1.yaml`](definitions/workflow-registry.v1.yaml)). Every definition aligns with [`PATIENT_JOURNEY_MASTER_SPEC.md`](PATIENT_JOURNEY_MASTER_SPEC.md), strict 9-ID separation, `WorkflowBillingClearancePolicySpi`, departmental queues, and the 28 canonical durable domain events.
+
+Each module ships its own versioned JSON definition at `<module>/src/main/resources/workflows/<workflow>.v1.json` (preserving strict module isolation) and mirrors it under `docs/workflows/definitions/` alongside the Markdown specifications.
+
+## Core Patient Journey Blueprints (6 Definitions in `healthcore-starter-workflow-engine`)
+- `opd-consultation-journey.v2.json` — `OPD_CONSULTATION_FLOW` (`v2.0.0`)
+- `laboratory-order-fulfillment.v1.json` — `LAB_ORDER_FULFILLMENT` (`v1.0.0`)
+- `radiology-imaging-fulfillment.v1.json` — `RADIOLOGY_IMAGING_FULFILLMENT` (`v1.0.0`)
+- `pharmacy-prescription-fulfillment.v1.json` — `PHARMACY_PRESCRIPTION_FULFILLMENT` (`v1.0.0`)
+- `emergency-resuscitation-escalation.v1.json` — `EMERGENCY_RESUSCITATION_ESCALATION` (`v1.0.0`)
+- `clinician-critical-result-escalation.v1.json` — `CLINICIAN_CRITICAL_RESULT_ESCALATION` (`v1.0.0`)
+
+## 22-Module Versioned Machine-Readable Workflow Catalog
+
+| Module | Workflow ID & Version | JSON Definition | Starting Event | Master Journey Alignment | Automated Test Suite |
+|---|---|---|---|---|---|
+| `healthcore-starter-scheduling` | `APPOINTMENT_SCHEDULING_CHECKIN_FLOW` (`v1.0.0`) | [`appointment-scheduling-checkin.v1.json`](definitions/appointment-scheduling-checkin.v1.json) | `PatientArrived` | `OPD_CONSULTATION_FLOW` | `SchedulingServiceTest` |
+| `healthcore-starter-orders-results` | `UNIFIED_CPOE_ORDERS_RESULTS_FLOW` (`v1.0.0`) | [`unified-cpoe-orders-results.v1.json`](definitions/unified-cpoe-orders-results.v1.json) | `ClinicalOrderSigned` | `OPD_CONSULTATION_FLOW`, `EMERGENCY_RESUSCITATION_ESCALATION` | `UnifiedOrdersResultsServiceTest` |
+| `healthcore-starter-radiology` | `RADIOLOGY_RIS_DICOM_REPORTING_FLOW` (`v1.0.0`) | [`radiology-ris-dicom-reporting.v1.json`](definitions/radiology-ris-dicom-reporting.v1.json) | `ImagingOrderAccepted` | `OPD_CONSULTATION_FLOW`, `RADIOLOGY_IMAGING_FULFILLMENT` | `RadiologyRisServiceTest` |
+| `healthcore-starter-emergency-nursing` | `EMERGENCY_TRIAGE_NEWS2_DISCHARGE_FLOW` (`v1.0.0`) | [`emergency-triage-news2-discharge.v1.json`](definitions/emergency-triage-news2-discharge.v1.json) | `PatientArrived` | `OPD_CONSULTATION_FLOW`, `EMERGENCY_RESUSCITATION_ESCALATION` | `EmergencyNursingServiceTest` |
+| `healthcore-starter-patient-portal` | `PATIENT_PORTAL_ENGAGEMENT_PROXY_FLOW` (`v1.0.0`) | [`patient-portal-engagement-proxy.v1.json`](definitions/patient-portal-engagement-proxy.v1.json) | `PatientRegistered` | `OPD_CONSULTATION_FLOW` | `PatientPortalServiceTest` |
+| `healthcore-starter-workflow-engine` | `COMPOSABLE_WORKFLOW_ENGINE_ORCHESTRATION_FLOW` (`v1.0.0`) | [`composable-workflow-engine-orchestration.v1.json`](definitions/composable-workflow-engine-orchestration.v1.json) | `EncounterStarted` | Root / Cross-Cutting | `WorkflowOrchestrationServiceTest` |
+| `healthcore-starter-analytics` | `CLINICAL_QUALITY_ANALYTICS_EXPORT_FLOW` (`v1.0.0`) | [`clinical-quality-analytics-cohort-export.v1.json`](definitions/clinical-quality-analytics-cohort-export.v1.json) | `EncounterDischarged` | `OPD_CONSULTATION_FLOW` | `HospitalAnalyticsServiceTest` |
+| `healthcore-starter-api-product` | `PARTNER_API_PRODUCT_WEBHOOK_FLOW` (`v1.0.0`) | [`partner-api-gateway-webhook-delivery.v1.json`](definitions/partner-api-gateway-webhook-delivery.v1.json) | `ServiceCleared` | `OPD_CONSULTATION_FLOW` | `ApiProductServiceTest` |
+| `healthcore-starter-templates-dashboards` | `CLINICAL_TEMPLATE_CAPTURE_DASHBOARD_FLOW` (`v1.0.0`) | [`clinical-template-capture-dashboard.v1.json`](definitions/clinical-template-capture-dashboard.v1.json) | `ConsultationStarted` | `OPD_CONSULTATION_FLOW` | `TemplatesAndOperationsServiceTest` |
+| `healthcore-starter-blood-bank` | `BLOOD_BANK_CROSSMATCH_HEMOVIGILANCE_FLOW` (`v1.0.0`) | [`blood-bank-crossmatch-hemovigilance.v1.json`](definitions/blood-bank-crossmatch-hemovigilance.v1.json) | `ClinicalOrderSigned` | `OPD_CONSULTATION_FLOW`, `EMERGENCY_RESUSCITATION_ESCALATION` | `BloodBankCompatibilityTest` |
+| `healthcore-starter-surgery-ot` | `SURGICAL_PERIOPERATIVE_WHO_PACU_FLOW` (`v1.0.0`) | [`surgical-perioperative-who-pacu.v1.json`](definitions/surgical-perioperative-who-pacu.v1.json) | `ClinicalOrderSigned` | `OPD_CONSULTATION_FLOW`, `EMERGENCY_RESUSCITATION_ESCALATION` | `SurgicalPerioperativeTest` |
+| `healthcore-starter-biomedical-coldchain` | `BIOMEDICAL_ASSET_COLDCHAIN_EXCURSION_FLOW` (`v1.0.0`) | [`biomedical-asset-coldchain-excursion.v1.json`](definitions/biomedical-asset-coldchain-excursion.v1.json) | `VitalSignsRecorded` | Root / Cross-Cutting | `BiomedicalColdChainStarterTest` |
+| `healthcore-starter-chw-homecare` | `CHW_HOMECARE_COMMUNITY_REFERRAL_FLOW` (`v1.0.0`) | [`chw-homecare-community-referral.v1.json`](definitions/chw-homecare-community-referral.v1.json) | `FollowUpRequired` | `OPD_CONSULTATION_FLOW` | `ChwHomeCareStarterTest` |
+| `healthcore-starter-crvs-mortuary` | `CRVS_BIRTH_DEATH_MCCOD_MORTUARY_FLOW` (`v1.0.0`) | [`crvs-birth-death-mccod-mortuary.v1.json`](definitions/crvs-birth-death-mccod-mortuary.v1.json) | `EncounterDischarged` | `OPD_CONSULTATION_FLOW`, `EMERGENCY_RESUSCITATION_ESCALATION` | `CrvsMortuaryStarterTest` |
+| `healthcore-starter-deidentification-research` | `HIPAA_SAFE_HARBOR_DEIDENTIFICATION_FLOW` (`v1.0.0`) | [`hipaa-safe-harbor-deidentification-bridge.v1.json`](definitions/hipaa-safe-harbor-deidentification-bridge.v1.json) | `EncounterDischarged` | Root / Cross-Cutting | `DeidentificationResearchStarterTest` |
+| `healthcore-starter-disease-surveillance` | `IDSR_NOTIFIABLE_DISEASE_SURVEILLANCE_FLOW` (`v1.0.0`) | [`idsr-notifiable-disease-dhis2-surveillance.v1.json`](definitions/idsr-notifiable-disease-dhis2-surveillance.v1.json) | `LaboratoryResultVerified` | `OPD_CONSULTATION_FLOW`, `LAB_ORDER_FULFILLMENT` | `DiseaseSurveillanceStarterTest` |
+| `healthcore-starter-fhir-hie` | `FHIR_R4_IPS_HIE_EXCHANGE_FLOW` (`v1.0.0`) | [`fhir-r4-ips-hie-exchange.v1.json`](definitions/fhir-r4-ips-hie-exchange.v1.json) | `EncounterDischarged` | `OPD_CONSULTATION_FLOW` | `FhirHieStarterTest` |
+| `healthcore-starter-hl7-astm-dicom` | `HL7_ASTM_DICOM_INSTRUMENT_BRIDGE_FLOW` (`v1.0.0`) | [`hl7-v2-astm-dicom-instrument-bridge.v1.json`](definitions/hl7-v2-astm-dicom-instrument-bridge.v1.json) | `LaboratoryOrderAccepted` | `LAB_ORDER_FULFILLMENT`, `RADIOLOGY_IMAGING_FULFILLMENT` | `Hl7AstmDicomFixtureTest` |
+| `healthcore-starter-interoperability-ihe` | `IHE_XDSB_PIXM_PDQM_ATNA_PROFILE_FLOW` (`v1.0.0`) | [`ihe-xdsb-pixm-pdqm-atna-profile.v1.json`](definitions/ihe-xdsb-pixm-pdqm-atna-profile.v1.json) | `PatientMatched` | `OPD_CONSULTATION_FLOW` | `IheProfileFixtureTest` |
+| `healthcore-starter-lis-diagnostics` | `LIS_DIAGNOSTICS_SPECIMEN_VERIFICATION_FLOW` (`v1.0.0`) | [`lis-diagnostics-specimen-verification.v1.json`](definitions/lis-diagnostics-specimen-verification.v1.json) | `LaboratoryOrderAccepted` | `OPD_CONSULTATION_FLOW`, `LAB_ORDER_FULFILLMENT` | `LisDiagnosticsStarterTest` |
+| `healthcore-starter-pharmacy-inventory` | `PHARMACY_INVENTORY_FEFO_DISPENSING_FLOW` (`v1.0.0`) | [`pharmacy-inventory-fefo-dispensing.v1.json`](definitions/pharmacy-inventory-fefo-dispensing.v1.json) | `PrescriptionRouted` | `OPD_CONSULTATION_FLOW`, `PHARMACY_PRESCRIPTION_FULFILLMENT` | `PharmacyInventoryStarterTest` |
+| `healthcore-starter-programs-immunization` | `VERTICAL_PROGRAMS_EPI_IMMUNIZATION_FLOW` (`v1.0.0`) | [`vertical-programs-epi-immunization.v1.json`](definitions/vertical-programs-epi-immunization.v1.json) | `EncounterStarted` | `OPD_CONSULTATION_FLOW` | `ProgramsImmunizationStarterTest` |

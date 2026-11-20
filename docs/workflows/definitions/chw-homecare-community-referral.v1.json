@@ -1,0 +1,108 @@
+{
+  "workflowId": "CHW_HOMECARE_COMMUNITY_REFERRAL_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Community Health Worker (CHW) Home Visits, Danger-Sign Screening & Closed-Loop Facility Referral",
+  "careSetting": "COMMUNITY_OUTREACH_AND_HOMECARE",
+  "descriptionAndPurpose": "Supports offline-capable CHW household visits, post-discharge follow-up triggered by FollowUpRequired events, maternal/pediatric danger-sign screening, and closed-loop referrals directly into hospital OPD/ED triage.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-chw-homecare"
+  ],
+  "optionalModules": [
+    "healthcore-starter-mpi",
+    "healthcore-starter-offline-sync",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-queue-management"
+  ],
+  "startingEvent": "FollowUpRequired",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": [
+      "EMERGENCY_RESUSCITATION_ESCALATION"
+    ]
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "chwWorkerId",
+    "householdGeoRef",
+    "screeningChecklist"
+  ],
+  "responsibleRoleOrTeam": "COMMUNITY_HEALTH_WORKER -> FACILITY_TRIAGE_NURSE",
+  "allowedStatesAndTransitions": {
+    "VISIT_SCHEDULED": [
+      "HOME_VISIT_IN_PROGRESS",
+      "UNABLE_TO_LOCATE"
+    ],
+    "HOME_VISIT_IN_PROGRESS": [
+      "ROUTINE_FOLLOWUP_COMPLETED",
+      "DANGER_SIGN_REFERRAL_ISSUED"
+    ],
+    "DANGER_SIGN_REFERRAL_ISSUED": [
+      "FACILITY_ARRIVAL_CONFIRMED",
+      "REFERRAL_OVERDUE_ESCALATED"
+    ],
+    "REFERRAL_OVERDUE_ESCALATED": [
+      "FACILITY_ARRIVAL_CONFIRMED",
+      "CLOSED_LOST_TO_FOLLOWUP"
+    ],
+    "FACILITY_ARRIVAL_CONFIRMED": [],
+    "ROUTINE_FOLLOWUP_COMPLETED": [],
+    "UNABLE_TO_LOCATE": [
+      "VISIT_SCHEDULED",
+      "CLOSED_LOST_TO_FOLLOWUP"
+    ],
+    "CLOSED_LOST_TO_FOLLOWUP": []
+  },
+  "prerequisiteConditions": [
+    "Assigned CHW catchment area and MPI patient linkage."
+  ],
+  "safetyChecks": [
+    "Positive danger signs immediately generate high-priority referral ticket for facility TRIAGE queue.",
+    "Offline visits carry idempotency keys preventing duplicate referrals on sync."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "SPONSORED or PAYMENT_NOT_REQUIRED per public-health community care policy."
+  ],
+  "tasksToCreate": [
+    "CONDUCT_HOME_VISIT",
+    "ISSUE_URGENT_REFERRAL",
+    "CONFIRM_FACILITY_COUNTER_REFERRAL"
+  ],
+  "queuesToUpdate": [
+    "TRIAGE",
+    "RECEPTION"
+  ],
+  "eventsToPublish": [
+    "FollowUpRequired",
+    "PatientArrived",
+    "ClinicalPriorityChanged"
+  ],
+  "notificationsToGenerate": [
+    "CHW_FOLLOWUP_REMINDER",
+    "URGENT_REFERRAL_FACILITY_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "ChwHomeVisitRecord",
+    "CommunityReferralSlip"
+  ],
+  "exceptionRoutes": [
+    "OFFLINE_SYNC_CONFLICT_RESOLUTION",
+    "UNCONFIRMED_DANGER_REFERRAL_ESCALATION"
+  ],
+  "cancellationAndResumptionRules": "Community referrals remain open until counter-referral arrival is confirmed at receiving facility or explicitly closed.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "dangerSignReferralArrivalMinutes": 120,
+    "routineHomeFollowUpMinutes": 4320
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs CHW worker identity, screening findings, referral issuance, and facility arrival confirmation.",
+  "completionCriteria": "Home visit documented or referred patient checked into receiving facility OPD/ED journey.",
+  "apiExamples": [
+    "POST /api/v1/chw/visits",
+    "POST /api/v1/chw/referrals/{id}/confirm-arrival"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (ChwHomeCareStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

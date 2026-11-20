@@ -1,0 +1,94 @@
+{
+  "workflowId": "CLINICAL_TEMPLATE_CAPTURE_DASHBOARD_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "Versioned Clinical Form Templates, Structured Encounter Capture & Specialty KPI Dashboards",
+  "careSetting": "OUTPATIENT_SPECIALTY_AND_INPATIENT_EMR",
+  "descriptionAndPurpose": "Publishes versioned JSON Schema clinical intake/consultation forms (ANC, Pediatrics, NCD, OPD SOAP), validates structured responses bound to patientId and encounterId, and feeds real-time facility dashboards.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-templates-dashboards"
+  ],
+  "optionalModules": [
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-workflow-engine",
+    "healthcore-starter-analytics"
+  ],
+  "startingEvent": "ConsultationStarted",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "templateCode",
+    "templateVersion",
+    "structuredPayload"
+  ],
+  "responsibleRoleOrTeam": "CLINICAL_INFORMATICIST -> CONSULTING_CLINICIAN",
+  "allowedStatesAndTransitions": {
+    "TEMPLATE_DRAFT": [
+      "TEMPLATE_PUBLISHED",
+      "RETIRED"
+    ],
+    "TEMPLATE_PUBLISHED": [
+      "RESPONSE_CAPTURED",
+      "RETIRED"
+    ],
+    "RESPONSE_CAPTURED": [
+      "RESPONSE_SIGNED",
+      "AMENDED"
+    ],
+    "RESPONSE_SIGNED": [
+      "AMENDED"
+    ],
+    "AMENDED": [
+      "RESPONSE_SIGNED"
+    ],
+    "RETIRED": []
+  },
+  "prerequisiteConditions": [
+    "Published active template version and open encounterId."
+  ],
+  "safetyChecks": [
+    "Mandatory clinical safety fields validated before signing.",
+    "Signed clinical form responses are versioned and never silently overwritten."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (clinical documentation capability)."
+  ],
+  "tasksToCreate": [
+    "CAPTURE_STRUCTURED_ASSESSMENT",
+    "SIGN_TEMPLATE_RESPONSE"
+  ],
+  "queuesToUpdate": [
+    "DOCTOR_CONSULTATION"
+  ],
+  "eventsToPublish": [
+    "ConsultationStarted",
+    "ConsultationCompleted"
+  ],
+  "notificationsToGenerate": [],
+  "outputsAndClinicalRecords": [
+    "ClinicalTemplateEntity",
+    "SignedTemplateResponseEntity"
+  ],
+  "exceptionRoutes": [
+    "SCHEMA_VALIDATION_ERROR"
+  ],
+  "cancellationAndResumptionRules": "Retiring a template prevents new captures while preserving historical responses renderable under their original schema version.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "encounterDocumentationCompletionMinutes": 60
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs template publication, response submission, signature, and amendments.",
+  "completionCriteria": "Structured clinical response validated, signed, and linked to encounterId.",
+  "apiExamples": [
+    "POST /api/v1/templates",
+    "POST /api/v1/templates/{code}/responses"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (TemplatesAndOperationsServiceTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}

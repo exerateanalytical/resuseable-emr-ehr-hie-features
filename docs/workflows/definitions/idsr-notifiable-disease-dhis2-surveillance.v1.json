@@ -1,0 +1,99 @@
+{
+  "workflowId": "IDSR_NOTIFIABLE_DISEASE_SURVEILLANCE_FLOW",
+  "version": "1.0.0",
+  "applicableDomain": "IDSR / IHR Notifiable Disease Case Detection, Outbreak Threshold Alerting & DHIS2 Reporting",
+  "careSetting": "FACILITY_TO_DISTRICT_NATIONAL_PUBLIC_HEALTH",
+  "descriptionAndPurpose": "Automatically screens confirmed encounter diagnoses and verified laboratory results against notifiable disease lists (Cholera, Measles, VHF, Meningitis), triggers immediate outbreak escalation, and synchronizes aggregate/case reports to DHIS2.",
+  "requiredModules": [
+    "healthcore-persistence-core",
+    "healthcore-security-audit",
+    "healthcore-starter-disease-surveillance"
+  ],
+  "optionalModules": [
+    "healthcore-starter-emr-clinical",
+    "healthcore-starter-lis-diagnostics",
+    "healthcore-starter-public-health"
+  ],
+  "startingEvent": "LaboratoryResultVerified",
+  "parentChildRelations": {
+    "parentWorkflow": [
+      "OPD_CONSULTATION_FLOW",
+      "LAB_ORDER_FULFILLMENT"
+    ],
+    "childSubworkflows": []
+  },
+  "requiredInputData": [
+    "facilityId",
+    "patientId",
+    "encounterId",
+    "icd11OrLoincCode",
+    "onsetDate"
+  ],
+  "responsibleRoleOrTeam": "SURVEILLANCE_FOCAL_POINT -> DISTRICT_EPIDEMIOLOGIST",
+  "allowedStatesAndTransitions": {
+    "SUSPECTED_CASE_FLAGGED": [
+      "LAB_CONFIRMATION_PENDING",
+      "IMMEDIATE_OUTBREAK_ALERTED"
+    ],
+    "LAB_CONFIRMATION_PENDING": [
+      "CASE_CONFIRMED",
+      "CASE_DISCARDED"
+    ],
+    "CASE_CONFIRMED": [
+      "IMMEDIATE_OUTBREAK_ALERTED",
+      "DHIS2_REPORTED"
+    ],
+    "IMMEDIATE_OUTBREAK_ALERTED": [
+      "DHIS2_REPORTED"
+    ],
+    "DHIS2_REPORTED": [
+      "CASE_INVESTIGATION_CLOSED"
+    ],
+    "CASE_INVESTIGATION_CLOSED": [],
+    "CASE_DISCARDED": []
+  },
+  "prerequisiteConditions": [
+    "Coded clinical diagnosis (ICD-10/11) or verified laboratory pathogen detection."
+  ],
+  "safetyChecks": [
+    "Zero financial gate ever delays notifiable disease reporting or outbreak alert.",
+    "Advisory lock prevents duplicate weekly DHIS2 push submissions."
+  ],
+  "financialAndAuthorizationPolicies": [
+    "PAYMENT_NOT_REQUIRED (mandatory public health statutory reporting)."
+  ],
+  "tasksToCreate": [
+    "VERIFY_NOTIFIABLE_CASE",
+    "NOTIFY_DISTRICT_EPIDEMIOLOGIST",
+    "SYNC_DHIS2_PAYLOAD"
+  ],
+  "queuesToUpdate": [],
+  "eventsToPublish": [
+    "LaboratoryResultVerified",
+    "CriticalResultDetected",
+    "ConsultationCompleted"
+  ],
+  "notificationsToGenerate": [
+    "EPIDEMIOLOGIST_IMMEDIATE_ALERT"
+  ],
+  "outputsAndClinicalRecords": [
+    "NotifiableCaseEntity",
+    "Dhis2SyncSubmissionReceipt"
+  ],
+  "exceptionRoutes": [
+    "DHIS2_ENDPOINT_RETRY_QUEUE",
+    "OUTBREAK_THRESHOLD_BREACHED"
+  ],
+  "cancellationAndResumptionRules": "Discarded suspected cases retain full audit history explaining negative confirmatory testing.",
+  "slaDeadlinesAndEscalationMinutes": {
+    "immediateNotifiableAlertMinutes": 30,
+    "weeklyDhis2SyncMinutes": 10080
+  },
+  "auditAndProvenanceRequirements": "@ClinicalAudit logs case detection source, epidemiologist acknowledgment, and DHIS2 transmission receipt.",
+  "completionCriteria": "Notifiable case confirmed/discarded and successfully acknowledged by public health registry.",
+  "apiExamples": [
+    "POST /api/v1/surveillance/cases",
+    "POST /api/v1/surveillance/dhis2/sync"
+  ],
+  "testsAndClinicalReviewStatus": "AUTOMATED_UNIT_SUITE_VERIFIED (DiseaseSurveillanceStarterTest); ALIGNED_WITH_OPD_CONSULTATION_FLOW_V2; PENDING_LOCAL_CLINICAL_GOVERNANCE_SIGN_OFF"
+}
