@@ -143,7 +143,7 @@ public class ChwHomeCareStarter {
             ChwVisitEntity visit = new ChwVisitEntity();
             visit.setHouseholdId(input.householdId());
             visit.setPatientId(input.patientId());
-            visit.setVisitType("ICCM_UNDER5");
+            visit.setProgramType("ICCM_UNDER5");
             visit.setMuacMm(input.muacMm());
             visit.setDangerSignsPresent(urgentReferral);
             ChwVisitEntity saved = publicHealthService.recordChwVisit(visit);

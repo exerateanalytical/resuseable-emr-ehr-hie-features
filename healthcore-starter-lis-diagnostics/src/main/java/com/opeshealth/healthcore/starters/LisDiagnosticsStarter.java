@@ -195,7 +195,7 @@ public class LisDiagnosticsStarter {
             DiagnosticReportEntity report = diagnosticReportRepository.findById(req.diagnosticReportId())
                     .orElseThrow(() -> new NoSuchElementException("DiagnosticReport not found: " + req.diagnosticReportId()));
 
-            report.setStatus("FINAL_PANIC_ACKNOWLEDGED_BY_" + req.notifiedClinicianId().trim());
+            report.setPanicAcknowledgedBy(req.notifiedClinicianId().trim());
             return diagnosticReportRepository.save(report);
         }
     }

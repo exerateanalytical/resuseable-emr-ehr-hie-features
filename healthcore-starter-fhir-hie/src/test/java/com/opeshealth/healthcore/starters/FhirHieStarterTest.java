@@ -33,7 +33,7 @@ class FhirHieStarterTest {
 
         FhirSubscriptionEntity active = new FhirSubscriptionEntity();
         active.setFacilityId(facId);
-        active.setActive(true);
+        active.setStatus("ACTIVE");
         active.setCriteria("DiagnosticReport?status=final");
         when(subRepo.findByFacilityId(facId)).thenReturn(List.of(active));
 

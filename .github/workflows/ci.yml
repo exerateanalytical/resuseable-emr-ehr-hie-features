@@ -32,7 +32,7 @@ jobs:
       - name: Verify Maven build, dependency convergence, and unit/regression test suite
         run: |
           mvn -B -ntp dependency:tree -DoutputFile=target/dependency-tree.txt
-          mvn -B -ntp clean verify -DskipITs=true
+          mvn -B -ntp -fae clean verify -DskipITs=true
 
       - name: Generate release SHA-256 checksums and optional artifact signature
         run: bash scripts/ci-verify-docs-and-sign.sh target/release-attestation
@@ -214,26 +214,47 @@ jobs:
         run: docker build --tag opes-healthcore/quickstart-host:ci-${{ github.sha }} .
 
   mobile-kmp-check:
-    name: Kotlin Multiplatform Mobile Build Check
+    name: Android Kotlin Multiplatform actual compile (JDK 17 / SDK 35)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21 for Gradle KMP
+      - name: Set up JDK 17 for Android Gradle Plugin 8.8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
-      - name: Verify Kotlin Multiplatform module structure and compile if Gradle wrapper is present
-        run: |
-          if [ -x ./healthcore-mobile-kmp/gradlew ]; then
-            ./healthcore-mobile-kmp/gradlew -p healthcore-mobile-kmp check
-          else
-            echo "healthcore-mobile-kmp Gradle wrapper not provisioned yet; verifying Kotlin sources exist."
-            test "$(find healthcore-mobile-kmp -name '*.kt' | wc -l)" -gt 0
-          fi
+      - name: Install Gradle 8.10.2 (no wrapper present in repository)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Install Android SDK and accept required licenses
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android 35 build platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Actually compile HealthCore Kotlin Android SDK
+        run: gradle -p healthcore-mobile-kmp :healthcore-mobile-sdk:assembleDebug --no-daemon --stacktrace
+
+  java25-devcontainer-check:
+    name: Build Java 25 Maven devcontainer and validate Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate developer Compose file
+        run: docker compose -f .devcontainer/docker-compose.yml config --quiet
+
+      - name: Build developer environment image
+        run: docker build -f .devcontainer/Dockerfile -t opes-healthcore/dev:ci .
+
+      - name: Assert Java 25, Maven and Docker tooling are installed
+        run: docker run --rm opes-healthcore/dev:ci bash -lc 'java -version && mvn -version && docker --version'
 
   run-22-test-suites:
     name: Run 22 Module Test Suites & JaCoCo Coverage (JDK 25)
@@ -301,11 +322,11 @@ jobs:
           )
           MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
           TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
-          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
+          mvn -B -ntp -fae test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Run Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
         run: |
-          mvn -B -ntp test jacoco:report \
+          mvn -B -ntp -fae test jacoco:report \
             -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
             -am \
             -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \

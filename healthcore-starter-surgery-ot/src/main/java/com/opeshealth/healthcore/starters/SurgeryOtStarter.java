@@ -16,6 +16,7 @@ import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.AnesthesiaPacuRepository;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.SurgicalScheduleRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -102,13 +103,15 @@ public class SurgeryOtStarter {
 
         /**
          * Verifies all 3 phases of the WHO Surgical Safety Checklist before marking
-         * the surgical schedule checklist complete and authorizing incision.
+         * the entire checklist complete. Sign-out/count verification is a postoperative
+         * requirement and must not be misrepresented as a pre-incision check.
          */
         @Transactional
         @ClinicalAudit(action = "SURGERY_WHO_CHECKLIST_VERIFY", resourceType = "SurgicalSchedule")
         public SurgicalScheduleEntity completeWhoSurgicalSafetyChecklist(WhoSurgicalChecklistSubmission submission) {
             Objects.requireNonNull(submission, "WhoSurgicalChecklistSubmission must not be null");
-            SurgicalScheduleEntity schedule = surgicalScheduleRepository.findById(submission.surgicalScheduleId())
+            SurgicalScheduleEntity schedule = surgicalScheduleRepository.findByIdAndFacilityId(
+                    submission.surgicalScheduleId(), FacilityContext.requireFacilityId())
                     .orElseThrow(() -> new NoSuchElementException("Surgical schedule not found: " + submission.surgicalScheduleId()));
 
             List<String> failedGates = new ArrayList<>();
@@ -124,6 +127,9 @@ public class SurgeryOtStarter {
             if (!submission.teamTimeOutCompleted()) {
                 failedGates.add("TIME_OUT: Surgical team verbal Time-Out not completed");
             }
+            if (!submission.spongeNeedleInstrumentCountCorrect()) {
+                failedGates.add("SIGN_OUT: Sponge, needle and instrument count not reconciled");
+            }
             if (!failedGates.isEmpty()) {
                 throw new IllegalStateException("WHO Surgical Safety Checklist gate blocked incision: "
                         + String.join("; ", failedGates));
@@ -133,7 +139,7 @@ public class SurgeryOtStarter {
             if (submission.implantUdiBarcode() != null && !submission.implantUdiBarcode().isBlank()) {
                 schedule.setImplantUdi(submission.implantUdiBarcode().trim());
             }
-            schedule.setStatus(submission.spongeNeedleInstrumentCountCorrect() ? "COMPLETED_COUNT_VERIFIED" : "IN_SURGERY");
+            schedule.setStatus("COMPLETED_COUNT_VERIFIED");
             return surgicalScheduleRepository.save(schedule);
         }
 
@@ -157,8 +163,16 @@ public class SurgeryOtStarter {
                     + req.consciousnessScore()
                     + req.oxygenSaturationScore();
 
-            AnesthesiaPacuLogEntity logEntity = new AnesthesiaPacuLogEntity();
-            logEntity.setSurgicalScheduleId(req.surgicalScheduleId());
+            UUID facilityId = FacilityContext.requireFacilityId();
+            if (req.surgicalScheduleId() == null) {
+                throw new IllegalArgumentException("surgicalScheduleId is required for PACU evaluation");
+            }
+            // Update the real recorded anesthesia episode; never create a fictitious anesthesia
+            // record without mandatory induction agent, authenticated anesthetist and facility.
+            AnesthesiaPacuLogEntity logEntity = anesthesiaPacuRepository
+                    .findTopByFacilityIdAndSurgeryIdOrderByRecordedAtDesc(facilityId, req.surgicalScheduleId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "PACU scoring requires an existing anesthesia record for this surgery"));
             logEntity.setAsaClass(req.asaClass() != null && !req.asaClass().isBlank() ? req.asaClass().trim() : "ASA_II");
             logEntity.setEstimatedBloodLossMl(Math.max(0, req.estimatedBloodLossMl()));
             logEntity.setPacuAldreteScore(totalScore);

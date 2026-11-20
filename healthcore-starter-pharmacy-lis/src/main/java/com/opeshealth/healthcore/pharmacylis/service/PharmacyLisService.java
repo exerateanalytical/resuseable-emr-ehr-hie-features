@@ -42,6 +42,7 @@ import java.util.*;
 public class PharmacyLisService {
 
     public interface MedicationBatchRepository extends JpaRepository<MedicationBatchEntity, UUID> {
+        List<MedicationBatchEntity> findByFacilityId(UUID facilityId);
         List<MedicationBatchEntity> findByFacilityIdAndDrugCodeAndQuarantinedFalseAndExpiryDateAfterOrderByExpiryDateAsc(
                 UUID facilityId, String drugCode, LocalDate minExpiry);
         List<MedicationBatchEntity> findByFacilityIdAndExpiryDateBefore(UUID facilityId, LocalDate cutoff);
@@ -60,6 +61,7 @@ public class PharmacyLisService {
     }
 
     public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {
+        List<PharmacyDispenseEntity> findByFacilityId(UUID facilityId);
         @Modifying
         @Query("UPDATE PharmacyDispenseEntity p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);

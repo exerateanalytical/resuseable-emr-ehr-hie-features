@@ -1353,7 +1353,7 @@ class DataSyncManager(
 
     /**
      * Enqueues a locally encrypted clinical attachment (wound photo, referral PDF, ultrasound clip)
-     * in SQLDelight (`local_fhir_media_queue`) for resumable chunked upload to `/api/v1/sync/media/**`.
+     * in SQLDelight (`local_fhir_media_queue`) for resumable chunked upload through the sync media API.
      */
     fun enqueueOfflineEncryptedAttachment(
         facilityId: String,

@@ -30,3 +30,6 @@
    - NEWS2 early-warning thresholds (Scale 1 only; hypercapnic COPD Scale 2 requires local clinical configuration), ESI 1–5 triage rules, drug interaction rules, Westgard QC rules, and blood compatibility checks require independent hospital clinical governance sign-off before live patient care.
 3. **No Certification Claimed:**
    - This repository makes no claim of HIPAA, GDPR, ISO 27001, ONC, CE, or FDA regulatory certification.
+
+## 4. Research export caveat (PR #2)
+- The de-identification starter provides HMAC-based pseudonymization and equivalence-class suppression. It **does not certify HIPAA Safe Harbor, GDPR anonymization, or legal release clearance**. Raw free-text and region prefixes are suppressed by default pending independent policy and re-identification-risk review. A short or publicly known HMAC key is not suitable for live data; store a high-entropy study-specific key outside source control, with consent, access, retention and provenance controls.

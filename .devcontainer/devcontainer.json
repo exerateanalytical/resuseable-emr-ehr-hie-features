@@ -1,0 +1,33 @@
+{
+  "name": "OPES HealthCore SDK (Java 25 + Maven + PostgreSQL 16)",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "dev",
+  "runServices": [
+    "dev",
+    "postgres"
+  ],
+  "workspaceFolder": "/workspace/healthcore",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "java -version && mvn -version",
+  "forwardPorts": [
+    5432,
+    8080
+  ],
+  "portsAttributes": {
+    "5432": {
+      "label": "HealthCore development PostgreSQL"
+    },
+    "8080": {
+      "label": "HealthCore reference host"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-maven",
+        "redhat.vscode-xml"
+      ]
+    }
+  }
+}

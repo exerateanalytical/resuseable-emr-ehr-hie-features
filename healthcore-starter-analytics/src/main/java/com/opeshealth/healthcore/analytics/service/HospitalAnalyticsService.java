@@ -264,8 +264,8 @@ public class HospitalAnalyticsService {
 
     private void audit(UUID facilityId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, null, actor != null ? actor : "ANALYTICS_SYSTEM",
-                    action, "HospitalAnalytics", resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null ? actor : "ANALYTICS_SYSTEM",
+                    "ANALYTICS", action, "HospitalAnalytics", resourceId, null, "SUCCESS", detail, "internal");
         }
     }
 

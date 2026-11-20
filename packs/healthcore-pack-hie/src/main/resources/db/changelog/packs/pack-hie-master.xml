@@ -29,6 +29,7 @@
     <include file="classpath:db/changelog/hie/001-hie-interop.xml"/>
     <include file="classpath:db/changelog/hie/002-hie-ihe-docs.xml"/>
     <include file="classpath:db/changelog/hie/003-hie-hl7-clinical-tables.xml"/>
+    <include file="classpath:db/changelog/hie/004-hie-mhd-metadata.xml"/>
     <include file="classpath:db/changelog/integration_ops/001-integration-ops.xml"/>
     <include file="classpath:db/changelog/api_product/001-api-product.xml"/>
 </databaseChangeLog>

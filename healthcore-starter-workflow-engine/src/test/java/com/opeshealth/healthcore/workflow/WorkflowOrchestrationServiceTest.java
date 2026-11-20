@@ -48,7 +48,7 @@ class WorkflowOrchestrationServiceTest {
 
     @Test
     void seedsCatalogStartsWorkflowAndEnforcesValidStageTransitions() {
-        when(defRepo.findByFacilityIdAndWorkflowCode(eq(facilityId), any())).thenReturn(Optional.empty());
+        when(defRepo.findTopByFacilityIdAndWorkflowCodeAndActiveTrueOrderByVersionNumberDesc(eq(facilityId), any())).thenReturn(Optional.empty());
         List<WorkflowDefinitionEntity> seeded = service.seedCatalogForFacility(facilityId);
         assertFalse(seeded.isEmpty());
 
@@ -56,7 +56,7 @@ class WorkflowOrchestrationServiceTest {
                 facilityId, "DISCHARGE_FLOW", WorkflowDomainCategory.EMR, "INITIATED",
                 Map.of("INITIATED", Set.of("MED_REC_DONE"), "MED_REC_DONE", Set.of("DISCHARGED")),
                 Set.of("DISCHARGED"), 60);
-        when(defRepo.findByFacilityIdAndWorkflowCode(facilityId, "DISCHARGE_FLOW")).thenReturn(Optional.of(def));
+        when(defRepo.findTopByFacilityIdAndWorkflowCodeAndActiveTrueOrderByVersionNumberDesc(facilityId, "DISCHARGE_FLOW")).thenReturn(Optional.of(def));
 
         WorkflowInstanceEntity inst = service.startWorkflow(
                 facilityId, "DISCHARGE_FLOW", UUID.randomUUID(), "ENC-01",

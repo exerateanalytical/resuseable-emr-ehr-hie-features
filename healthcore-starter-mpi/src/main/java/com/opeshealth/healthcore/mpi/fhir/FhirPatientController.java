@@ -17,7 +17,7 @@ import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientIdentifierEntity;
 import com.opeshealth.healthcore.mpi.match.FellegiSunterMatcher.MatchCandidate;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService.RegisterPatientCommand;
-import com.opeshealth.healthcore.security.tenant.FacilityTenantInterceptor;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hl7.fhir.r4.model.Address;
@@ -142,11 +142,10 @@ public class FhirPatientController {
             @RequestBody String fhirPatientJson) {
         IParser json = FHIR_R4.newJsonParser().setPrettyPrint(true);
         Patient incoming = json.parseResource(Patient.class, fhirPatientJson);
-        UUID facilityId = headerFacilityId != null
-                ? headerFacilityId
-                : FacilityTenantInterceptor.currentFacility();
-        if (facilityId == null) {
-            facilityId = new UUID(0L, 1L);
+        UUID facilityId = FacilityContext.requireFacilityId();
+        if (headerFacilityId != null && !headerFacilityId.equals(facilityId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "X-Facility-Id does not match authorized facility context");
         }
 
         RegisterPatientCommand cmd = toRegisterCommand(facilityId, incoming);
@@ -409,7 +408,7 @@ public class FhirPatientController {
         String middle = null;
         if (!incoming.getName().isEmpty()) {
             HumanName hn = incoming.getNameFirstRep();
-            if (!hn.getPrefix().isEmpty()) prefix = hn.getPrefixAsSingleText();
+            if (!hn.getPrefix().isEmpty()) prefix = FhirHumanNameFormatter.prefixes(hn);
             if (hn.hasFamily()) family = hn.getFamily();
             List<StringType> givens = hn.getGiven();
             if (!givens.isEmpty()) {
@@ -471,7 +470,7 @@ public class FhirPatientController {
         if (!incoming.getContact().isEmpty()) {
             Patient.ContactComponent cc = incoming.getContactFirstRep();
             if (cc.hasName()) {
-                ecName = cc.getName().hasText() ? cc.getName().getText() : cc.getName().getNameAsSingleText();
+                ecName = cc.getName().hasText() ? cc.getName().getText() : FhirHumanNameFormatter.display(cc.getName());
             }
             for (ContactPoint cp : cc.getTelecom()) {
                 if (!cp.hasValue()) continue;
@@ -496,7 +495,7 @@ public class FhirPatientController {
     private static void applyFhirUpdates(PatientAggregateEntity entity, Patient incoming) {
         if (!incoming.getName().isEmpty()) {
             HumanName hn = incoming.getNameFirstRep();
-            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(hn.getPrefixAsSingleText());
+            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(FhirHumanNameFormatter.prefixes(hn));
             if (hn.hasFamily()) entity.setFamilyName(hn.getFamily());
             List<StringType> givens = hn.getGiven();
             if (!givens.isEmpty()) {
@@ -567,7 +566,7 @@ public class FhirPatientController {
         if (!incoming.getContact().isEmpty()) {
             Patient.ContactComponent cc = incoming.getContactFirstRep();
             if (cc.hasName()) {
-                demo.setEmergencyContactName(cc.getName().hasText() ? cc.getName().getText() : cc.getName().getNameAsSingleText());
+                demo.setEmergencyContactName(cc.getName().hasText() ? cc.getName().getText() : FhirHumanNameFormatter.display(cc.getName()));
             }
             for (ContactPoint cp : cc.getTelecom()) {
                 if (!cp.hasValue()) continue;

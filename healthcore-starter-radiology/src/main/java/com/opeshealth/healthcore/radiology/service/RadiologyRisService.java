@@ -271,8 +271,8 @@ public class RadiologyRisService {
 
     private void audit(UUID facilityId, UUID patientId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, patientId, actor != null ? actor : "RIS_SYSTEM", action, "RadiologyRis",
-                    resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null ? actor : "RIS_SYSTEM",
+                    "RIS", action, "RadiologyRis", resourceId, patientId, "SUCCESS", detail, "internal");
         }
     }
 

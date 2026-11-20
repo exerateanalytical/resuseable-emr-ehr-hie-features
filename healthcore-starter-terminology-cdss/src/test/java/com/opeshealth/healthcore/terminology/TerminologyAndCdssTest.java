@@ -49,6 +49,7 @@ class TerminologyAndCdssTest {
         DdiRuleEntity rule = new DdiRuleEntity();
         rule.setDrugACode("WARFARIN");
         rule.setDrugBOrConditionCode("ASPIRIN");
+        rule.setRuleType("DDI");
         rule.setSeverity("CRITICAL");
         rule.setClinicalMessage("Major bleeding risk; avoid concurrent therapy.");
         when(ddiRepo.findByDrugACodeIn(any())).thenReturn(List.of(rule));

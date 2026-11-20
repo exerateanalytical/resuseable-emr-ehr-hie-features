@@ -34,13 +34,26 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
     }
     public interface BloodDonorRepository extends JpaRepository<BloodDonorEntity, UUID> {}
     public interface TransfusionReactionRepository extends JpaRepository<TransfusionReactionEntity, UUID> {}
-    public interface SurgicalScheduleRepository extends JpaRepository<SurgicalScheduleEntity, UUID> {}
-    public interface AnesthesiaPacuRepository extends JpaRepository<AnesthesiaPacuLogEntity, UUID> {}
-    public interface TelemedicineRepository extends JpaRepository<TelemedicineSessionEntity, UUID> {}
-    public interface ColdChainRepository extends JpaRepository<ColdChainTelemetryEntity, UUID> {}
-    public interface BiomedMaintenanceRepository extends JpaRepository<BiomedMaintenanceEntity, UUID> {}
-    public interface CrvsRepository extends JpaRepository<CrvsBirthDeathEntity, UUID> {}
+    public interface SurgicalScheduleRepository extends JpaRepository<SurgicalScheduleEntity, UUID> {
+        Optional<SurgicalScheduleEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+    }
+    public interface AnesthesiaPacuRepository extends JpaRepository<AnesthesiaPacuLogEntity, UUID> {
+        Optional<AnesthesiaPacuLogEntity> findTopByFacilityIdAndSurgeryIdOrderByRecordedAtDesc(UUID facilityId, UUID surgeryId);
+    }
+    public interface TelemedicineRepository extends JpaRepository<TelemedicineSessionEntity, UUID> {
+        Optional<TelemedicineSessionEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+    }
+    public interface ColdChainRepository extends JpaRepository<ColdChainTelemetryEntity, UUID> {
+        List<ColdChainTelemetryEntity> findByFacilityIdAndEquipmentTagOrderByRecordedAtAsc(UUID facilityId, String equipmentTag);
+    }
+    public interface BiomedMaintenanceRepository extends JpaRepository<BiomedMaintenanceEntity, UUID> {
+        List<BiomedMaintenanceEntity> findByFacilityId(UUID facilityId);
+    }
+    public interface CrvsRepository extends JpaRepository<CrvsBirthDeathEntity, UUID> {
+        Optional<CrvsBirthDeathEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+    }
     public interface CredentialRepository extends JpaRepository<PractitionerCredentialEntity, UUID> {
+        List<PractitionerCredentialEntity> findByFacilityId(UUID facilityId);
         Optional<PractitionerCredentialEntity> findByFacilityIdAndPractitionerId(UUID facilityId, String practitionerId);
     }
     public interface WorkforceRosterRepository extends JpaRepository<WorkforceRosterEntity, UUID> {

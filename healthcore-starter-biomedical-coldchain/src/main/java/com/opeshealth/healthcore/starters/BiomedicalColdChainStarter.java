@@ -16,6 +16,8 @@ import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.BiomedMaintenanceRepository;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.ColdChainRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -107,9 +109,10 @@ public class BiomedicalColdChainStarter {
             if (sensorId == null || sensorId.isBlank()) {
                 throw new IllegalArgumentException("sensorId must not be empty");
             }
-            List<ColdChainTelemetryEntity> readings = coldChainRepository.findAll().stream()
-                    .filter(r -> sensorId.trim().equalsIgnoreCase(r.getSensorId()))
-                    .toList();
+            UUID facilityId = FacilityContext.requireFacilityId();
+            // Sensor IDs map to the canonical equipmentTag field; query only this facility.
+            List<ColdChainTelemetryEntity> readings = coldChainRepository
+                    .findByFacilityIdAndEquipmentTagOrderByRecordedAtAsc(facilityId, sensorId.trim());
 
             if (readings.isEmpty()) {
                 return new ColdChainStabilityReport(
@@ -118,14 +121,14 @@ public class BiomedicalColdChainStarter {
                         "No telemetry excursions recorded for sensor " + sensorId);
             }
 
-            BigDecimal min = readings.get(0).getTemperatureCelsius();
+            BigDecimal min = readings.get(0).getTempCelsius();
             BigDecimal max = min;
             BigDecimal sum = BigDecimal.ZERO;
             int heatExcursions = 0;
             int freezeExcursions = 0;
 
             for (ColdChainTelemetryEntity r : readings) {
-                BigDecimal t = r.getTemperatureCelsius();
+                BigDecimal t = r.getTempCelsius();
                 if (t == null) continue;
                 if (t.compareTo(min) < 0) min = t;
                 if (t.compareTo(max) > 0) max = t;
@@ -182,28 +185,31 @@ public class BiomedicalColdChainStarter {
         @Transactional(readOnly = true)
         @ClinicalAudit(action = "BIOMED_CALIBRATION_AUDIT", resourceType = "BiomedMaintenance")
         public BiomedicalComplianceSummary auditFacilityBiomedicalCompliance(UUID facilityId) {
-            List<BiomedMaintenanceEntity> assets = biomedMaintenanceRepository.findAll().stream()
-                    .filter(a -> facilityId == null || facilityId.equals(a.getFacilityId()))
-                    .toList();
+            UUID authorizedFacility = FacilityContext.requireFacilityId();
+            if (facilityId != null && !authorizedFacility.equals(facilityId)) {
+                throw new AccessDeniedException("Cross-facility biomedical maintenance access denied");
+            }
+            List<BiomedMaintenanceEntity> assets = biomedMaintenanceRepository.findByFacilityId(authorizedFacility);
 
             LocalDate today = LocalDate.now();
             int compliant = 0;
             List<String> overdueTags = new ArrayList<>();
 
             for (BiomedMaintenanceEntity asset : assets) {
-                boolean passed = asset.isCalibrationPassed();
-                boolean notOverdue = asset.getNextPmDue() == null || !asset.getNextPmDue().isBefore(today);
+                boolean passed = "OPERATIONAL".equalsIgnoreCase(asset.getStatus());
+                boolean notOverdue = asset.getCalibrationDueOn() != null
+                        && !asset.getCalibrationDueOn().isBefore(today);
                 if (passed && notOverdue) {
                     compliant++;
                 } else {
-                    overdueTags.add(asset.getAssetTag() + " (" + asset.getEquipmentName() + ")");
+                    overdueTags.add(asset.getEquipmentTag());
                 }
             }
 
             int total = assets.size();
             double pct = total == 0 ? 100.0 : Math.round((compliant * 10000.0) / total) / 100.0;
             return new BiomedicalComplianceSummary(
-                    facilityId,
+                    authorizedFacility,
                     total,
                     compliant,
                     total - compliant,

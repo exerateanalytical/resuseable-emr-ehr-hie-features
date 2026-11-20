@@ -21,6 +21,7 @@ import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientDemographicsEntit
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientIdentifierEntity;
 import com.opeshealth.healthcore.mpi.domain.MpiEntities.PatientPhoneticIndexEntity;
 import com.opeshealth.healthcore.mpi.fhir.FhirPatientController;
+import com.opeshealth.healthcore.mpi.fhir.FhirHumanNameFormatter;
 import com.opeshealth.healthcore.mpi.match.FellegiSunterMatcher;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService.PatientDemographicsRepository;
 import com.opeshealth.healthcore.mpi.service.MpiCommandService.PatientIdentifierRepository;
@@ -888,7 +889,7 @@ public class PatientService {
         if (!incoming.getContact().isEmpty()) {
             Patient.ContactComponent cc = incoming.getContactFirstRep();
             if (cc.hasName()) {
-                demo.setEmergencyContactName(cc.getName().hasText() ? cc.getName().getText() : cc.getName().getNameAsSingleText());
+                demo.setEmergencyContactName(cc.getName().hasText() ? cc.getName().getText() : FhirHumanNameFormatter.display(cc.getName()));
             }
             for (ContactPoint cp : cc.getTelecom()) {
                 if (!cp.hasValue()) continue;
@@ -909,7 +910,7 @@ public class PatientService {
     private static void applyFhirFieldsToEntity(PatientAggregateEntity entity, Patient incoming) {
         if (!incoming.getName().isEmpty()) {
             HumanName hn = incoming.getNameFirstRep();
-            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(hn.getPrefixAsSingleText());
+            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(FhirHumanNameFormatter.prefixes(hn));
             if (hn.hasFamily()) entity.setFamilyName(hn.getFamily());
             List<StringType> givens = hn.getGiven();
             if (!givens.isEmpty()) {

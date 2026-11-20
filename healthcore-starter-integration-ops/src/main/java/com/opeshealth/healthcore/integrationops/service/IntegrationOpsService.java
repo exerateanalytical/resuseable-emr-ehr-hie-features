@@ -408,8 +408,8 @@ public class IntegrationOpsService {
 
     private void audit(UUID facilityId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, null, actor != null && !actor.isBlank() ? actor : "INTOPS_SYSTEM",
-                    action, "IntegrationOps", resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null && !actor.isBlank() ? actor : "INTOPS_SYSTEM",
+                    "INTEGRATION", action, "IntegrationOps", resourceId, null, "SUCCESS", detail, "internal");
         }
     }
 

@@ -465,8 +465,8 @@ public class RevenueCodingClaimsService {
 
     private void audit(UUID facilityId, UUID patientId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, patientId, actor != null && !actor.isBlank() ? actor : "REV_SYSTEM",
-                    action, "RevenueCodingClaims", resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null && !actor.isBlank() ? actor : "REV_SYSTEM",
+                    "REVENUE", action, "RevenueCodingClaims", resourceId, patientId, "SUCCESS", detail, "internal");
         }
     }
 

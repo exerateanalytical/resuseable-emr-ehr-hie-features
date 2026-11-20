@@ -96,7 +96,10 @@ public class InteroperabilityIheStarter {
             UUID activeFacilityId = HieInteropService.requireTenantFacilityId();
             HieInteropService.enforcePayloadFacilityMatchesTenant(submission.facilityId(), activeFacilityId);
 
-            String payload = submission.documentPayloadContent() != null ? submission.documentPayloadContent() : "";
+            if (submission.documentPayloadContent() == null || submission.documentPayloadContent().isBlank()) {
+                throw new IllegalArgumentException("IHE MHD document payload is required for integrity verification");
+            }
+            String payload = submission.documentPayloadContent();
             String sha256 = computeSha256Hex(payload);
 
             IheDocumentEntity doc = new IheDocumentEntity();
@@ -105,11 +108,14 @@ public class InteroperabilityIheStarter {
             doc.setClassCode(submission.classCode() != null && !submission.classCode().isBlank()
                     ? submission.classCode().trim()
                     : "CLINICAL-SUMMARY");
-            doc.setTypeLoinc(submission.typeLoincCode().trim());
+            doc.setDocumentTypeLoinc(submission.typeLoincCode().trim());
+            doc.setTitle(submission.classCode() != null && !submission.classCode().isBlank()
+                    ? submission.classCode().trim() : "Clinical document");
             doc.setFormatCode(submission.formatCode() != null && !submission.formatCode().isBlank()
                     ? submission.formatCode().trim()
                     : "urn:ihe:pcc:ips:2020");
-            doc.setMimeType(submission.mimeType().trim());
+            doc.setContentType(submission.mimeType().trim());
+            doc.setContentUrlOrBase64(payload);
             doc.setRepositoryUniqueId(submission.repositoryUniqueId() != null && !submission.repositoryUniqueId().isBlank()
                     ? submission.repositoryUniqueId().trim()
                     : "urn:oid:2.16.840.1.113883.3.OPES.1");

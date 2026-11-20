@@ -104,10 +104,10 @@ public class ProgramsImmunizationStarter {
             List<String> overdue = new ArrayList<>();
 
             for (ImmunizationRecordEntity r : records) {
-                String label = r.getVaccineCvx() + " (Dose " + r.getDoseNumber() + ")";
+                String label = r.getCvxCode() + " (Dose " + r.getDoseNumber() + ")";
                 completed.add(label);
                 if (r.getNextDueDate() != null && ChronoUnit.DAYS.between(r.getNextDueDate(), today) > 14) {
-                    overdue.add(r.getVaccineCvx() + " Dose " + (r.getDoseNumber() + 1)
+                    overdue.add(r.getCvxCode() + " Dose " + (r.getDoseNumber() + 1)
                             + " (due " + r.getNextDueDate() + ")");
                 }
             }
@@ -133,7 +133,7 @@ public class ProgramsImmunizationStarter {
                     : "HIV_ART";
 
             List<ChronicCascadeEntity> rows = chronicCascadeRepository.findAll().stream()
-                    .filter(c -> targetProgram.equalsIgnoreCase(c.getProgramName()))
+                    .filter(c -> targetProgram.equalsIgnoreCase(c.getProgramCode()))
                     .toList();
 
             int enrolled = rows.size();
@@ -143,10 +143,10 @@ public class ProgramsImmunizationStarter {
             int requiringEac = 0;
 
             for (ChronicCascadeEntity row : rows) {
-                if (row.getArtRegimen() != null && !row.getArtRegimen().isBlank()) {
+                if (row.getRegimen() != null && !row.getRegimen().isBlank()) {
                     active++;
                 }
-                Long vl = row.getLastViralLoadCopiesMl();
+                Integer vl = row.getViralLoadCopiesMl();
                 if (vl != null) {
                     if (vl < 1000L) {
                         suppressed++;

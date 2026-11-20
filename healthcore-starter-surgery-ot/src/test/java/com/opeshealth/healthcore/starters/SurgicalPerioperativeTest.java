@@ -19,6 +19,8 @@ import com.opeshealth.healthcore.starters.SurgeryOtStarter.PacuDischargeDecision
 import com.opeshealth.healthcore.starters.SurgeryOtStarter.SurgicalPerioperativeService;
 import com.opeshealth.healthcore.starters.SurgeryOtStarter.WhoSurgicalChecklistSubmission;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -34,20 +36,27 @@ class SurgicalPerioperativeTest {
     private SurgicalScheduleRepository scheduleRepo;
     private AnesthesiaPacuRepository pacuRepo;
     private SurgicalPerioperativeService service;
+    private UUID facilityId;
 
     @BeforeEach
     void setUp() {
+        facilityId = UUID.randomUUID();
+        FacilityContext.setFacilityId(facilityId);
         hospitalOps = mock(HospitalOpsService.class);
         scheduleRepo = mock(SurgicalScheduleRepository.class);
         pacuRepo = mock(AnesthesiaPacuRepository.class);
         service = new SurgicalPerioperativeService(hospitalOps, scheduleRepo, pacuRepo);
     }
 
+    @AfterEach
+    void tearDown() { FacilityContext.clear(); }
+
     @Test
     void blocksSurgicalClearanceWhenWhoChecklistIncomplete() {
         UUID schedId = UUID.randomUUID();
         SurgicalScheduleEntity sched = new SurgicalScheduleEntity();
-        when(scheduleRepo.findById(schedId)).thenReturn(Optional.of(sched));
+        sched.setFacilityId(facilityId);
+        when(scheduleRepo.findByIdAndFacilityId(schedId, facilityId)).thenReturn(Optional.of(sched));
 
         // Incorrect sponge/instrument count must fail closed
         assertThrows(IllegalStateException.class, () ->
@@ -59,6 +68,13 @@ class SurgicalPerioperativeTest {
     void evaluatesModifiedAldretePacuDischargeCriteria() {
         when(pacuRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         UUID schedId = UUID.randomUUID();
+        AnesthesiaPacuLogEntity priorAnesthesia = new AnesthesiaPacuLogEntity();
+        priorAnesthesia.setFacilityId(facilityId);
+        priorAnesthesia.setSurgeryId(schedId);
+        priorAnesthesia.setInductionAgent("synthetic test agent");
+        priorAnesthesia.setAnesthetistId("anesthetist-test");
+        when(pacuRepo.findTopByFacilityIdAndSurgeryIdOrderByRecordedAtDesc(facilityId, schedId))
+                .thenReturn(Optional.of(priorAnesthesia));
 
         // Score 9/10 with respiration=2 -> cleared
         PacuDischargeDecision cleared = service.evaluateAndRecordPacuAldreteScore(

@@ -181,9 +181,9 @@ public class BloodBankStarter {
         @ClinicalAudit(action = "BLOOD_BANK_REGISTER_UNIT", resourceType = "BloodComponentUnit")
         public BloodComponentUnitEntity registerValidatedBloodUnit(BloodComponentUnitEntity unit) {
             Objects.requireNonNull(unit, "BloodComponentUnitEntity must not be null");
-            validateIsbt128Barcode(unit.getIsbt128Code());
-            String normAbo = normalizeAboRh(unit.getAboRh());
-            unit.setAboRh(normAbo);
+            validateIsbt128Barcode(unit.getIsbtUnitCode());
+            String normAbo = normalizeAboRh(unit.getAboRhd());
+            unit.setAboRhd(normAbo);
 
             String compType = unit.getComponentType() != null
                     ? unit.getComponentType().trim().toUpperCase(Locale.ROOT)
@@ -214,12 +214,12 @@ public class BloodBankStarter {
                     .orElseThrow(() -> new NoSuchElementException("Blood component unit not found: " + request.unitId()));
 
             if (!"AVAILABLE".equalsIgnoreCase(unit.getStatus()) && !"RESERVED".equalsIgnoreCase(unit.getStatus())) {
-                throw new IllegalStateException("Blood unit " + unit.getIsbt128Code()
+                throw new IllegalStateException("Blood unit " + unit.getIsbtUnitCode()
                         + " cannot be issued from status: " + unit.getStatus());
             }
 
             CompatibilityEvaluation compat = evaluateCompatibility(
-                    unit.getAboRh(), request.recipientAboRh(), unit.getComponentType());
+                    unit.getAboRhd(), request.recipientAboRh(), unit.getComponentType());
             if (!compat.compatible()) {
                 throw new IllegalArgumentException(compat.clinicalGuidance());
             }
@@ -268,7 +268,7 @@ public class BloodBankStarter {
                     if (!u.getExpiryDate().isAfter(sevenDaysOut)) {
                         expiringSoon++;
                     }
-                    byAbo.merge(u.getAboRh(), 1, Integer::sum);
+                    byAbo.merge(u.getAboRhd(), 1, Integer::sum);
                     byComp.merge(u.getComponentType(), 1, Integer::sum);
                 }
             }

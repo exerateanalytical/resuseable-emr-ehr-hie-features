@@ -22,6 +22,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.time.Year;
+import java.nio.charset.StandardCharsets;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.*;
 
 /**
@@ -101,29 +105,34 @@ public class DeidentificationResearchStarter {
         public SafeHarborCohortExportResult exportSafeHarborCohort(SafeHarborCohortExportRequest request) {
             Objects.requireNonNull(request, "SafeHarborCohortExportRequest must not be null");
             List<ClinicalResearchSourceRow> rows = request.records() != null ? request.records() : List.of();
-            String salt = request.researchSalt() != null && !request.researchSalt().isBlank()
-                    ? request.researchSalt().trim()
-                    : "OPES-HIPAA-GDPR-RESEARCH-SALT";
-            int targetK = Math.max(1, request.minimumKAnonymity());
+            if (request.researchSalt() == null || request.researchSalt().isBlank()) {
+                throw new IllegalArgumentException("A distinct externally managed research HMAC key is required");
+            }
+            String salt = request.researchSalt().trim();
+            if (request.minimumKAnonymity() < 3) {
+                throw new IllegalArgumentException("minimumKAnonymity must be at least 3");
+            }
+            int targetK = request.minimumKAnonymity();
 
             List<DeidentifiedResearchRecord> transformed = new ArrayList<>(rows.size());
             Map<String, Integer> equivalenceClassCounts = new LinkedHashMap<>();
 
             for (ClinicalResearchSourceRow row : rows) {
-                Map<String, Object> base = hospitalOpsService.deidentifyForResearch(
-                        row.patientId() != null ? row.patientId() : UUID.randomUUID(),
-                        row.birthYear(),
-                        row.postalCode(),
-                        row.diagnosisIcd10(),
-                        salt
-                );
+                // No dependency on an obsolete HospitalOps method. All source data must
+                // have a stable identity; missing identities must fail closed.
+                if (row.patientId() == null) {
+                    throw new IllegalArgumentException("Research cohort patientId cannot be null");
+                }
+                Map<String, Object> base = pseudonymizeResearchFields(
+                        row.patientId(), row.birthYear(), salt);
                 String subjectHash = String.valueOf(base.get("researchSubjectHash"));
                 String ageVal = String.valueOf(base.get("birthYearOrAgeGroup"));
                 String regionPrefix = String.valueOf(base.get("regionPrefix"));
                 String gender = row.gender() != null ? row.gender().trim().toLowerCase(Locale.ROOT) : "unknown";
-                String scrubbedNote = row.clinicalNoteFreeText() != null
-                        ? PhiRedactionConverter.redact(row.clinicalNoteFreeText())
-                        : "";
+                // Free text and partial geographies may contain indirect identifiers.
+                // Technical redaction is not sufficient proof of Safe Harbor.
+                // Suppress free-text entirely until independent manual review approves it.
+                String scrubbedNote = "";
 
                 DeidentifiedResearchRecord rec = new DeidentifiedResearchRecord(
                         subjectHash,
@@ -170,6 +179,30 @@ public class DeidentificationResearchStarter {
                     !released.isEmpty() && minClassSize >= targetK,
                     List.copyOf(released)
             );
+        }
+
+        private static Map<String, Object> pseudonymizeResearchFields(
+                UUID patientId, int birthYear, String researchKey) {
+            int currentYear = Year.now().getValue();
+            if (birthYear < 1880 || birthYear > currentYear) {
+                throw new IllegalArgumentException("Invalid source birth year");
+            }
+            try {
+                Mac mac = Mac.getInstance("HmacSHA256");
+                mac.init(new SecretKeySpec(researchKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+                String pseudonym = HexFormat.of().formatHex(mac.doFinal(
+                        patientId.toString().getBytes(StandardCharsets.UTF_8)));
+                String ageOrYear = currentYear - birthYear >= 90 ? "90+" : Integer.toString(birthYear);
+                // Regional and ZIP population-suppression policies are jurisdiction-specific.
+                // Never release a postal prefix as though it were automatically Safe Harbor.
+                return Map.of(
+                        "researchSubjectHash", pseudonym,
+                        "birthYearOrAgeGroup", ageOrYear,
+                        "regionPrefix", "SUPPRESSED"
+                );
+            } catch (java.security.GeneralSecurityException ex) {
+                throw new IllegalStateException("HMAC-SHA256 research pseudonymization unavailable", ex);
+            }
         }
     }
 
