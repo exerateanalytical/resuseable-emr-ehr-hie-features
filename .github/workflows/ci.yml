@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -61,8 +65,8 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Run MultiDbTestcontainersIT against PostgreSQL, SQL Server, and MySQL
-        run: mvn -B -ntp verify -pl healthcore-quickstart-host -am -Dit.test=MultiDbTestcontainersIT -DfailIfNoTests=false
+      - name: Run MultiDbTestcontainersIT and PatientJourneyPostgresIT against PostgreSQL, SQL Server, and MySQL
+        run: mvn -B -ntp verify -pl healthcore-quickstart-host -am -Dit.test=MultiDbTestcontainersIT,PatientJourneyPostgresIT -DfailIfNoTests=false
 
       - name: Upload Failsafe integration reports on failure
         if: failure()
@@ -230,3 +234,278 @@ jobs:
             echo "healthcore-mobile-kmp Gradle wrapper not provisioned yet; verifying Kotlin sources exist."
             test "$(find healthcore-mobile-kmp -name '*.kt' | wc -l)" -gt 0
           fi
+
+  run-22-test-suites:
+    name: Run 22 Module Test Suites & JaCoCo Coverage (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Run all 22 core, platform, and specialty starter test suites with JaCoCo
+        run: |
+          MODULES=(
+            healthcore-starter-scheduling
+            healthcore-starter-orders-results
+            healthcore-starter-radiology
+            healthcore-starter-emergency-nursing
+            healthcore-starter-patient-portal
+            healthcore-starter-workflow-engine
+            healthcore-starter-analytics
+            healthcore-starter-api-product
+            healthcore-starter-templates-dashboards
+            healthcore-starter-blood-bank
+            healthcore-starter-surgery-ot
+            healthcore-starter-biomedical-coldchain
+            healthcore-starter-chw-homecare
+            healthcore-starter-crvs-mortuary
+            healthcore-starter-deidentification-research
+            healthcore-starter-disease-surveillance
+            healthcore-starter-fhir-hie
+            healthcore-starter-hl7-astm-dicom
+            healthcore-starter-interoperability-ihe
+            healthcore-starter-lis-diagnostics
+            healthcore-starter-pharmacy-inventory
+            healthcore-starter-programs-immunization
+          )
+          TESTS=(
+            SchedulingServiceTest
+            UnifiedOrdersResultsServiceTest
+            RadiologyRisServiceTest
+            EmergencyNursingServiceTest
+            PatientPortalServiceTest
+            WorkflowOrchestrationServiceTest
+            HospitalAnalyticsServiceTest
+            ApiProductServiceTest
+            TemplatesAndOperationsServiceTest
+            BloodBankCompatibilityTest
+            SurgicalPerioperativeTest
+            BiomedicalColdChainStarterTest
+            ChwHomeCareStarterTest
+            CrvsMortuaryStarterTest
+            DeidentificationResearchStarterTest
+            DiseaseSurveillanceStarterTest
+            FhirHieStarterTest
+            Hl7AstmDicomFixtureTest
+            IheProfileFixtureTest
+            LisDiagnosticsStarterTest
+            PharmacyInventoryStarterTest
+            ProgramsImmunizationStarterTest
+          )
+          MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
+          TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
+          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true
+
+      - name: Run Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
+        run: |
+          mvn -B -ntp test jacoco:report \
+            -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
+            -am \
+            -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \
+            -DfailIfNoTests=true
+
+      - name: Upload 22-suite Surefire XML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-surefire-22-test-suites
+          path: |
+            healthcore-starter-*/target/surefire-reports/TEST-*.xml
+            healthcore-testing/target/surefire-reports/TEST-*.xml
+          if-no-files-found: warn
+
+      - name: Upload 22-module JaCoCo XML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-jacoco-22-module-reports
+          path: |
+            healthcore-starter-*/target/site/jacoco/jacoco.xml
+            healthcore-testing/target/site/jacoco/jacoco.xml
+          if-no-files-found: warn
+
+  coverage-report:
+    name: JaCoCo 22-Module Coverage Summary & PR Comment
+    runs-on: ubuntu-latest
+    needs: [ run-22-test-suites ]
+    if: always()
+    steps:
+      - name: Download 22-suite Surefire XML reports
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-surefire-22-test-suites
+          path: ci-coverage/surefire
+        continue-on-error: true
+
+      - name: Download 22-module JaCoCo XML reports
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-jacoco-22-module-reports
+          path: ci-coverage/jacoco
+        continue-on-error: true
+
+      - name: Generate JaCoCo 22-module visual coverage summary
+        shell: bash
+        env:
+          SUITE_JOB_STATUS: ${{ needs.run-22-test-suites.result }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+
+          MODULES_22 = [
+              "healthcore-starter-scheduling",
+              "healthcore-starter-orders-results",
+              "healthcore-starter-radiology",
+              "healthcore-starter-emergency-nursing",
+              "healthcore-starter-patient-portal",
+              "healthcore-starter-workflow-engine",
+              "healthcore-starter-analytics",
+              "healthcore-starter-api-product",
+              "healthcore-starter-templates-dashboards",
+              "healthcore-starter-blood-bank",
+              "healthcore-starter-surgery-ot",
+              "healthcore-starter-biomedical-coldchain",
+              "healthcore-starter-chw-homecare",
+              "healthcore-starter-crvs-mortuary",
+              "healthcore-starter-deidentification-research",
+              "healthcore-starter-disease-surveillance",
+              "healthcore-starter-fhir-hie",
+              "healthcore-starter-hl7-astm-dicom",
+              "healthcore-starter-interoperability-ihe",
+              "healthcore-starter-lis-diagnostics",
+              "healthcore-starter-pharmacy-inventory",
+              "healthcore-starter-programs-immunization",
+          ]
+
+          def bar(pct: float, width: int = 10) -> str:
+              filled = max(0, min(width, round(pct / 100.0 * width)))
+              return ("█" * filled) + ("░" * (width - filled))
+
+          def parse_jacoco(xml_path: pathlib.Path):
+              counters = {}
+              if not xml_path.is_file():
+                  return counters
+              root = ET.parse(xml_path).getroot()
+              for c in root.findall("counter"):
+                  counters[c.attrib.get("type")] = (
+                      int(c.attrib.get("covered", "0")),
+                      int(c.attrib.get("missed", "0")),
+                  )
+              return counters
+
+          def parse_surefire(mod_dir: pathlib.Path):
+              tests = failures = errors = skipped = 0
+              if not mod_dir.is_dir():
+                  return tests, failures, errors, skipped
+              for xf in mod_dir.glob("TEST-*.xml"):
+                  root = ET.parse(xf).getroot()
+                  tests += int(root.attrib.get("tests", "0"))
+                  failures += int(root.attrib.get("failures", "0"))
+                  errors += int(root.attrib.get("errors", "0"))
+                  skipped += int(root.attrib.get("skipped", "0"))
+              return tests, failures, errors, skipped
+
+          def pct(cov: int, miss: int) -> float:
+              total = cov + miss
+              return (100.0 * cov / total) if total > 0 else 0.0
+
+          surefire_root = pathlib.Path("ci-coverage/surefire")
+          jacoco_root = pathlib.Path("ci-coverage/jacoco")
+
+          rows = []
+          completed = 0
+          total_tests = total_fail = total_err = 0
+          tot_lc = tot_lm = tot_ic = tot_im = tot_bc = tot_bm = 0
+
+          for mod in MODULES_22:
+              t, f, e, _ = parse_surefire(surefire_root / mod / "target" / "surefire-reports")
+              total_tests += t; total_fail += f; total_err += e
+              passed = (t > 0 and f == 0 and e == 0)
+              if passed:
+                  completed += 1
+              counters = parse_jacoco(jacoco_root / mod / "target" / "site" / "jacoco" / "jacoco.xml")
+              lc, lm = counters.get("LINE", (0, 0))
+              ic, im = counters.get("INSTRUCTION", (0, 0))
+              bc, bm = counters.get("BRANCH", (0, 0))
+              tot_lc += lc; tot_lm += lm; tot_ic += ic; tot_im += im; tot_bc += bc; tot_bm += bm
+              lp, ip, bp = pct(lc, lm), pct(ic, im), pct(bc, bm)
+              status = "✅ PASS" if passed else ("❌ FAIL" if t > 0 else "⚠️ NO REPORT")
+              rows.append(f"| `{mod}` | {status} | {t} ({f}F/{e}E) | `{bar(lp)}` **{lp:.1f}%** | {ip:.1f}% | {bp:.1f}% |")
+
+          comp_pct = 100.0 * completed / len(MODULES_22)
+          agg_l, agg_i, agg_b = pct(tot_lc, tot_lm), pct(tot_ic, tot_im), pct(tot_bc, tot_bm)
+          suite_status = os.environ.get("SUITE_JOB_STATUS", "unknown")
+
+          report = "\n".join([
+              "<!-- healthcore-ci-jacoco-coverage-report -->",
+              "## OPES HealthCore CI — 22-Module Test Suite & JaCoCo Coverage Summary",
+              "",
+              f"**22-Module Suite Completion:** `{bar(comp_pct, 20)}` **{completed}/{len(MODULES_22)} ({comp_pct:.0f}%)**",
+              "",
+              "| Metric | Status / Bar | Value |",
+              "|---|---|---|",
+              f"| 22 Module Test Suites (`run-22-test-suites`) | `{suite_status}` | **{total_tests}** tests ({total_fail} failures, {total_err} errors) |",
+              f"| Aggregate JaCoCo Line Coverage | `{bar(agg_l)}` | **{agg_l:.1f}%** ({tot_lc}/{tot_lc + tot_lm} lines) |",
+              f"| Aggregate JaCoCo Instruction / Branch | `{bar(agg_i)}` | **{agg_i:.1f}%** instructions · **{agg_b:.1f}%** branches |",
+              "",
+              "| Module | Suite Status | Tests | Line Coverage | Instruction | Branch |",
+              "|---|---|---:|---|---:|---:|",
+              *rows,
+          ]) + "\n"
+
+          pathlib.Path("ci-coverage-summary.md").write_text(report, encoding="utf-8")
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_file:
+              with open(summary_file, "a", encoding="utf-8") as fh:
+                  fh.write(report)
+          print(report)
+          PY
+
+      - name: Upload CI JaCoCo visual coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-coverage-visual-summary
+          path: ci-coverage-summary.md
+
+      - name: Post or update JaCoCo coverage summary as PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('ci-coverage-summary.md', 'utf8');
+            const marker = '<!-- healthcore-ci-jacoco-coverage-report -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing CI JaCoCo coverage PR comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info('Created new CI JaCoCo coverage PR comment');
+            }
