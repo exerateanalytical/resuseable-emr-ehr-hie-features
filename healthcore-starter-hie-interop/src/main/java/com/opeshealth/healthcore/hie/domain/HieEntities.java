@@ -108,6 +108,11 @@ public final class HieEntities {
         @Column(name = "content_type", nullable = false, length = 80) private String contentType;
         @Lob @Column(name = "content_url_or_base64", nullable = false) private String contentUrlOrBase64;
         @Column(name = "indexed_at", nullable = false) private Instant indexedAt = Instant.now();
+        @Column(name = "class_code", length = 120) private String classCode;
+        @Column(name = "format_code", length = 240) private String formatCode;
+        @Column(name = "repository_unique_id", length = 240) private String repositoryUniqueId;
+        @Column(name = "sha256_hash", length = 64) private String sha256Hash;
+        @Column(name = "document_status", length = 32) private String status;
 
         public UUID getId() { return id; }
         public UUID getFacilityId() { return facilityId; }
@@ -123,6 +128,16 @@ public final class HieEntities {
         public String getContentUrlOrBase64() { return contentUrlOrBase64; }
         public void setContentUrlOrBase64(String contentUrlOrBase64) { this.contentUrlOrBase64 = contentUrlOrBase64; }
         public Instant getIndexedAt() { return indexedAt; }
+        public String getClassCode() { return classCode; }
+        public void setClassCode(String classCode) { this.classCode = classCode; }
+        public String getFormatCode() { return formatCode; }
+        public void setFormatCode(String formatCode) { this.formatCode = formatCode; }
+        public String getRepositoryUniqueId() { return repositoryUniqueId; }
+        public void setRepositoryUniqueId(String repositoryUniqueId) { this.repositoryUniqueId = repositoryUniqueId; }
+        public String getSha256Hash() { return sha256Hash; }
+        public void setSha256Hash(String sha256Hash) { this.sha256Hash = sha256Hash; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
     }
 
     @Entity @Table(name = "hc_hl7_orders")

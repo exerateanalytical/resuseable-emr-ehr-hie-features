@@ -44,6 +44,7 @@
     <include file="classpath:db/changelog/hie/001-hie-interop.xml"/>
     <include file="classpath:db/changelog/hie/002-hie-ihe-docs.xml"/>
     <include file="classpath:db/changelog/hie/003-hie-hl7-clinical-tables.xml"/>
+    <include file="classpath:db/changelog/hie/004-hie-mhd-metadata.xml"/>
     <include file="classpath:db/changelog/uhc_billing/001-uhc-billing.xml"/>
     <include file="classpath:db/changelog/uhc_billing/002-uhc-vouchers.xml"/>
     <include file="classpath:db/changelog/uhc_billing/003-uhc-double-entry.xml"/>

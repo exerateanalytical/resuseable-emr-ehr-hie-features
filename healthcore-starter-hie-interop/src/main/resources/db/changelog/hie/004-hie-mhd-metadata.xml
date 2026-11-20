@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <!-- Upgrade the canonical IHE document registry without replacing existing records. -->
+    <changeSet id="004-hie-mhd-document-metadata" author="opes-healthcore">
+        <addColumn tableName="hc_ihe_documents">
+            <column name="class_code" type="VARCHAR(120)"/>
+            <column name="format_code" type="VARCHAR(240)"/>
+            <column name="repository_unique_id" type="VARCHAR(240)"/>
+            <column name="sha256_hash" type="VARCHAR(64)"/>
+            <column name="document_status" type="VARCHAR(32)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>
