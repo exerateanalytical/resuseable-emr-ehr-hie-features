@@ -7,9 +7,45 @@
 
 ---
 
+## Engineering state and independent developer quickstart (21 November 2026)
+
+**HealthCore is a library of independently reusable healthcare and life-science starters; it is not a deployable commercial HIS, EMR, LIS, pharmacy application, pharmaceutical MES or HIE.** The `healthcore-quickstart-host` and the 11 `examples/*` projects are reference consumers, not production products.
+
+**Release status: PRE-PRODUCTION.** The `main` branch still contains failing CI; the [Java 25 repair PR #2](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/pull/2) adds a verified Java 25/Maven/PostgreSQL development container and numerous compilation repairs, but had not passed the full reactor and multi-DB workflows at the last documented check. No claim of complete workflow, clinical safety or regulatory certification is made.
+
+### Choose a capability pack, not a hospital platform
+
+| Build your own product | Use the corresponding reference consumer | What must be proven |
+|---|---|---|
+| Pharmacy | [`examples/standalone-pharmacy`](examples/standalone-pharmacy/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Laboratory | [`examples/diagnostic-laboratory`](examples/diagnostic-laboratory/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Radiology | [`examples/radiology-center`](examples/radiology-center/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Pharma MES/QMS | [`examples/pharma-manufacturing`](examples/pharma-manufacturing/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Life-science LIMS/ELN | [`examples/life-sciences-lims`](examples/life-sciences-lims/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Biobanking | [`examples/biobank`](examples/biobank/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Research/EDC | [`examples/clinical-research`](examples/clinical-research/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Outpatient EMR | [`examples/outpatient-emr`](examples/outpatient-emr/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Longitudinal EHR | [`examples/longitudinal-ehr`](examples/longitudinal-ehr/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Hospital HIS | [`examples/hospital-his`](examples/hospital-his/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+| Regional HIE | [`examples/regional-hie`](examples/regional-hie/) | Real persisted workflow and failure paths — [acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) |
+
+### Run and verify code
+
+1. Use **Java 25** with Maven 3.9+, PostgreSQL 16 and Docker/Testcontainers. On [repair PR #2](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/pull/2), VS Code → **Dev Containers: Reopen in Container** provisions a Java/Maven/PostgreSQL environment; see `docs/DEVELOPMENT_ENVIRONMENT_JAVA25.md` on that branch.
+2. Build the reactor with `mvn -B -ntp -fae clean verify`. A successful module compile does not imply a successful independent product workflow.
+3. For each consumer, run its *independent* Maven + Testcontainers integration tests; see [workflow acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md). **Existing `WorkflowSmokeTest.java` files only check class presence. They are not end-to-end tests.**
+4. Run `python3 scripts/check_example_workflow_evidence.py` to report structural workflow-test gaps. Use `--enforce` only as an additional release gate; it will fail until real tests are implemented and does not itself execute them.
+5. Review the [20 scoped engineering workstreams](docs/agents/HEALTHCORE_20_WORKSTREAMS.md). Their existence is not evidence that coding agents are running.
+
+**Security:** The `X-Facility-Id` header is **not proof of authorization**. All facility-scoped work must derive trusted identity and membership from verified credentials; use explicit negative tenant tests. Clinical data exports and de-identification require governance and independent risk review. Never use identifiable patient data in examples.
+
+**Acceptance before publishing any SDK starter:** isolated consumer startup, deterministic schema migrations, authenticated domain transaction, real operational/clinical lifecycle, negative safety checks, event/idempotency/restart behavior, documentation linked to a green CI run, and appropriate clinical/regulatory signoff when applicable.
+
+---
+
 ## Overview
 
-**Opes HealthCore** is **not** a single-purpose end-user application — it is a **100% Pure Java 25 + Spring Boot 4.0** (plus **Kotlin/Compose Multiplatform** for Android, iPhone & iPad) reusable modular starter SDK. Teams can assemble any clinical or public-health platform in under 1 hour:
+**Opes HealthCore** is **not** a single-purpose end-user application — it is a **Java 25 + Spring Boot 4.0** (plus **Kotlin/Compose Multiplatform** for Android, iPhone & iPad) reusable modular starter SDK. Teams can select modules to compose their own software, subject to real integration and verification:
 
 - **Full Hospital EMR / EHR** (10-stage clinical workflow: Appointments -> ESI Triage -> LOINC Vitals & NEWS2 -> Immutable SOAP Notes w/ Co-Sign & License Gate -> CDSS-gated CPOE -> Bed ADT & Fluid I&O/Handover/MedRec -> 5-Rights eMAR -> Discharge -> CarePlans -> Referrals)
 - **Standalone Pharmacy Information System (PIS)** (`healthcore-starter-pharmacy-inventory` mounts ONLY FEFO inventory, expiry quarantine & dual-witness controlled dispensing without LIS routes)
@@ -41,7 +77,7 @@
 | `healthcore-starter-public-health` | Combined CHW/Home Care, EPI & Program Cascades, and IDSR Disease Watch |
 | `healthcore-starter-hospital-ops` | Combined Blood Bank, OT, Telemedicine, Cold-Chain IoT, CRVS/Mortuary, Workforce Roster & Safe-Harbor De-ID |
 | `healthcore-starter-offline-sync` | Hybrid Logical Clock (`HLC`), `sync_seq` delta pull/push, clinical conflict queue, Ed25519 QR IPS Health Card |
-| `healthcore-starter-templates-dashboards` | **608 bilingual (EN/FR) authentic hospital templates**, `QuestionnaireResponse`, OpenHTMLtoPDF PDF/A, **7 live SQL CQRS dashboards**, Apache POI XLSX + CSV bulk import/export, Cascading Facility Onboarding, concrete PG/MSSQL/MySQL backup & PITR/Edge DR |
+| `healthcore-starter-templates-dashboards` | **EN/FR hospital template catalog (individual form completeness and translations require verification)**, `QuestionnaireResponse`, OpenHTMLtoPDF PDF/A, **7 live SQL CQRS dashboards**, Apache POI XLSX + CSV bulk import/export, Cascading Facility Onboarding, concrete PG/MSSQL/MySQL backup & PITR/Edge DR |
 | `healthcore-starter-api-product` | OpenAPI 3.1 contract, API keys, sliding-window rate limiter (`429 Retry-After`), HMAC webhook signer |
 | `healthcore-starter-clinical-ai` | Server-side Gemini Clinical AI gateway (`gemini-4-hydrogen`, `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `gemini-embedding-2`, `gemini-decision-1`), heuristic PHI risk-reduction pre-filter, durable JPA-backed tenant kill-switch, clinician attestation drafts, and fail-closed SHA-256 hash-chained audit logs |
 | `healthcore-starter-tenant-governance` | Multi-tenant organization/facility/department hierarchy, facility onboarding/read-only/suspension/offboarding lifecycle enforcement (`TenantGovernanceGuardFilter`), durable feature flags & kill switches, and time-bound cross-facility access grants |
