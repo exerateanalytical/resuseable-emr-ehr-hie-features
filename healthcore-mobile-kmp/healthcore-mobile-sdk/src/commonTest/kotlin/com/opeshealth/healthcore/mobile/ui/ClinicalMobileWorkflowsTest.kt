@@ -77,4 +77,47 @@ class ClinicalMobileWorkflowsTest {
         assertTrue(ClinicalMobileSafetyRules.shouldEnforceRemoteWipeLockout("WIPED", false))
         assertEquals(true, ClinicalMobileSafetyRules.shouldEnforceRemoteWipeLockout("revoked", false))
     }
+
+    @Test
+    fun encryptedMediaSyncPolicyEnforcesMimeDigestSizeChunksAndRevocation() {
+        val validSha = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+        val ok = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+            mimeType = "image/jpeg",
+            sizeBytes = 600_000L,
+            sha256Hex = validSha,
+            deviceStatus = "ACTIVE",
+            remoteWipePending = false
+        )
+        assertTrue(ok.allowed)
+        assertEquals(3, ok.totalChunks)
+        assertEquals(66, EncryptedMediaSyncPolicy.computeUploadProgressPercent(2, 3))
+
+        val badMime = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+            mimeType = "application/x-msdownload",
+            sizeBytes = 1024L,
+            sha256Hex = validSha,
+            deviceStatus = "ACTIVE",
+            remoteWipePending = false
+        )
+        assertFalse(badMime.allowed)
+
+        val badDigest = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+            mimeType = "application/dicom",
+            sizeBytes = 1024L,
+            sha256Hex = "short-hash",
+            deviceStatus = "ACTIVE",
+            remoteWipePending = false
+        )
+        assertFalse(badDigest.allowed)
+
+        val revoked = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+            mimeType = "image/png",
+            sizeBytes = 1024L,
+            sha256Hex = validSha,
+            deviceStatus = "REVOKED",
+            remoteWipePending = false
+        )
+        assertFalse(revoked.allowed)
+    }
 }

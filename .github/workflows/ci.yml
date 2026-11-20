@@ -133,11 +133,41 @@ jobs:
               if not dp.is_file() or dp.stat().st_size < 100:
                   errors.append(f'Missing or incomplete required document: {doc}')
 
+          # 6. Every Maven reactor module must have a non-empty README.md
+          pom_tree = ET.parse(root / 'pom.xml')
+          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+          modules = [m.text.strip() for m in pom_tree.findall('.//m:modules/m:module', ns) if m.text]
+          for mod in modules:
+              mod_readme = root / mod / 'README.md'
+              if not mod_readme.is_file() or mod_readme.stat().st_size < 100:
+                  errors.append(f'Missing or incomplete module README.md: {mod}/README.md')
+
+          # 7. Required container and disaster-recovery scripts
+          for ops_file in [
+              'Dockerfile',
+              'scripts/backup-postgres.sh',
+              'scripts/restore-drill-verify.sh',
+              'scripts/ci-verify-docs-and-sign.sh',
+          ]:
+              if not (root / ops_file).is_file():
+                  errors.append(f'Missing production container/DR artifact: {ops_file}')
+
           if errors:
               print('\n'.join(errors), file=sys.stderr)
               sys.exit(1)
-          print('All static security, migration, and documentation guardrails passed.')
+          print(f'All static security, migration, DR, and {len(modules)}-module documentation guardrails passed.')
           PY
+
+  container-build:
+    name: Hardened Java 25 Container Image Build
+    runs-on: ubuntu-latest
+    needs: [ build-and-unit-tests, security-and-documentation-guardrails ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build hardened quickstart-host container image
+        run: docker build --tag opes-healthcore/quickstart-host:ci-${{ github.sha }} .
 
   mobile-kmp-check:
     name: Kotlin Multiplatform Mobile Build Check

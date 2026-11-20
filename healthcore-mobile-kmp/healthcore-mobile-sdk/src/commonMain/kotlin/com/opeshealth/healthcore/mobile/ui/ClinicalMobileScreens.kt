@@ -298,3 +298,147 @@ fun DeviceRevocationLockoutScreen(
         }
     }
 }
+
+/**
+ * Offline encrypted clinical media attachment metadata (wound photography, ECG captures,
+ * signed consent scans) queued for chunked resumable synchronization.
+ */
+data class EncryptedMediaSyncItem(
+    val mediaId: String,
+    val patientId: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val sha256Hex: String,
+    val cipherSuite: String = "AES-256-GCM",
+    val uploadedChunks: Int = 0,
+    val totalChunks: Int = 1,
+    val status: String = "QUEUED_ENCRYPTED"
+)
+
+data class MediaSyncValidationResult(
+    val allowed: Boolean,
+    val totalChunks: Int,
+    val rejectionReason: String? = null
+)
+
+/**
+ * Pure Kotlin policy governing encrypted local clinical media capture, resumable chunk sizing,
+ * MIME allow-listing, and fail-closed device revocation handling.
+ */
+object EncryptedMediaSyncPolicy {
+    const val CHUNK_SIZE_BYTES: Long = 262_144L // 256 KiB resumable chunks for 2G/3G networks
+    const val MAX_MEDIA_BYTES: Long = 25L * 1024L * 1024L // 25 MiB cap per clinical attachment
+    private val ALLOWED_MIME_TYPES = setOf(
+        "image/jpeg",
+        "image/png",
+        "application/pdf",
+        "application/dicom",
+        "audio/mp4"
+    )
+
+    fun validateForEncryptedQueue(
+        mimeType: String,
+        sizeBytes: Long,
+        sha256Hex: String,
+        deviceStatus: String,
+        remoteWipePending: Boolean
+    ): MediaSyncValidationResult {
+        if (ClinicalMobileSafetyRules.shouldEnforceRemoteWipeLockout(deviceStatus, remoteWipePending)) {
+            return MediaSyncValidationResult(false, 0, "Device is revoked or pending wipe; clinical media capture blocked.")
+        }
+        val normalizedMime = mimeType.trim().lowercase()
+        if (normalizedMime !in ALLOWED_MIME_TYPES) {
+            return MediaSyncValidationResult(false, 0, "Unsupported clinical media MIME type: $mimeType")
+        }
+        if (sizeBytes <= 0L || sizeBytes > MAX_MEDIA_BYTES) {
+            return MediaSyncValidationResult(false, 0, "Media size must be between 1 byte and 25 MiB.")
+        }
+        val cleanHash = sha256Hex.trim().lowercase()
+        if (cleanHash.length != 64 || cleanHash.any { it !in '0'..'9' && it !in 'a'..'f' }) {
+            return MediaSyncValidationResult(false, 0, "Valid 64-character SHA-256 integrity digest is required.")
+        }
+        val chunks = ((sizeBytes + CHUNK_SIZE_BYTES - 1L) / CHUNK_SIZE_BYTES).toInt().coerceAtLeast(1)
+        return MediaSyncValidationResult(true, chunks, null)
+    }
+
+    fun computeUploadProgressPercent(uploadedChunks: Int, totalChunks: Int): Int {
+        if (totalChunks <= 0) return 0
+        return ((uploadedChunks.coerceIn(0, totalChunks) * 100) / totalChunks)
+    }
+}
+
+/**
+ * Encrypted Clinical Media Capture & Chunked Resumable Sync Queue Screen.
+ */
+@Composable
+fun ClinicalMediaSyncScreen(
+    patient: PatientQueueItem?,
+    deviceStatus: String,
+    remoteWipePending: Boolean,
+    queuedMedia: List<EncryptedMediaSyncItem>,
+    onQueueEncryptedMedia: (patientId: String, mimeType: String, sizeBytes: Long, sha256Hex: String) -> Unit,
+    onExecuteLocalWipe: () -> Unit
+) {
+    if (ClinicalMobileSafetyRules.shouldEnforceRemoteWipeLockout(deviceStatus, remoteWipePending)) {
+        DeviceRevocationLockoutScreen(deviceStatus = deviceStatus, onExecuteLocalWipe = onExecuteLocalWipe)
+        return
+    }
+
+    var selectedMime by remember { mutableStateOf("image/jpeg") }
+    var sizeKbText by remember { mutableStateOf("640") }
+    val sizeBytes = (sizeKbText.toLongOrNull() ?: 640L) * 1024L
+    val sampleDigest = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    val validation = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+        mimeType = selectedMime,
+        sizeBytes = sizeBytes,
+        sha256Hex = sampleDigest,
+        deviceStatus = deviceStatus,
+        remoteWipePending = remoteWipePending
+    )
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Encrypted Clinical Media Sync", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Patient: ${patient?.fullName ?: "Select a patient"} · Cipher: AES-256-GCM · Chunked 256 KiB Resumable Upload")
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf("image/jpeg", "application/pdf", "application/dicom").forEach { mime ->
+                FilterChip(
+                    selected = selectedMime == mime,
+                    onClick = { selectedMime = mime },
+                    label = { Text(mime.substringAfter("/").uppercase()) }
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = sizeKbText,
+            onValueChange = { sizeKbText = it },
+            label = { Text("Encrypted Attachment Size (KiB)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Button(
+            enabled = validation.allowed && patient != null,
+            onClick = {
+                patient?.let { onQueueEncryptedMedia(it.id, selectedMime, sizeBytes, sampleDigest) }
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp)
+        ) {
+            Text("Encrypt & Queue Clinical Media (${validation.totalChunks} chunk(s))")
+        }
+
+        Text("Queued Encrypted Media (${queuedMedia.size})", style = MaterialTheme.typography.titleMedium)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(queuedMedia, key = { it.mediaId }) { item ->
+                val pct = EncryptedMediaSyncPolicy.computeUploadProgressPercent(item.uploadedChunks, item.totalChunks)
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${item.mimeType} · ${item.cipherSuite} · ${item.status}", fontWeight = FontWeight.Bold)
+                        Text("Chunks: ${item.uploadedChunks}/${item.totalChunks} ($pct%) · SHA-256: ${item.sha256Hex.take(16)}...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+

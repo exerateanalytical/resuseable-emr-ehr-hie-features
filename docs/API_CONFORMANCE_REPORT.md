@@ -14,7 +14,9 @@
 | Radiology RIS | `/api/v1/ris/**` | `PERM_order:sign`, `PERM_dicom:index`, `PERM_imaging:report:sign`, `PERM_patient:read` | Mandatory `facilityId` predicates |
 | Emergency & Inpatient Nursing | `/api/v1/emergency-nursing/**` | `PERM_patient:read`, `PERM_patient:write`, `PERM_encounter:sign`, `PERM_facility:manage` | Mandatory `facilityId` predicates |
 | Hospital Analytics & CQM | `/api/v1/analytics/**` | `PERM_facility:manage`, `PERM_audit:read`, `PERM_system:admin` | Mandatory `facilityId` SQL + repo predicates |
-| Reference Hospital UI | `/ui/**` | Isolated `@Order(1)` Spring MVC/Thymeleaf security chain | Active facility session |
+| Integration Operations & DLQ Replay | `/api/v1/integration-ops/**` | `PERM_hie:export`, `PERM_hie:ingest`, `PERM_facility:manage` | Mandatory `facilityId` + partner conformance & replay audit |
+| Revenue Tariffs, Coding & Claims | `/api/v1/revenue-claims/**` | `PERM_billing:read`, `PERM_billing:charge`, `PERM_encounter:sign`, `PERM_claim:submit` | Mandatory `facilityId` + clinician coding sign-off gate |
+| Reference Hospital UI (17 Consoles) | `/ui/**` | Isolated `@Order(1)` Spring MVC/Thymeleaf security chain | Active facility session (`overview`, `patients`, `scheduling`, `encounters`, `orders`, `pharmacy`, `billing`, `governance`, `radiology`, `emergency-nursing`, `laboratory`, `blood-ot`, `portal`, `integration-ops`, `clinical-ai`, `analytics`, `revenue-claims`) |
 
 ## 2. Healthcare Standards Surface & Current Conformance Boundaries
 - **HL7 FHIR R4:**

@@ -64,7 +64,7 @@ import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.Medicati
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.PharmacyDispenseRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAuditService;
 import com.opeshealth.healthcore.security.crypto.PiiVaultCrypto;
-import com.opeshealth.healthcore.security.spi.WorkforceCredentialSpi;
+import com.opeshealth.healthcore.security.rbac.WorkforceCredentialSpi;
 import com.opeshealth.healthcore.starters.BloodBankStarter.BloodBankHemovigilanceService;
 import com.opeshealth.healthcore.starters.BloodBankStarter.CompatibilityEvaluation;
 import com.opeshealth.healthcore.starters.FhirHieStarter.FhirHieExchangeGatewayService;

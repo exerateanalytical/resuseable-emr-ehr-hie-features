@@ -10,7 +10,7 @@
 package com.opeshealth.healthcore.quickstart.service;
 
 import ca.uhn.fhir.context.FhirContext;
-import com.opeshealth.healthcore.quickstart.domain.QuickstartClinicalEntities.ObservationEntity;
+import com.opeshealth.healthcore.quickstart.domain.ObservationEntity;
 import com.opeshealth.healthcore.quickstart.service.DigitalHealthCertificateService.QrCodeGeneratorUtility;
 import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ClinicalSegmentItem;
 import com.opeshealth.healthcore.quickstart.service.FhirConsentEnforcementService.ConfidentialityLevel;

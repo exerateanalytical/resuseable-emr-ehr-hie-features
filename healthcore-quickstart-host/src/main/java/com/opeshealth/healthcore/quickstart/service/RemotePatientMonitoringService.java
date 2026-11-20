@@ -9,7 +9,7 @@
  */
 package com.opeshealth.healthcore.quickstart.service;
 
-import com.opeshealth.healthcore.quickstart.domain.QuickstartClinicalEntities.ObservationEntity;
+import com.opeshealth.healthcore.quickstart.domain.ObservationEntity;
 import com.opeshealth.healthcore.quickstart.service.FhirSubscriptionTopicService.SubscriptionEventDispatchRequest;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
 import com.opeshealth.healthcore.service.PatientService;

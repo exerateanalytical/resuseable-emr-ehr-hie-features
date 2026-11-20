@@ -55,6 +55,7 @@ fun HealthCoreSuiteHost(
     var activePersona by remember { mutableStateOf("CLINICIAN") }
     var pendingCount by remember { mutableStateOf(vault.pendingOutboxCount()) }
     var lastStatusMessage by remember { mutableStateOf("Encrypted Offline SQLite Vault Ready") }
+    val queuedMedia = remember { mutableStateListOf<EncryptedMediaSyncItem>() }
 
     val cachedPatients = remember(pendingCount) {
         vault.listCachedPatients().mapIndexed { idx, row ->
@@ -75,7 +76,7 @@ fun HealthCoreSuiteHost(
             modifier = Modifier.fillMaxWidth().background(Color(0xFF0A3642)).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("CLINICIAN", "VITALS", "EMAR", "SYNC", "PATIENT", "CHW").forEach { mode ->
+            listOf("CLINICIAN", "VITALS", "EMAR", "MEDIA", "SYNC", "PATIENT", "CHW").forEach { mode ->
                 FilterChip(
                     selected = activePersona == mode,
                     onClick = { activePersona = mode },
@@ -119,13 +120,53 @@ fun HealthCoreSuiteHost(
                     lastStatusMessage = "5-Rights eMAR recorded offline ($pendingCount queued)"
                 }
             )
+            "MEDIA" -> ClinicalMediaSyncScreen(
+                patient = cachedPatients.firstOrNull(),
+                deviceStatus = "ACTIVE",
+                remoteWipePending = false,
+                queuedMedia = queuedMedia,
+                onQueueEncryptedMedia = { patientId, mimeType, sizeBytes, sha256Hex ->
+                    val validation = EncryptedMediaSyncPolicy.validateForEncryptedQueue(
+                        mimeType, sizeBytes, sha256Hex, "ACTIVE", false
+                    )
+                    if (validation.allowed) {
+                        val id = "MEDIA-${wallClockMs()}"
+                        queuedMedia.add(
+                            EncryptedMediaSyncItem(
+                                mediaId = id,
+                                patientId = patientId,
+                                mimeType = mimeType,
+                                sizeBytes = sizeBytes,
+                                sha256Hex = sha256Hex,
+                                uploadedChunks = 0,
+                                totalChunks = validation.totalChunks
+                            )
+                        )
+                        vault.enqueueClinicalNoteOffline(
+                            patientId,
+                            "ENCRYPTED_MEDIA_QUEUED|$id|$mimeType|$sizeBytes|$sha256Hex",
+                            "[]",
+                            wallClockMs()
+                        )
+                        pendingCount = vault.pendingOutboxCount()
+                        lastStatusMessage = "Encrypted media $id queued (${validation.totalChunks} chunks)"
+                    }
+                },
+                onExecuteLocalWipe = {
+                    queuedMedia.clear()
+                    lastStatusMessage = "Local encrypted media & SQLite vault purged"
+                }
+            )
             "SYNC" -> OfflineSyncConflictQueueScreen(
                 pendingOutboxCount = pendingCount,
                 deviceStatus = "ACTIVE",
                 remoteWipePending = false,
                 conflicts = emptyList(),
                 onTriggerSync = { lastStatusMessage = "Delta sync requested ($pendingCount pending)" },
-                onExecuteLocalWipe = { lastStatusMessage = "Local encrypted SQLite vault wipe triggered" }
+                onExecuteLocalWipe = {
+                    queuedMedia.clear()
+                    lastStatusMessage = "Local encrypted SQLite vault wipe triggered"
+                }
             )
             "PATIENT" -> HealthCorePatientApp(
                 patientName = cachedPatients.firstOrNull()?.fullName ?: "Patient",

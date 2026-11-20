@@ -438,7 +438,7 @@ public class ExtendedHospitalWorkstationController {
         return handlePost("/ui/portal?patientId=" + patientId, redirect, facId -> {
             portalService.grantProxyAccess(facId, "ui.admin", true, new GrantProxyRequest(
                     patientId, proxySubject, relationship,
-                    Set.of(PortalScope.VIEW_APPOINTMENTS, PortalScope.VIEW_RESULTS),
+                    Set.of(PortalScope.APPOINTMENTS, PortalScope.RESULTS),
                     Instant.now().plus(180, ChronoUnit.DAYS)));
             return "Granted scoped proxy access to " + proxySubject + " (" + relationship + ").";
         });

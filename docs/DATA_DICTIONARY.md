@@ -1,6 +1,6 @@
 # Data Dictionary — Opes HealthCore Multi-RDBMS Schema
 
-All tables are owned exclusively by **Liquibase** via `healthcore-quickstart-host/src/main/resources/db/changelog/db.changelog-master.xml` (34 changelog includes) using portable cross-DB type aliases across **PostgreSQL 16+**, **Microsoft SQL Server 2022+**, and **MySQL 8.4+**.
+All tables are owned exclusively by **Liquibase** via `healthcore-quickstart-host/src/main/resources/db/changelog/db.changelog-master.xml` (38 modular changelog includes across 41 Maven modules) using portable cross-DB type aliases across **PostgreSQL 16+**, **Microsoft SQL Server 2022+**, and **MySQL 8.4+**.
 
 | Portable Alias | PostgreSQL 16+ | SQL Server 2022+ | MySQL 8.4+ |
 | :--- | :--- | :--- | :--- |
@@ -44,6 +44,15 @@ All tables are owned exclusively by **Liquibase** via `healthcore-quickstart-hos
 - **HIE Interop (`hie`):** `hc_dicom_studies`, `hc_ihe_documents`, HL7 deduplication ledger, `hc_hie_dlq_messages`.
 - **Public Health (`public_health`):** Notifiable disease cascades, immunization registries, DHIS2 sync queues.
 - **Clinical AI Governance (`clinical_ai`):** Durable AI draft quarantine table, tenant AI policy kill-switch table, hash-chained `ClinicalAuditLogger` ledger.
+- **Revenue Tariffs, Coding & Claims (`revenue_coding_claims`):**
+  - `hc_rev_facility_tariffs` — Payer-scoped service tariffs with integer minor-unit pricing and effective date ranges.
+  - `hc_rev_clinical_coding` — ICD-10/ICD-11/CPT/DRG encounter coding records with mandatory clinician attestation gate (`CLINICALLY_APPROVED`).
+  - `hc_rev_insurance_auth` — Eligibility verification snapshots and prior authorization approvals.
+  - `hc_rev_payer_claims` — X12 837 / FHIR `Claim` lifecycle, ERA 835 allowed/paid/patient-responsibility posting, denial reason codes, and appeal tracking.
+- **Integration Operations & DLQ Replay (`integration_ops`):**
+  - `hc_intops_partner_profiles` — External FHIR/HL7v2/DICOM/IHE/Payer partner conformance profiles, allowed message types, rate limits, and circuit-breaker state.
+  - `hc_intops_message_ledger` — Persistent idempotent inbound/outbound message queue, retry counters, and dead-letter quarantine.
+  - `hc_intops_replay_audit` — Immutable operator replay justification and audit trail.
 - **Analytics & Quality (`analytics`):**
   - `hc_analytics_quality_measures` — CQM numerators, denominators, exclusions, compliance rates, and data lineage.
   - `hc_analytics_cohort_exports` — Governed cohort export requests, k-anonymity thresholds, 4-eyes approval metadata, and SHA-256 lineage digests.
