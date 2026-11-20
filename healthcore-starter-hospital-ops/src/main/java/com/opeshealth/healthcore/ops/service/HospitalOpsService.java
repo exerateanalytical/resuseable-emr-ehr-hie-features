@@ -47,7 +47,9 @@ public class HospitalOpsService implements WorkforceCredentialSpi {
     public interface BiomedMaintenanceRepository extends JpaRepository<BiomedMaintenanceEntity, UUID> {
         List<BiomedMaintenanceEntity> findByFacilityId(UUID facilityId);
     }
-    public interface CrvsRepository extends JpaRepository<CrvsBirthDeathEntity, UUID> {}
+    public interface CrvsRepository extends JpaRepository<CrvsBirthDeathEntity, UUID> {
+        Optional<CrvsBirthDeathEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+    }
     public interface CredentialRepository extends JpaRepository<PractitionerCredentialEntity, UUID> {
         Optional<PractitionerCredentialEntity> findByFacilityIdAndPractitionerId(UUID facilityId, String practitionerId);
     }

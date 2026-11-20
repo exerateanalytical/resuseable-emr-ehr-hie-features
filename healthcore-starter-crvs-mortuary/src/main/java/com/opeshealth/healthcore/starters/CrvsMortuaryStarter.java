@@ -14,6 +14,8 @@ import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.CrvsBirthDeathEn
 import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.CrvsRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -49,8 +51,20 @@ public class CrvsMortuaryStarter {
             String antecedentCauseLine1bIcd10,
             String underlyingCauseLine1cIcd10,
             String certifyingPractitionerId,
-            String mortuaryBayTag
-    ) {}
+            String mortuaryBayTag,
+            String certificateNumber
+    ) {
+        // Source-compatible constructor for pre-1.0 SDK consumers. Callers must now supply
+        // their institution-issued certificate/reference number before registering the record.
+        public WhoMccdDeathRegistrationRequest(
+                UUID facilityId, UUID patientId, String immediateCauseLine1aIcd10,
+                String antecedentCauseLine1bIcd10, String underlyingCauseLine1cIcd10,
+                String certifyingPractitionerId, String mortuaryBayTag) {
+            this(facilityId, patientId, immediateCauseLine1aIcd10,
+                    antecedentCauseLine1bIcd10, underlyingCauseLine1cIcd10,
+                    certifyingPractitionerId, mortuaryBayTag, null);
+        }
+    }
 
     public record MortuaryChainOfCustodyReleaseRequest(
             UUID crvsRecordId,
@@ -106,6 +120,16 @@ public class CrvsMortuaryStarter {
             if (req.patientId() == null) {
                 throw new IllegalArgumentException("patientId is required for WHO MCCD death registration");
             }
+            UUID facilityId = FacilityContext.requireFacilityId();
+            if (req.facilityId() != null && !facilityId.equals(req.facilityId())) {
+                throw new AccessDeniedException("Cross-facility mortality registration denied");
+            }
+            if (req.certificateNumber() == null || req.certificateNumber().isBlank()) {
+                throw new IllegalArgumentException("Facility-issued MCCD certificate or provisional reference is required");
+            }
+            if (req.certifyingPractitionerId() == null || req.certifyingPractitionerId().isBlank()) {
+                throw new IllegalArgumentException("Certifying practitioner is required");
+            }
             if (req.immediateCauseLine1aIcd10() == null || req.immediateCauseLine1aIcd10().isBlank()) {
                 throw new IllegalArgumentException("WHO MCCD Line 1a (immediate cause of death ICD-10) is required");
             }
@@ -121,15 +145,20 @@ public class CrvsMortuaryStarter {
             }
 
             CrvsBirthDeathEntity entity = new CrvsBirthDeathEntity();
-            entity.setFacilityId(req.facilityId() != null ? req.facilityId() : new UUID(0L, 1L));
+            entity.setFacilityId(facilityId);
             entity.setPatientId(req.patientId());
             entity.setEventType("DEATH");
-            entity.setMccdUnderlyingCauseIcd10(resolvedUnderlying);
-            entity.setMortuaryBayTag(req.mortuaryBayTag() != null && !req.mortuaryBayTag().isBlank()
+            entity.setCertificateNumber(req.certificateNumber().trim());
+            entity.setMccdPart1Immediate(line1a);
+            entity.setMccdPart1Underlying(resolvedUnderlying);
+            entity.setWhoIcd10CauseOfDeath(resolvedUnderlying);
+            entity.setMortuaryCompartment(req.mortuaryBayTag() != null && !req.mortuaryBayTag().isBlank()
                     ? req.mortuaryBayTag().trim()
                     : "MORT-BAY-A1");
+            entity.setMortuaryCustodyStatus("IN_CUSTODY");
 
-            return hospitalOpsService.registerCrvsEvent(entity);
+            // Canonical CRVS JPA owner: do not create another competing persistence pathway.
+            return crvsRepository.save(entity);
         }
 
         /**
@@ -150,15 +179,21 @@ public class CrvsMortuaryStarter {
                 throw new IllegalArgumentException("Verified next-of-kin full name and national ID are required for mortuary custody release");
             }
 
-            CrvsBirthDeathEntity record = crvsRepository.findById(req.crvsRecordId())
-                    .orElseThrow(() -> new NoSuchElementException("CRVS Death / Mortuary record not found: " + req.crvsRecordId()));
+            UUID facilityId = FacilityContext.requireFacilityId();
+            CrvsBirthDeathEntity record = crvsRepository.findByIdAndFacilityId(req.crvsRecordId(), facilityId)
+                    .orElseThrow(() -> new NoSuchElementException("CRVS Death / Mortuary record not found in facility: " + req.crvsRecordId()));
 
             if (!"DEATH".equalsIgnoreCase(record.getEventType())) {
                 throw new IllegalStateException("Mortuary release applies only to DEATH CRVS records");
             }
 
-            String bayTag = record.getMortuaryBayTag();
-            record.setMortuaryBayTag("RELEASED:" + bayTag + ":NOK:" + req.nextOfKinNationalId().trim());
+            if ("RELEASED".equalsIgnoreCase(record.getMortuaryCustodyStatus())) {
+                throw new IllegalStateException("Mortuary custody was already released");
+            }
+            String bayTag = record.getMortuaryCompartment();
+            record.setMortuaryCustodyStatus("RELEASED");
+            record.setReleasedToNextOfKin(req.nextOfKinFullName().trim());
+            // Never place a next-of-kin national ID inside a mortuary bay identifier.
             crvsRepository.save(record);
 
             return new MortuaryReleaseReceipt(
