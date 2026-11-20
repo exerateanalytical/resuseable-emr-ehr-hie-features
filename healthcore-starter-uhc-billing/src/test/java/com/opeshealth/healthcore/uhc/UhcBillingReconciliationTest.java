@@ -47,7 +47,7 @@ class UhcBillingReconciliationTest {
     @Test
     void rejectsUnbalancedDoubleEntryJournalAndMixedCurrencies() {
         UUID acctId = UUID.randomUUID();
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(IllegalStateException.class, () ->
                 service.postBalancedJournal(List.of(
                         new JournalPostingLine(acctId, UhcBillingService.GL_PATIENT_AR, "DEBIT", 5000, "XAF", "INV-1", "Consult"),
                         new JournalPostingLine(acctId, UhcBillingService.GL_CLINICAL_REVENUE, "CREDIT", 4500, "XAF", "INV-1", "Short credit")
