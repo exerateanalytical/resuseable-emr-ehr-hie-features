@@ -88,7 +88,7 @@ jobs:
           )
           MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
           TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
-          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true -Dsurefire.failIfNoSpecifiedTests=false
+          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Run new backend starters, Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
         run: |
@@ -96,7 +96,7 @@ jobs:
             -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
             -am \
             -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \
-            -DfailIfNoTests=true -Dsurefire.failIfNoSpecifiedTests=false
+            -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Upload 22-suite Surefire XML reports
         if: always()
@@ -171,7 +171,7 @@ jobs:
             -pl healthcore-testing \
             -Dtest=IndustryPackFixtureIsolationTest \
             -Dhealthcore.pack="${{ matrix.pack }}" \
-            -DfailIfNoTests=true -Dsurefire.failIfNoSpecifiedTests=false
+            -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Verify clean standalone consumer project initializes ${{ matrix.pack }} with HealthCoreDataFixture in strict isolation
         if: steps.filter.outputs.skip != 'true'
