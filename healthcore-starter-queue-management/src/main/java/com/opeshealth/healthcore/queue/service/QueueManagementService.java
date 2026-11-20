@@ -499,8 +499,8 @@ public class QueueManagementService {
                         "status", entry.getQueueStatus().name(),
                         "financialClearanceState", entry.getFinancialClearanceState()
                 )));
-            } catch (Exception ignored) {
-                evt.setPayloadJson("{}");
+            } catch (Exception serializationFailure) {
+                throw new IllegalStateException("Cannot serialize queue event; transaction must roll back", serializationFailure);
             }
             outboxRepo.save(evt);
         }

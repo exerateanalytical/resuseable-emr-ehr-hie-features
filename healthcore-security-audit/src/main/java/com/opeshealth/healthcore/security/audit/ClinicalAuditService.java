@@ -100,7 +100,7 @@ public class ClinicalAuditService {
                 outcome,
                 reason,
                 sourceIp,
-                MDC.get(CorrelationAndPhiGuard.MDC_CORRELATION_ID)
+                MDC.get(CorrelationAndPhiGuard.MDC_KEY)
         );
     }
 
@@ -131,7 +131,7 @@ public class ClinicalAuditService {
         }
         String resolvedCorrelation = (correlationId != null && !correlationId.isBlank())
                 ? correlationId.trim()
-                : MDC.get(CorrelationAndPhiGuard.MDC_CORRELATION_ID);
+                : MDC.get(CorrelationAndPhiGuard.MDC_KEY);
 
         AuditChainHeadEntity head = headRepository.findByFacilityKeyForUpdate(normalizedFacility)
                 .orElseGet(() -> {

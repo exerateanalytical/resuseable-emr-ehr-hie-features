@@ -262,6 +262,7 @@ public class PatientJourneyOrchestratorService {
         if (workflowService != null) {
             String childCode = switch (cmd.targetDepartment()) {
                 case LABORATORY -> ReusableWorkflowCatalog.DIAGNOSTIC_LAB_FLOW;
+                case RADIOLOGY -> ReusableWorkflowCatalog.RADIOLOGY_IMAGING_FULFILLMENT;
                 case PHARMACY, EXTERNAL_PHARMACY -> ReusableWorkflowCatalog.PHARMACY_DISPENSE_FLOW;
                 case REFERRAL -> ReusableWorkflowCatalog.CLOSED_LOOP_REFERRAL_FLOW;
                 default -> null;
@@ -394,7 +395,8 @@ public class PatientJourneyOrchestratorService {
         item.setFallbackClinicianId(cmd.fallbackClinicianId());
         item.setCriticalFlag(cmd.criticalResult());
         item.setAmendedResult(cmd.amendedResult());
-        item.setElectronicNotificationSent(true);
+        // Creating an inbox task does not prove that an electronic notification was sent.
+        item.setElectronicNotificationSent(false);
         item.setReturnToQueueRequired(cmd.returnToQueueRequired());
         item.setGroupedReadinessKey(cmd.encounterId() != null ? "ENC-" + cmd.encounterId() : "ORD-" + cmd.orderId());
 
@@ -452,11 +454,21 @@ public class PatientJourneyOrchestratorService {
         List<ClinicianResultInboxEntity> overdue = inboxRepo
                 .findByCriticalFlagTrueAndAcknowledgedAtIsNullAndEscalationDeadlineAtBefore(now != null ? now : Instant.now());
         for (ClinicianResultInboxEntity item : overdue) {
+            if (item.getInboxStatus() == ClinicianInboxStatus.ESCALATED
+                    || item.getInboxStatus() == ClinicianInboxStatus.RESOLVED) {
+                continue; // Avoid repeat escalation on each SLA scan.
+            }
             item.setInboxStatus(ClinicianInboxStatus.ESCALATED);
             if (item.getFallbackClinicianId() != null && !item.getFallbackClinicianId().isBlank()) {
                 item.setResponsibleClinicianId(item.getFallbackClinicianId());
             }
             inboxRepo.save(item);
+            emitCanonicalEvent(CanonicalDomainEventEnvelope.create(
+                    CanonicalWorkflowEventType.ClinicianReviewRequired,
+                    item.getFacilityId(), item.getPatientId(), item.getEncounterId(), item.getOrderId(),
+                    null, null, "workflow-engine", "SYSTEM", "ESCALATE-" + item.getId(),
+                    Map.of("inboxId", item.getId().toString(),
+                            "responsibleClinicianId", String.valueOf(item.getResponsibleClinicianId()))));
         }
         return overdue;
     }
@@ -536,10 +548,17 @@ public class PatientJourneyOrchestratorService {
         if (!facilityId.equals(entity.getFacilityId())) {
             throw new SecurityException("Cross-facility notification access denied");
         }
-        entity.setDeliveryState(NotificationDeliveryState.DELIVERED);
-        if (receiptId != null && !receiptId.isBlank()) {
-            entity.setProviderReceiptId(receiptId);
+        if (receiptId == null || receiptId.isBlank()) {
+            throw new IllegalArgumentException("A non-empty provider delivery receipt is required");
         }
+        if (entity.getDeliveryState() == NotificationDeliveryState.DELIVERED) {
+            return entity; // Duplicate confirmed receipt is idempotent.
+        }
+        if (entity.getDeliveryState() != NotificationDeliveryState.SUBMITTED_TO_PROVIDER) {
+            throw new IllegalStateException("Cannot confirm delivery of notification in state " + entity.getDeliveryState());
+        }
+        entity.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        entity.setProviderReceiptId(receiptId);
         entity.setDeliveredAt(Instant.now());
         return notificationRepo.save(entity);
     }
@@ -582,8 +601,8 @@ public class PatientJourneyOrchestratorService {
         evt.setEventType(env.eventType().name());
         try {
             evt.setPayloadJson(objectMapper.writeValueAsString(env));
-        } catch (Exception ignored) {
-            evt.setPayloadJson("{}");
+        } catch (Exception serializationFailure) {
+            throw new IllegalStateException("Cannot serialize patient-journey event; transaction must roll back", serializationFailure);
         }
         outboxRepo.save(evt);
     }

@@ -351,6 +351,7 @@ class PatientJourneyEndToEndAcceptanceTest {
 
         assertEquals(OrderRoutingStatus.ACTIVE_IN_DEPARTMENT, labRoute.getRoutingStatus());
         assertEquals(OrderRoutingStatus.ACTIVE_IN_DEPARTMENT, radRoute.getRoutingStatus());
+        assertNotNull(radRoute.getChildWorkflowId(), "Radiology orders must activate a radiology subworkflow");
         assertEquals(OrderRoutingStatus.ACTIVE_IN_DEPARTMENT, rxRoute.getRoutingStatus());
 
         // 4. Independent departmental queues + completion
@@ -487,7 +488,8 @@ class PatientJourneyEndToEndAcceptanceTest {
                 new DeliverResultToInboxCommand(facId, patientId, encounterId, orderId, UUID.randomUUID(),
                         "LAB", "dr-primary", "MED-TEAM", "dr-oncall-fallback", true, false, true, 15));
         assertEquals(ClinicianInboxStatus.CRITICAL_ESCALATION_PENDING, crit.getInboxStatus());
-        assertTrue(crit.isElectronicNotificationSent());
+        assertFalse(crit.isElectronicNotificationSent(), "Creating an inbox item is not provider-confirmed notification delivery");
+        assertNotNull(crit.getEscalationDeadlineAt());
         assertNull(crit.getAcknowledgedAt());
 
         // Simulate SLA deadline expiry -> escalates to fallback clinician
