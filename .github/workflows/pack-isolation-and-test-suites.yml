@@ -90,12 +90,12 @@ jobs:
           TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
           mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true
 
-      - name: Run new backend starters, HealthCoreDataFixture & WorkflowVerificationService suites
+      - name: Run new backend starters, Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
         run: |
           mvn -B -ntp test jacoco:report \
-            -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-testing \
+            -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
             -am \
-            -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest" \
+            -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \
             -DfailIfNoTests=true
 
       - name: Upload 22-suite Surefire XML reports
@@ -103,7 +103,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: surefire-22-test-suites
-          path: 'healthcore-starter-*/target/surefire-reports/TEST-*.xml'
+          path: |
+            healthcore-starter-*/target/surefire-reports/TEST-*.xml
+            healthcore-testing/target/surefire-reports/TEST-*.xml
           if-no-files-found: warn
 
       - name: Upload 22-module JaCoCo XML & HTML coverage reports
