@@ -36,7 +36,16 @@ public class FacilityTenantInterceptor extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         try {
-            UUID resolved = resolveFacilityId(request);
+            UUID resolved;
+            try {
+                resolved = resolveFacilityId(request);
+            } catch (IllegalArgumentException ex) {
+                response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Malformed facility identifier");
+                return;
+            } catch (org.springframework.security.access.AccessDeniedException ex) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Facility selection is not authorized");
+                return;
+            }
             if (resolved != null) {
                 FacilityContext.setFacilityId(resolved);
             }
@@ -48,16 +57,34 @@ public class FacilityTenantInterceptor extends OncePerRequestFilter {
 
     private UUID resolveFacilityId(HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
-            String claim = jwt.getClaimAsString("facility_id");
-            if (claim != null && !claim.isBlank()) {
-                return UUID.fromString(claim);
+        String rawHeader = request.getHeader(HEADER_FACILITY_ID);
+        UUID requested = rawHeader == null || rawHeader.isBlank()
+                ? null : UUID.fromString(rawHeader.trim());
+
+        // Never treat a client-provided header as trusted tenant proof.
+        if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof Jwt jwt)) {
+            if (requested != null) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Facility header requires verified JWT authentication");
             }
+            return null;
         }
-        String header = request.getHeader(HEADER_FACILITY_ID);
-        if (header != null && !header.isBlank()) {
-            return UUID.fromString(header.trim());
+        String claim = jwt.getClaimAsString("facility_id");
+        UUID tokenFacility = claim == null || claim.isBlank() ? null : UUID.fromString(claim);
+        if (requested == null) return tokenFacility;
+        if (requested.equals(tokenFacility)) return tokenFacility;
+
+        // Cross-site access requires BOTH explicit JWT membership and a privileged role.
+        boolean elevated = auth.getAuthorities().stream().anyMatch(a ->
+                "PERM_facility:manage".equals(a.getAuthority())
+                        || "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
+        Object membership = jwt.getClaim("allowed_facility_ids");
+        boolean member = membership instanceof java.util.Collection<?> list
+                && list.stream().anyMatch(v -> requested.toString().equals(String.valueOf(v)));
+        if (!elevated || !member) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Requested facility is not authorized in the verified JWT");
         }
-        return null;
+        return requested;
     }
 }
