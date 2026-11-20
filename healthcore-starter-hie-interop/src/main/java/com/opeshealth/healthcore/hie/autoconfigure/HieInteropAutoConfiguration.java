@@ -54,8 +54,14 @@ public class HieInteropAutoConfiguration {
             DicomStudyRepository dicomRepo,
             HieDlqRepository dlqRepo,
             IheDocumentRepository docRepo,
-            JdbcTemplate jdbcTemplate) {
-        return new HieInteropService(patientRepo, subscriptionRepo, dicomRepo, dlqRepo, docRepo, jdbcTemplate);
+            JdbcTemplate jdbcTemplate,
+            Hl7OrderRepository hl7OrderRepo,
+            Hl7ResultRepository hl7ResultRepo,
+            Hl7ScheduleRepository hl7ScheduleRepo,
+            Hl7FinancialTxnRepository hl7FinancialTxnRepo) {
+        return new HieInteropService(
+                patientRepo, subscriptionRepo, dicomRepo, dlqRepo, docRepo, jdbcTemplate,
+                hl7OrderRepo, hl7ResultRepo, hl7ScheduleRepo, hl7FinancialTxnRepo);
     }
 
     @Bean

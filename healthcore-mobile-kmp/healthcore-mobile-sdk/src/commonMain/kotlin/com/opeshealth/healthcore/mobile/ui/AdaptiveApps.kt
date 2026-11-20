@@ -75,7 +75,7 @@ fun HealthCoreSuiteHost(
             modifier = Modifier.fillMaxWidth().background(Color(0xFF0A3642)).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("CLINICIAN", "PATIENT", "CHW").forEach { mode ->
+            listOf("CLINICIAN", "VITALS", "EMAR", "SYNC", "PATIENT", "CHW").forEach { mode ->
                 FilterChip(
                     selected = activePersona == mode,
                     onClick = { activePersona = mode },
@@ -101,6 +101,31 @@ fun HealthCoreSuiteHost(
                     pendingCount = vault.pendingOutboxCount()
                     lastStatusMessage = "SOAP + Stylus sketch saved offline ($pendingCount queued)"
                 }
+            )
+            "VITALS" -> VitalsNews2CaptureScreen(
+                patient = cachedPatients.firstOrNull(),
+                onRecordVitalsOffline = { patientId, news2, summaryJson ->
+                    vault.enqueueClinicalNoteOffline(patientId, "VITALS_NEWS2=$news2 | $summaryJson", "[]", wallClockMs())
+                    pendingCount = vault.pendingOutboxCount()
+                    lastStatusMessage = "NEWS2=$news2 vitals queued offline ($pendingCount queued)"
+                }
+            )
+            "EMAR" -> EmarBarcodeVerificationScreen(
+                patient = cachedPatients.firstOrNull(),
+                onRequestBarcodeScan = onRequestBarcodeScan,
+                onConfirmAdministeredOffline = { patientId, drugCode, dose ->
+                    vault.enqueueClinicalNoteOffline(patientId, "EMAR_5RIGHTS_OK|$drugCode|$dose", "[]", wallClockMs())
+                    pendingCount = vault.pendingOutboxCount()
+                    lastStatusMessage = "5-Rights eMAR recorded offline ($pendingCount queued)"
+                }
+            )
+            "SYNC" -> OfflineSyncConflictQueueScreen(
+                pendingOutboxCount = pendingCount,
+                deviceStatus = "ACTIVE",
+                remoteWipePending = false,
+                conflicts = emptyList(),
+                onTriggerSync = { lastStatusMessage = "Delta sync requested ($pendingCount pending)" },
+                onExecuteLocalWipe = { lastStatusMessage = "Local encrypted SQLite vault wipe triggered" }
             )
             "PATIENT" -> HealthCorePatientApp(
                 patientName = cachedPatients.firstOrNull()?.fullName ?: "Patient",

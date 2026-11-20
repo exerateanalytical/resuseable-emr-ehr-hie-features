@@ -1,0 +1,77 @@
+# Tenant & Facility Governance Starter (`healthcore-starter-tenant-governance`)
+
+## 1. Purpose
+Manages multi-facility organizations, hospital onboarding, department hierarchy, tenant feature flags, and lifecycle states.
+
+## 2. Implemented Capabilities
+- Spring Boot 4.0 auto-configured starter (`AutoConfiguration.imports` + `@EnableJpaRepositories(considerNestedRepositories = true)`).
+- Tenant-scoped domain services, JPA entities, and secured REST/standards endpoints.
+- Cross-database Liquibase schema support (PostgreSQL, Microsoft SQL Server, MySQL).
+
+## 3. Explicitly Unsupported Capabilities
+Does not replace external IAM/OIDC identity providers or cloud infrastructure provisioning.
+
+## 4. Domain Model
+- `CrossFacilityAccessGrantEntity` (`hc_cross_facility_grants`)
+- `FacilityDepartmentEntity` (`hc_facility_departments`)
+- `FacilityFeatureFlagEntity` (`hc_facility_feature_flags`)
+- `TenantFacilityEntity` (`hc_tenant_facilities`)
+- `TenantOrganizationEntity` (`hc_tenant_organizations`)
+
+## 5. Database Migrations
+- `db/changelog/tenant_governance/001-tenant-governance.xml`
+
+## 6. REST APIs
+- `POST /api/v1/governance/organizations`
+- `POST /api/v1/governance/facilities`
+- `POST /api/v1/governance/facilities/{facilityId}/status`
+- `POST /api/v1/governance/departments`
+- `GET /api/v1/governance/departments`
+- `PUT /api/v1/governance/feature-flags`
+- `GET /api/v1/governance/feature-flags`
+- `POST /api/v1/governance/cross-facility-grants`
+- `DELETE /api/v1/governance/cross-facility-grants/{grantId}`
+- `GET /api/v1/governance/cross-facility-grants`
+
+## 7. FHIR / HL7 / Standards Mappings
+- Maps internal domain identifiers using UUIDv7 and standard clinical terminologies (LOINC, SNOMED CT, ICD-10/11, RxNorm, UCUM) where applicable.
+- See `docs/API_CONFORMANCE_REPORT.md` for verified FHIR R4, HL7 v2.5.1, IHE, and DICOMweb conformance boundaries.
+
+## 8. Authorization Model
+- Zero `or isAuthenticated()` fallbacks on clinical or patient-data endpoints.
+- Method-level `@PreAuthorize` guards detected in this module:
+- `hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:manage') or hasAuthority('PERM_audit:read')`
+- `hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:manage') or hasAuthority('PERM_patient:read')`
+- `hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:manage')`
+- `hasAuthority('PERM_system:admin') or hasAuthority('PERM_facility:onboard')`
+
+## 9. Tenant Scope
+- All clinical and operational records are scoped by `facility_id` via `FacilityContext`, JWT `facility_id` validation, Hibernate `facilityFilter`, and PostgreSQL Row-Level Security (`PostgresRlsSessionAspect`).
+
+## 10. Audit Events
+`GOVERNANCE_CREATE_DEPARTMENT`, `GOVERNANCE_CREATE_ORG`, `GOVERNANCE_ONBOARD_FACILITY`
+
+## 11. Configuration
+- Configured via standard Spring Boot properties and environment variables documented in `.env.example` and `docs/PRODUCTION_RUNBOOK.md`.
+- No hardcoded production secrets; `ProductionSecretsStartupValidator` fails closed in production profiles.
+
+## 12. Deployment Requirements
+- Java 25 (JDK 25), Spring Boot 4.0, PostgreSQL 16+ (primary) or MSSQL / MySQL, and OIDC/Keycloak issuer.
+- Include `com.opeshealth.healthcore:healthcore-starter-tenant-governance:1.0.0` with `healthcore-bom`.
+
+## 13. Failure Behavior
+- Fails closed (`AccessDeniedException` / `SecurityException` / `IllegalStateException`) on missing tenant context, unauthorized access, invalid clinical state transitions, or missing mandatory safety context.
+- Never returns fabricated `200 OK` responses for unsupported operations.
+
+## 14. Clinical Validation Status
+- **Status:** PRE-PRODUCTION / ENGINEERING BUILD.
+- Not applicable (administrative/governance module; no clinical scoring logic).
+
+## 15. Test Evidence
+- Module test classes:
+- Covered via `healthcore-quickstart-host` integration/safety suites.
+- Verification command (JDK 25 CI): `mvn -B -ntp test -pl healthcore-starter-tenant-governance -am`
+
+## 16. Known Limitations
+- Live Maven/JUnit/Testcontainers execution must be verified in JDK 25 + Docker CI.
+- Refer to `docs/KNOWN_LIMITATIONS_REGISTER.md` for full platform-level caveats and go-live gates.

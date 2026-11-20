@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — HL7 v2.5.1 Clinical Domain Tables (ORM, ORU, SIU, DFT)
+  Author / Architect : Jude Nshome — Opes Health Systems
+  Email              : nshome@opesware.com
+  Website            : https://www.opeshealthsystems.com
+  Location           : Douala, Cameroon
+  =============================================================================
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="003-hie-hl7-clinical-tables" author="jude.nshome@opeshealthsystems.com">
+        <createTable tableName="hc_hl7_orders">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="mrn" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="placer_order_number" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="filler_order_number" type="VARCHAR(96)"/>
+            <column name="order_control" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="universal_service_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="universal_service_text" type="VARCHAR(240)"/>
+            <column name="status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="msh_control_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="received_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_hl7_orders" indexName="idx_hl7_orders_fac_placer">
+            <column name="facility_id"/>
+            <column name="placer_order_number"/>
+        </createIndex>
+
+        <createTable tableName="hc_hl7_results">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="mrn" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="placer_order_number" type="VARCHAR(96)"/>
+            <column name="observation_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="observation_text" type="VARCHAR(240)"/>
+            <column name="value_type" type="VARCHAR(16)"/>
+            <column name="observation_value" type="VARCHAR(400)"><constraints nullable="false"/></column>
+            <column name="units" type="VARCHAR(64)"/>
+            <column name="reference_range" type="VARCHAR(120)"/>
+            <column name="abnormal_flag" type="VARCHAR(16)"/>
+            <column name="result_status" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="msh_control_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="observed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_hl7_results" indexName="idx_hl7_results_fac_mrn">
+            <column name="facility_id"/>
+            <column name="mrn"/>
+        </createIndex>
+
+        <createTable tableName="hc_hl7_appointments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="mrn" type="VARCHAR(64)"/>
+            <column name="external_appointment_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="trigger_event" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="appointment_status" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="appointment_reason" type="VARCHAR(240)"/>
+            <column name="scheduled_start_raw" type="VARCHAR(64)"/>
+            <column name="msh_control_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_hl7_appointments" indexName="idx_hl7_appt_fac_ext">
+            <column name="facility_id"/>
+            <column name="external_appointment_id"/>
+        </createIndex>
+
+        <createTable tableName="hc_hl7_financial_txns">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"/>
+            <column name="mrn" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="transaction_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="transaction_type" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="transaction_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="transaction_description" type="VARCHAR(240)"/>
+            <column name="amount" type="DECIMAL(14,2)"><constraints nullable="false"/></column>
+            <column name="currency_code" type="VARCHAR(8)"><constraints nullable="false"/></column>
+            <column name="reversed" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="msh_control_id" type="VARCHAR(96)"><constraints nullable="false"/></column>
+            <column name="posted_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_hl7_financial_txns" indexName="idx_hl7_dft_fac_txn">
+            <column name="facility_id"/>
+            <column name="transaction_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

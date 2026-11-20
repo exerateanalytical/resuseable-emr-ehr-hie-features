@@ -104,9 +104,34 @@ public class HieInteropService {
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 
+    public interface Hl7OrderRepository extends JpaRepository<Hl7OrderRecordEntity, UUID> {
+        Optional<Hl7OrderRecordEntity> findByFacilityIdAndPlacerOrderNumber(UUID facilityId, String placerOrderNumber);
+        List<Hl7OrderRecordEntity> findByFacilityIdAndMrnOrderByUpdatedAtDesc(UUID facilityId, String mrn);
+    }
+
+    public interface Hl7ResultRepository extends JpaRepository<Hl7ObservationResultEntity, UUID> {
+        List<Hl7ObservationResultEntity> findByFacilityIdAndMrnOrderByObservedAtDesc(UUID facilityId, String mrn);
+    }
+
+    public interface Hl7ScheduleRepository extends JpaRepository<Hl7ScheduleEventEntity, UUID> {
+        Optional<Hl7ScheduleEventEntity> findByFacilityIdAndExternalAppointmentId(UUID facilityId, String externalAppointmentId);
+        List<Hl7ScheduleEventEntity> findByFacilityIdOrderByUpdatedAtDesc(UUID facilityId);
+    }
+
+    public interface Hl7FinancialTxnRepository extends JpaRepository<Hl7FinancialTransactionEntity, UUID> {
+        Optional<Hl7FinancialTransactionEntity> findByFacilityIdAndTransactionId(UUID facilityId, String transactionId);
+        List<Hl7FinancialTransactionEntity> findByFacilityIdAndMrnOrderByPostedAtDesc(UUID facilityId, String mrn);
+    }
+
     private static final FhirContext FHIR_R4 = FhirContext.forR4();
     private static final HapiContext HL7V2_CTX = new DefaultHapiContext();
     private static final Set<String> SUPPORTED_HL7_ADT_EVENTS = Set.of("ADT^A01", "ADT^A04", "ADT^A08");
+    private static final Set<String> SUPPORTED_HL7_SIU_EVENTS = Set.of("SIU^S12", "SIU^S13", "SIU^S14", "SIU^S15", "SIU^S26");
+    private static final List<String> ALL_SUPPORTED_HL7_TYPES = List.of(
+            "ADT^A01", "ADT^A04", "ADT^A08",
+            "ORM^O01", "ORU^R01",
+            "SIU^S12", "SIU^S13", "SIU^S14", "SIU^S15", "SIU^S26",
+            "DFT^P03");
 
     private final MpiCommandService.PatientRepository patientRepo;
     private final FhirSubscriptionRepository subscriptionRepo;
@@ -114,6 +139,10 @@ public class HieInteropService {
     private final HieDlqRepository dlqRepo;
     private final IheDocumentRepository docRepo;
     private final JdbcTemplate jdbcTemplate;
+    private final Hl7OrderRepository hl7OrderRepo;
+    private final Hl7ResultRepository hl7ResultRepo;
+    private final Hl7ScheduleRepository hl7ScheduleRepo;
+    private final Hl7FinancialTxnRepository hl7FinancialTxnRepo;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -128,12 +157,30 @@ public class HieInteropService {
             HieDlqRepository dlqRepo,
             IheDocumentRepository docRepo,
             JdbcTemplate jdbcTemplate) {
+        this(patientRepo, subscriptionRepo, dicomRepo, dlqRepo, docRepo, jdbcTemplate, null, null, null, null);
+    }
+
+    public HieInteropService(
+            MpiCommandService.PatientRepository patientRepo,
+            FhirSubscriptionRepository subscriptionRepo,
+            DicomStudyRepository dicomRepo,
+            HieDlqRepository dlqRepo,
+            IheDocumentRepository docRepo,
+            JdbcTemplate jdbcTemplate,
+            Hl7OrderRepository hl7OrderRepo,
+            Hl7ResultRepository hl7ResultRepo,
+            Hl7ScheduleRepository hl7ScheduleRepo,
+            Hl7FinancialTxnRepository hl7FinancialTxnRepo) {
         this.patientRepo = patientRepo;
         this.subscriptionRepo = subscriptionRepo;
         this.dicomRepo = dicomRepo;
         this.dlqRepo = dlqRepo;
         this.docRepo = docRepo;
         this.jdbcTemplate = jdbcTemplate;
+        this.hl7OrderRepo = hl7OrderRepo;
+        this.hl7ResultRepo = hl7ResultRepo;
+        this.hl7ScheduleRepo = hl7ScheduleRepo;
+        this.hl7FinancialTxnRepo = hl7FinancialTxnRepo;
     }
 
     public void setConfiguredWebhookSigningSecret(String secret) {
@@ -534,66 +581,76 @@ public class HieInteropService {
                 }
             }
 
-            if (!SUPPORTED_HL7_ADT_EVENTS.contains(msh9)) {
-                HieDlqMessageEntity dlq = new HieDlqMessageEntity();
-                dlq.setProtocol("HL7V2");
-                dlq.setExternalMessageId(msh10);
-                dlq.setRawPayload(rawHl7);
-                dlq.setErrorDetail("Unsupported HL7v2 message type for clinical persistence: " + msh9);
-                if (dlqRepo != null) {
-                    dlqRepo.save(dlq);
+            if (SUPPORTED_HL7_ADT_EVENTS.contains(msh9)) {
+                String mrn = firstNonBlank(terser.get("/.PID-3-1"), terser.get("/.PID-2-1"));
+                String familyName = terser.get("/.PID-5-1");
+                String givenName = terser.get("/.PID-5-2");
+                String rawDob = terser.get("/.PID-7");
+                String rawSex = terser.get("/.PID-8");
+
+                if (mrn == null || familyName == null || familyName.isBlank()) {
+                    return Map.of(
+                            "status", "VALIDATION_ERROR",
+                            "messageType", msh9,
+                            "controlId", msh10,
+                            "ackCode", "AE",
+                            "error", "ADT message requires PID-3 (MRN) and PID-5.1 (family name)"
+                    );
                 }
+
+                PatientAggregateEntity patient = patientRepo.findByFacilityIdAndMrn(facilityId, mrn)
+                        .orElseGet(PatientAggregateEntity::new);
+                patient.setFacilityId(facilityId);
+                patient.setMrn(mrn);
+                patient.setFamilyName(familyName.trim());
+                patient.setGivenName(givenName != null && !givenName.isBlank() ? givenName.trim() : "Unknown");
+                patient.setBirthDate(parseHl7BirthDate(rawDob));
+                patient.setGender(normalizeHl7Gender(rawSex));
+                patient.setUpdatedAt(Instant.now());
+                PatientAggregateEntity saved = patientRepo.save(patient);
+
+                recordHl7Idempotency(idempKey, rawHl7);
                 return Map.of(
-                        "status", "UNSUPPORTED_MESSAGE_TYPE",
+                        "status", "APPLIED_TO_MPI",
                         "messageType", msh9,
                         "controlId", msh10,
-                        "ackCode", "AR",
-                        "supportedTypes", List.copyOf(SUPPORTED_HL7_ADT_EVENTS),
-                        "detail", "Message was NOT applied to clinical records; only ADT^A01, ADT^A04, and ADT^A08 patient persistence is implemented."
+                        "ackCode", "AA",
+                        "patientId", saved.getId().toString(),
+                        "mrn", saved.getMrn()
                 );
             }
 
-            // Map PID segment into persisted tenant-scoped PatientAggregateEntity
-            String mrn = firstNonBlank(terser.get("/.PID-3-1"), terser.get("/.PID-2-1"));
-            String familyName = terser.get("/.PID-5-1");
-            String givenName = terser.get("/.PID-5-2");
-            String rawDob = terser.get("/.PID-7");
-            String rawSex = terser.get("/.PID-8");
-
-            if (mrn == null || familyName == null || familyName.isBlank()) {
-                return Map.of(
-                        "status", "VALIDATION_ERROR",
-                        "messageType", msh9,
-                        "controlId", msh10,
-                        "ackCode", "AE",
-                        "error", "ADT message requires PID-3 (MRN) and PID-5.1 (family name)"
-                );
+            if ("ORM^O01".equals(msh9) && hl7OrderRepo != null) {
+                return applyHl7OrmOrder(facilityId, msh9, msh10, idempKey, rawHl7, terser);
             }
 
-            PatientAggregateEntity patient = patientRepo.findByFacilityIdAndMrn(facilityId, mrn)
-                    .orElseGet(PatientAggregateEntity::new);
-            patient.setFacilityId(facilityId);
-            patient.setMrn(mrn);
-            patient.setFamilyName(familyName.trim());
-            patient.setGivenName(givenName != null && !givenName.isBlank() ? givenName.trim() : "Unknown");
-            patient.setBirthDate(parseHl7BirthDate(rawDob));
-            patient.setGender(normalizeHl7Gender(rawSex));
-            patient.setUpdatedAt(Instant.now());
-            PatientAggregateEntity saved = patientRepo.save(patient);
-
-            if (jdbcTemplate != null) {
-                jdbcTemplate.update(
-                        "INSERT INTO hc_inbound_idempotency (id, idempotency_key, request_hash, http_status, response_body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        UUID.randomUUID(), idempKey, Integer.toHexString(rawHl7.hashCode()), 200, "AA", java.sql.Timestamp.from(Instant.now()));
+            if ("ORU^R01".equals(msh9) && hl7ResultRepo != null) {
+                return applyHl7OruResult(facilityId, msh9, msh10, idempKey, rawHl7, terser);
             }
 
+            if (SUPPORTED_HL7_SIU_EVENTS.contains(msh9) && hl7ScheduleRepo != null) {
+                return applyHl7SiuSchedule(facilityId, msh9, triggerEvent, msh10, idempKey, rawHl7, terser);
+            }
+
+            if ("DFT^P03".equals(msh9) && hl7FinancialTxnRepo != null) {
+                return applyHl7DftFinancial(facilityId, msh9, msh10, idempKey, rawHl7, terser);
+            }
+
+            HieDlqMessageEntity dlq = new HieDlqMessageEntity();
+            dlq.setProtocol("HL7V2");
+            dlq.setExternalMessageId(msh10);
+            dlq.setRawPayload(rawHl7);
+            dlq.setErrorDetail("Unsupported HL7v2 message type for clinical persistence: " + msh9);
+            if (dlqRepo != null) {
+                dlqRepo.save(dlq);
+            }
             return Map.of(
-                    "status", "APPLIED_TO_MPI",
+                    "status", "UNSUPPORTED_MESSAGE_TYPE",
                     "messageType", msh9,
                     "controlId", msh10,
-                    "ackCode", "AA",
-                    "patientId", saved.getId().toString(),
-                    "mrn", saved.getMrn()
+                    "ackCode", "AR",
+                    "supportedTypes", ALL_SUPPORTED_HL7_TYPES,
+                    "detail", "Message was NOT applied to clinical records; message type is unsupported or persistence repository is not configured."
             );
         } catch (Exception ex) {
             if (dlqRepo != null) {
@@ -604,6 +661,212 @@ public class HieInteropService {
                 dlqRepo.save(dlq);
             }
             return Map.of("status", "QUARANTINED_TO_DLQ", "ackCode", "AE", "error", Objects.toString(ex.getMessage(), "HL7v2 parse error"));
+        }
+    }
+
+    private void recordHl7Idempotency(String idempKey, String rawHl7) {
+        if (jdbcTemplate != null) {
+            jdbcTemplate.update(
+                    "INSERT INTO hc_inbound_idempotency (id, idempotency_key, request_hash, http_status, response_body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    UUID.randomUUID(), idempKey, Integer.toHexString(rawHl7.hashCode()), 200, "AA", java.sql.Timestamp.from(Instant.now()));
+        }
+    }
+
+    private UUID resolveExistingPatientId(UUID facilityId, String mrn) {
+        if (mrn == null || mrn.isBlank() || patientRepo == null) {
+            return null;
+        }
+        return patientRepo.findByFacilityIdAndMrn(facilityId, mrn)
+                .map(PatientAggregateEntity::getId)
+                .orElse(null);
+    }
+
+    private Map<String, Object> applyHl7OrmOrder(
+            UUID facilityId, String msh9, String msh10, String idempKey, String rawHl7, Terser terser) throws Exception {
+        String mrn = firstNonBlank(safeTerser(terser, "/.PID-3-1"), safeTerser(terser, "/.PID-2-1"));
+        String orderControl = firstNonBlank(safeTerser(terser, "/.ORC-1"), "NW").toUpperCase(Locale.ROOT);
+        String placerOrderNo = firstNonBlank(safeTerser(terser, "/.ORC-2-1"), safeTerser(terser, "/.OBR-2-1"));
+        String fillerOrderNo = firstNonBlank(safeTerser(terser, "/.ORC-3-1"), safeTerser(terser, "/.OBR-3-1"));
+        String serviceCode = firstNonBlank(safeTerser(terser, "/.OBR-4-1"), "UNKNOWN");
+        String serviceText = safeTerser(terser, "/.OBR-4-2");
+
+        if (mrn == null || placerOrderNo == null) {
+            return Map.of("status", "VALIDATION_ERROR", "messageType", msh9, "controlId", msh10, "ackCode", "AE",
+                    "error", "ORM^O01 requires PID-3 (MRN) and ORC-2/OBR-2 (placer order number)");
+        }
+
+        Hl7OrderRecordEntity order = hl7OrderRepo.findByFacilityIdAndPlacerOrderNumber(facilityId, placerOrderNo)
+                .orElseGet(Hl7OrderRecordEntity::new);
+        order.setFacilityId(facilityId);
+        order.setPatientId(resolveExistingPatientId(facilityId, mrn));
+        order.setMrn(mrn);
+        order.setPlacerOrderNumber(placerOrderNo);
+        if (fillerOrderNo != null) order.setFillerOrderNumber(fillerOrderNo);
+        order.setOrderControl(orderControl);
+        order.setUniversalServiceCode(serviceCode);
+        order.setUniversalServiceText(serviceText);
+        order.setMshControlId(msh10);
+        order.setStatus(switch (orderControl) {
+            case "CA", "DC", "OC" -> "CANCELLED";
+            case "HD" -> "ON_HOLD";
+            case "XO" -> "MODIFIED";
+            default -> "ACTIVE";
+        });
+        order.setUpdatedAt(Instant.now());
+        Hl7OrderRecordEntity saved = hl7OrderRepo.save(order);
+        recordHl7Idempotency(idempKey, rawHl7);
+
+        return Map.of(
+                "status", "APPLIED_TO_ORDERS",
+                "messageType", msh9,
+                "controlId", msh10,
+                "ackCode", "AA",
+                "orderId", saved.getId().toString(),
+                "placerOrderNumber", saved.getPlacerOrderNumber(),
+                "orderStatus", saved.getStatus()
+        );
+    }
+
+    private Map<String, Object> applyHl7OruResult(
+            UUID facilityId, String msh9, String msh10, String idempKey, String rawHl7, Terser terser) throws Exception {
+        String mrn = firstNonBlank(safeTerser(terser, "/.PID-3-1"), safeTerser(terser, "/.PID-2-1"));
+        String placerOrderNo = safeTerser(terser, "/.OBR-2-1");
+        String obsCode = safeTerser(terser, "/.OBX-3-1");
+        String obsText = safeTerser(terser, "/.OBX-3-2");
+        String valueType = safeTerser(terser, "/.OBX-2");
+        String obsValue = safeTerser(terser, "/.OBX-5");
+        String units = safeTerser(terser, "/.OBX-6-1");
+        String refRange = safeTerser(terser, "/.OBX-7");
+        String abnormalFlag = safeTerser(terser, "/.OBX-8");
+        String resultStatus = firstNonBlank(safeTerser(terser, "/.OBX-11"), "F");
+
+        if (mrn == null || obsCode == null || obsValue == null) {
+            return Map.of("status", "VALIDATION_ERROR", "messageType", msh9, "controlId", msh10, "ackCode", "AE",
+                    "error", "ORU^R01 requires PID-3 (MRN), OBX-3 (observation code), and OBX-5 (observation value)");
+        }
+
+        Hl7ObservationResultEntity res = new Hl7ObservationResultEntity();
+        res.setFacilityId(facilityId);
+        res.setPatientId(resolveExistingPatientId(facilityId, mrn));
+        res.setMrn(mrn);
+        res.setPlacerOrderNumber(placerOrderNo);
+        res.setObservationCode(obsCode);
+        res.setObservationText(obsText);
+        res.setValueType(valueType);
+        res.setObservationValue(obsValue);
+        res.setUnits(units);
+        res.setReferenceRange(refRange);
+        res.setAbnormalFlag(abnormalFlag);
+        res.setResultStatus(resultStatus);
+        res.setMshControlId(msh10);
+        Hl7ObservationResultEntity saved = hl7ResultRepo.save(res);
+        recordHl7Idempotency(idempKey, rawHl7);
+
+        return Map.of(
+                "status", "APPLIED_TO_RESULTS",
+                "messageType", msh9,
+                "controlId", msh10,
+                "ackCode", "AA",
+                "resultId", saved.getId().toString(),
+                "observationCode", saved.getObservationCode(),
+                "abnormalFlag", Objects.toString(saved.getAbnormalFlag(), "N")
+        );
+    }
+
+    private Map<String, Object> applyHl7SiuSchedule(
+            UUID facilityId, String msh9, String triggerEvent, String msh10, String idempKey, String rawHl7, Terser terser) throws Exception {
+        String extApptId = firstNonBlank(safeTerser(terser, "/.SCH-1-1"), safeTerser(terser, "/.SCH-2-1"));
+        String mrn = firstNonBlank(safeTerser(terser, "/.PID-3-1"), safeTerser(terser, "/.PID-2-1"));
+        String reason = firstNonBlank(safeTerser(terser, "/.SCH-7-2"), safeTerser(terser, "/.SCH-7-1"));
+        String startRaw = safeTerser(terser, "/.SCH-11-4");
+
+        if (extApptId == null) {
+            return Map.of("status", "VALIDATION_ERROR", "messageType", msh9, "controlId", msh10, "ackCode", "AE",
+                    "error", "SIU message requires SCH-1 or SCH-2 (appointment ID)");
+        }
+
+        Hl7ScheduleEventEntity appt = hl7ScheduleRepo.findByFacilityIdAndExternalAppointmentId(facilityId, extApptId)
+                .orElseGet(Hl7ScheduleEventEntity::new);
+        appt.setFacilityId(facilityId);
+        appt.setPatientId(resolveExistingPatientId(facilityId, mrn));
+        appt.setMrn(mrn);
+        appt.setExternalAppointmentId(extApptId);
+        appt.setTriggerEvent(triggerEvent != null ? triggerEvent : "S12");
+        appt.setAppointmentStatus(switch (appt.getTriggerEvent()) {
+            case "S13" -> "RESCHEDULED";
+            case "S14" -> "MODIFIED";
+            case "S15" -> "CANCELLED";
+            case "S26" -> "NO_SHOW";
+            default -> "BOOKED";
+        });
+        appt.setAppointmentReason(reason);
+        appt.setScheduledStartRaw(startRaw);
+        appt.setMshControlId(msh10);
+        appt.setUpdatedAt(Instant.now());
+        Hl7ScheduleEventEntity saved = hl7ScheduleRepo.save(appt);
+        recordHl7Idempotency(idempKey, rawHl7);
+
+        return Map.of(
+                "status", "APPLIED_TO_SCHEDULING",
+                "messageType", msh9,
+                "controlId", msh10,
+                "ackCode", "AA",
+                "appointmentId", saved.getId().toString(),
+                "externalAppointmentId", saved.getExternalAppointmentId(),
+                "appointmentStatus", saved.getAppointmentStatus()
+        );
+    }
+
+    private Map<String, Object> applyHl7DftFinancial(
+            UUID facilityId, String msh9, String msh10, String idempKey, String rawHl7, Terser terser) throws Exception {
+        String mrn = firstNonBlank(safeTerser(terser, "/.PID-3-1"), safeTerser(terser, "/.PID-2-1"));
+        String txnId = firstNonBlank(safeTerser(terser, "/.FT1-2"), msh10);
+        String txnType = firstNonBlank(safeTerser(terser, "/.FT1-6"), "CG").toUpperCase(Locale.ROOT);
+        String txnCode = safeTerser(terser, "/.FT1-7-1");
+        String txnDesc = safeTerser(terser, "/.FT1-7-2");
+        String rawAmount = firstNonBlank(safeTerser(terser, "/.FT1-11-1"), safeTerser(terser, "/.FT1-12-1"));
+
+        if (mrn == null || txnCode == null || rawAmount == null) {
+            return Map.of("status", "VALIDATION_ERROR", "messageType", msh9, "controlId", msh10, "ackCode", "AE",
+                    "error", "DFT^P03 requires PID-3 (MRN), FT1-7 (transaction code), and FT1-11/FT1-12 (amount)");
+        }
+
+        java.math.BigDecimal parsedAmount = new java.math.BigDecimal(rawAmount.trim());
+        boolean isCreditOrReversal = "CD".equals(txnType) || "AJ".equals(txnType);
+
+        Hl7FinancialTransactionEntity txn = hl7FinancialTxnRepo.findByFacilityIdAndTransactionId(facilityId, txnId)
+                .orElseGet(Hl7FinancialTransactionEntity::new);
+        txn.setFacilityId(facilityId);
+        txn.setPatientId(resolveExistingPatientId(facilityId, mrn));
+        txn.setMrn(mrn);
+        txn.setTransactionId(txnId);
+        txn.setTransactionType(txnType);
+        txn.setTransactionCode(txnCode);
+        txn.setTransactionDescription(txnDesc);
+        txn.setAmount(isCreditOrReversal ? parsedAmount.abs().negate() : parsedAmount.abs());
+        txn.setReversed(isCreditOrReversal);
+        txn.setMshControlId(msh10);
+        Hl7FinancialTransactionEntity saved = hl7FinancialTxnRepo.save(txn);
+        recordHl7Idempotency(idempKey, rawHl7);
+
+        return Map.of(
+                "status", isCreditOrReversal ? "REVERSED_FINANCIAL_TXN" : "APPLIED_TO_BILLING",
+                "messageType", msh9,
+                "controlId", msh10,
+                "ackCode", "AA",
+                "financialTxnId", saved.getId().toString(),
+                "transactionId", saved.getTransactionId(),
+                "amount", saved.getAmount().toPlainString(),
+                "reversed", saved.isReversed()
+        );
+    }
+
+    private static String safeTerser(Terser terser, String path) {
+        try {
+            String val = terser.get(path);
+            return (val != null && !val.isBlank()) ? val.trim() : null;
+        } catch (Exception ex) {
+            return null;
         }
     }
 

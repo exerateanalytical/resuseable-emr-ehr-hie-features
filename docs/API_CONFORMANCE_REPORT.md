@@ -22,8 +22,14 @@
   - `HieInteropService` enforces strict `PERM_patient:read` / write permissions (zero `isAuthenticated()` fallbacks) and tenant facility isolation (zero `findAll()`).
   - **Remaining Conformance Requirement:** Full automated HAPI FHIR StructureDefinition & IPS profile validation against live test fixtures must be executed in JDK 25 CI (`mvn clean verify`).
 - **HL7 v2.5.1:**
-  - `HieInteropService` parses incoming messages, deduplicates by `MSH-10`, and returns structured ACK/NACK responses.
-  - **Limitation:** End-to-end persistence mapping for all ADT/ORM/ORU/SIU/DFT clinical segments should be validated against site-specific partner interface specifications before live cutover.
+  - `HieInteropService` enforces tenant-scoped `MSH-10` idempotency (`hc_inbound_idempotency`) and durably maps and persists:
+    - `ADT^A01`, `ADT^A04`, `ADT^A08` → `hc_patients` (MPI Golden Record)
+    - `ORM^O01` (`NW`/`CA`/`XO`/`HD`/`DC`) → `hc_hl7_orders`
+    - `ORU^R01` (`OBX` observations & abnormal flags) → `hc_hl7_results`
+    - `SIU^S12`, `SIU^S13`, `SIU^S14`, `SIU^S15`, `SIU^S26` → `hc_hl7_appointments`
+    - `DFT^P03` (`CG` charges & `CD`/`AJ` credit reversals) → `hc_hl7_financial_txns`
+  - Any unsupported message type (e.g., `MDM^T02`) is explicitly rejected with `ackCode="AR"` and quarantined to `hc_hie_dlq_messages`; malformed payloads return `ackCode="AE"`.
+  - **Limitation:** Partner-specific Z-segments and custom site interface mappings must still be verified against live partner HL7 fixtures before cutover.
 - **DICOMweb (STOW-RS / WADO-RS / QIDO-RS):**
   - `DicomPacsProxyService` (`/api/v1/hie/dicom/pacs/**`) validates DICOM UID format (max 64 chars, numeric dot-separated, no leading zeros), requires non-empty binary payloads, enforces tenant ownership on STOW/WADO/QIDO, fails closed with `501 NOT IMPLEMENTED` when `healthcore.hie.dicom.pacs-enabled=false` (never fakes STOW success), and quarantines genuine upstream PACS outages to `hc_hie_dlq_messages`.
   - **Remaining Conformance Requirement:** Integration test against a live Orthanc or DCM4CHEE PACS container is required prior to claiming full production PACS conformance.
