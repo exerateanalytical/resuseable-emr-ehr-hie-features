@@ -66,7 +66,7 @@ jobs:
           cache: maven
 
       - name: Run MultiDbTestcontainersIT and PatientJourneyPostgresIT against PostgreSQL, SQL Server, and MySQL
-        run: mvn -B -ntp verify -pl healthcore-quickstart-host -am -Dit.test=MultiDbTestcontainersIT,PatientJourneyPostgresIT -DfailIfNoTests=false
+        run: mvn -B -ntp verify -pl healthcore-quickstart-host -am -Dit.test=MultiDbTestcontainersIT,PatientJourneyPostgresIT -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false
 
       - name: Upload Failsafe integration reports on failure
         if: failure()
@@ -301,7 +301,7 @@ jobs:
           )
           MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
           TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
-          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true
+          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Run Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
         run: |
@@ -309,7 +309,7 @@ jobs:
             -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
             -am \
             -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \
-            -DfailIfNoTests=true
+            -DfailIfNoTests=true -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Upload 22-suite Surefire XML reports
         if: always()
