@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Available Blood Units</div>
+                    <div class="kpi-value" th:text="${bloodSummary != null ? bloodSummary.totalAvailableUnits : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Expiring Within 7 Days</div>
+                    <div class="kpi-value" th:text="${bloodSummary != null ? bloodSummary.expiringWithin7Days : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Quarantined / Reacted Units</div>
+                    <div class="kpi-value" th:text="${bloodSummary != null ? bloodSummary.quarantinedOrReactedUnits : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Scheduled OT Cases</div>
+                    <div class="kpi-value" th:text="${#lists.size(surgeries)}">0</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">ISBT-128 Blood Component Inventory</h2></div>
+                        <div th:if="${#lists.isEmpty(bloodUnits)}" class="empty-state">
+                            No blood component units currently registered for this facility.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(bloodUnits)}">
+                            <thead>
+                            <tr>
+                                <th>ISBT-128 Unit</th>
+                                <th>ABO / Rh</th>
+                                <th>Component</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="u : ${bloodUnits}">
+                                <td class="mono" th:text="${u.isbt128Barcode}">W00001</td>
+                                <td class="mono" th:text="${u.aboRhGroup}">O-</td>
+                                <td th:text="${u.componentType}">PRBC</td>
+                                <td class="state-text state-ok" th:text="${u.status}">AVAILABLE</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Operating Theater Schedule &amp; WHO Checklist</h2></div>
+                        <div th:if="${#lists.isEmpty(surgeries)}" class="empty-state">
+                            No operating theater procedures scheduled yet.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(surgeries)}">
+                            <thead>
+                            <tr>
+                                <th>OT Room</th>
+                                <th>Procedure</th>
+                                <th>WHO Checklist</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="s : ${surgeries}">
+                                <td class="mono" th:text="${s.operatingRoomCode}">OT-01</td>
+                                <td th:text="${s.procedureName}">Laparoscopic Appendectomy</td>
+                                <td class="state-text" th:classappend="${s.whoChecklistVerified} ? ' state-ok' : ' state-warn'"
+                                    th:text="${s.whoChecklistVerified ? 'VERIFIED' : 'PENDING'}">PENDING</td>
+                                <td class="mono" th:text="${s.status}">SCHEDULED</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">ABO / Rh Cross-Match Safety Gate</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/blood-ot/compatibility}" method="post" class="form-grid">
+                                <div class="form-field">
+                                    <label>Donor ABO / Rh</label>
+                                    <select name="donorAboRh">
+                                        <option>O-</option><option>O+</option><option>A-</option><option>A+</option>
+                                        <option>B-</option><option>B+</option><option>AB-</option><option>AB+</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Recipient ABO / Rh</label>
+                                    <select name="recipientAboRh">
+                                        <option>O-</option><option>O+</option><option>A-</option><option>A+</option>
+                                        <option>B-</option><option>B+</option><option>AB-</option><option>AB+</option>
+                                    </select>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Blood Component</label>
+                                    <select name="componentType">
+                                        <option value="PRBC">PRBC (Packed Red Blood Cells)</option>
+                                        <option value="FFP">FFP (Fresh Frozen Plasma)</option>
+                                        <option value="PLATELETS">PLATELETS</option>
+                                    </select>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Evaluate Cross-Match Compatibility</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Modified Aldrete PACU Discharge Gate (≥ 9/10)</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/blood-ot/pacu-aldrete}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Surgical Schedule Case</label>
+                                    <select name="surgicalScheduleId" required>
+                                        <option th:each="s : ${surgeries}" th:value="${s.id}" th:text="${s.operatingRoomCode + ' — ' + s.procedureName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Activity (0–2)</label><input type="number" min="0" max="2" name="activityScore" value="2" required/></div>
+                                <div class="form-field"><label>Respiration (0–2)</label><input type="number" min="0" max="2" name="respirationScore" value="2" required/></div>
+                                <div class="form-field"><label>Circulation (0–2)</label><input type="number" min="0" max="2" name="circulationScore" value="2" required/></div>
+                                <div class="form-field"><label>Consciousness (0–2)</label><input type="number" min="0" max="2" name="consciousnessScore" value="2" required/></div>
+                                <div class="form-field"><label>O2 Saturation (0–2)</label><input type="number" min="0" max="2" name="oxygenSaturationScore" value="2" required/></div>
+                                <div class="form-field"><label>Est. Blood Loss (mL)</label><input type="number" min="0" name="estimatedBloodLossMl" value="100" required/></div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Score PACU Discharge Eligibility</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

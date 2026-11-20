@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Registered Trading Partners</div>
+                    <div class="kpi-value" th:text="${#lists.size(partners)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Outbox / Inbox Ledger Messages</div>
+                    <div class="kpi-value" th:text="${#lists.size(messages)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Dead-Letter Queue (DLQ)</div>
+                    <div class="kpi-value" th:classappend="${!#lists.isEmpty(dlqMessages)} ? ' critical'" th:text="${#lists.size(dlqMessages)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Supported Protocols</div>
+                    <div class="kpi-value">FHIR · HL7 · IHE</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Partner Conformance Profiles &amp; Circuit Health</h2></div>
+                        <div th:if="${#lists.isEmpty(partnerHealth)}" class="empty-state">
+                            No trading partner profiles configured yet. Register a TLS partner profile on the right.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(partnerHealth)}">
+                            <thead>
+                            <tr>
+                                <th>Partner</th>
+                                <th>Protocol</th>
+                                <th>Circuit</th>
+                                <th class="num">Delivered / DLQ</th>
+                                <th>Circuit Action</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="h : ${partnerHealth}">
+                                <td><span class="mono" th:text="${h.partnerCode}">HIE-01</span> · <span th:text="${h.partnerName}">National HIE</span></td>
+                                <td class="mono" th:text="${h.protocolFamily}">FHIR_R4</td>
+                                <td class="state-text" th:classappend="${h.circuitState == 'CLOSED'} ? ' state-ok' : (${h.circuitState == 'OPEN'} ? ' state-crit' : ' state-warn')" th:text="${h.circuitState}">CLOSED</td>
+                                <td class="mono num" th:text="${h.deliveredCount + ' / ' + h.deadLetterCount}">0 / 0</td>
+                                <td>
+                                    <form th:action="@{/ui/integration-ops/partners/{id}/circuit(id=${h.partnerId})}" method="post" class="inline-actions">
+                                        <input type="hidden" name="state" th:value="${h.circuitState == 'OPEN' ? 'HALF_OPEN' : (h.circuitState == 'HALF_OPEN' ? 'CLOSED' : 'OPEN')}"/>
+                                        <button type="submit" class="btn btn-secondary btn-sm" th:text="${h.circuitState == 'OPEN' ? 'Half-Open' : (h.circuitState == 'HALF_OPEN' ? 'Close' : 'Trip Open')}">Toggle</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">Unified Outbox / Inbox Ledger &amp; DLQ Replay</h2>
+                            <div class="inline-actions">
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/integration-ops}">All</a>
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/integration-ops(status='QUEUED')}">Queued</a>
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/integration-ops(status='DEAD_LETTERED')}">DLQ Only</a>
+                            </div>
+                        </div>
+                        <div th:if="${#lists.isEmpty(messages)}" class="empty-state">
+                            No integration ledger messages recorded yet.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(messages)}">
+                            <thead>
+                            <tr>
+                                <th>Idempotency Key</th>
+                                <th>Direction · Type</th>
+                                <th>Attempts</th>
+                                <th>Status</th>
+                                <th>Replay</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="m : ${messages}">
+                                <td class="mono" th:text="${m.idempotencyKey}">IDEM-001</td>
+                                <td class="mono" th:text="${m.direction + ' · ' + m.messageType}">OUTBOUND · ORM^O01</td>
+                                <td class="mono" th:text="${m.attemptCount + '/' + m.maxAttempts}">0/5</td>
+                                <td class="state-text"
+                                    th:classappend="${m.deliveryStatus == 'DELIVERED'} ? ' state-ok' : (${m.deliveryStatus == 'DEAD_LETTERED'} ? ' state-crit' : ' state-warn')"
+                                    th:text="${m.deliveryStatus}">QUEUED</td>
+                                <td>
+                                    <form th:if="${m.deliveryStatus == 'DEAD_LETTERED' or m.deliveryStatus == 'RETRYING'}"
+                                          th:action="@{/ui/integration-ops/messages/{id}/replay(id=${m.id})}" method="post" class="inline-actions">
+                                        <input type="text" name="justification" value="Verified partner recovery" style="width:140px"/>
+                                        <button type="submit" class="btn btn-primary btn-sm">Replay</button>
+                                    </form>
+                                    <span class="mono" th:if="${m.deliveryStatus != 'DEAD_LETTERED' and m.deliveryStatus != 'RETRYING'}">—</span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Register Partner Conformance Profile</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/integration-ops/partners}" method="post" class="form-grid">
+                                <div class="form-field"><label>Partner Code</label><input type="text" name="partnerCode" required placeholder="NAT-HIE"/></div>
+                                <div class="form-field"><label>Partner Name</label><input type="text" name="partnerName" required placeholder="National Health Exchange"/></div>
+                                <div class="form-field">
+                                    <label>Protocol Family</label>
+                                    <select name="protocolFamily">
+                                        <option value="FHIR_R4">FHIR_R4</option>
+                                        <option value="HL7_V2">HL7_V2</option>
+                                        <option value="IHE">IHE</option>
+                                        <option value="DICOMWEB">DICOMWEB</option>
+                                        <option value="X12">X12</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Auth Mode</label>
+                                    <select name="authMode">
+                                        <option value="MTLS">MTLS</option>
+                                        <option value="OAUTH2_CLIENT_CREDENTIALS">OAUTH2_CLIENT_CREDENTIALS</option>
+                                        <option value="HMAC_SHA256">HMAC_SHA256</option>
+                                    </select>
+                                </div>
+                                <div class="form-field full"><label>TLS Endpoint URL</label><input type="text" name="endpointUrl" required placeholder="https://hie.gov.cm/fhir"/></div>
+                                <div class="form-field full"><label>Allowed Message Types (comma-separated)</label><input type="text" name="allowedMessageTypes" required placeholder="Bundle,DiagnosticReport,ORM^O01,ORU^R01"/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Save Partner Profile</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Enqueue Idempotent Outbound Message</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/integration-ops/outbox}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Target Partner</label>
+                                    <select name="partnerId" required>
+                                        <option th:each="p : ${partners}" th:value="${p.id}" th:text="${p.partnerCode + ' — ' + p.partnerName + ' (' + p.protocolFamily + ')'}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Idempotency Key</label><input type="text" name="idempotencyKey" required placeholder="OUT-2026-0001"/></div>
+                                <div class="form-field"><label>Message Type</label><input type="text" name="messageType" required placeholder="Bundle"/></div>
+                                <div class="form-field full"><label>Payload</label><textarea name="payloadBody" required placeholder='{"resourceType":"Bundle","type":"transaction"}'></textarea></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Enqueue to Outbox</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

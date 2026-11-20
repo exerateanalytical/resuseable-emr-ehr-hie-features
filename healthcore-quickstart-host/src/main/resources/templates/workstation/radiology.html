@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Modality Worklist Items</div>
+                    <div class="kpi-value" th:text="${#lists.size(worklist)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Unacknowledged Critical Findings</div>
+                    <div class="kpi-value" th:classappend="${!#lists.isEmpty(criticalFindings)} ? ' critical'" th:text="${#lists.size(criticalFindings)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Active Filter</div>
+                    <div class="kpi-value" th:text="${#strings.isEmpty(selectedStatus) ? 'ALL' : selectedStatus}">ALL</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">DICOM Modality Support</div>
+                    <div class="kpi-value">CT · MR · XR · US</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">DICOM Modality Worklist (STAT Prioritized)</h2>
+                            <div class="inline-actions">
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/radiology}">All</a>
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/radiology(status='SCHEDULED')}">Scheduled</a>
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/radiology(status='IN_PROGRESS')}">In Progress</a>
+                                <a class="btn btn-secondary btn-sm" th:href="@{/ui/radiology(status='COMPLETED')}">Completed</a>
+                            </div>
+                        </div>
+                        <div th:if="${#lists.isEmpty(worklist)}" class="empty-state">
+                            No imaging studies scheduled for this filter. Use the form on the right to schedule a modality worklist exam.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(worklist)}">
+                            <thead>
+                            <tr>
+                                <th>Accession</th>
+                                <th>Modality</th>
+                                <th>Procedure</th>
+                                <th>MPPS State</th>
+                                <th>Advance MPPS</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="w : ${worklist}">
+                                <td class="mono" th:text="${w.accessionNumber}">ACC-001</td>
+                                <td class="mono" th:text="${w.modality + (w.statUrgent ? ' · STAT' : '')}">CT</td>
+                                <td th:text="${w.procedureCode + ' — ' + w.procedureDescription}">CT Chest</td>
+                                <td>
+                                    <span class="state-text"
+                                          th:classappend="${w.mppsStatus == 'COMPLETED'} ? ' state-ok' : (${w.statUrgent} ? ' state-crit' : ' state-warn')"
+                                          th:text="${w.mppsStatus}">SCHEDULED</span>
+                                </td>
+                                <td>
+                                    <div class="inline-actions" th:if="${w.mppsStatus != 'COMPLETED' and w.mppsStatus != 'DISCONTINUED'}">
+                                        <form th:action="@{/ui/radiology/{id}/mpps(id=${w.id})}" method="post">
+                                            <input type="hidden" name="status" value="IN_PROGRESS"/>
+                                            <button type="submit" class="btn btn-secondary btn-sm">Start</button>
+                                        </form>
+                                        <form th:action="@{/ui/radiology/{id}/mpps(id=${w.id})}" method="post">
+                                            <input type="hidden" name="status" value="COMPLETED"/>
+                                            <button type="submit" class="btn btn-primary btn-sm">Complete</button>
+                                        </form>
+                                    </div>
+                                    <span class="mono" th:if="${w.mppsStatus == 'COMPLETED'}" th:text="${w.seriesCount + 's / ' + w.instanceCount + 'i'}">2s / 48i</span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">Closed-Loop Critical Imaging Findings Queue</h2>
+                        </div>
+                        <div th:if="${#lists.isEmpty(criticalFindings)}" class="empty-state">
+                            No unacknowledged critical imaging findings.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(criticalFindings)}">
+                            <thead>
+                            <tr>
+                                <th>Accession</th>
+                                <th>Category</th>
+                                <th>Impression</th>
+                                <th>Read-Back Action</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="r : ${criticalFindings}">
+                                <td class="mono" th:text="${r.accessionNumber}">ACC-001</td>
+                                <td class="state-text state-crit" th:text="${r.criticalCategory}">PNEUMOTHORAX</td>
+                                <td th:text="${r.impressionText}">Tension pneumothorax</td>
+                                <td>
+                                    <form th:action="@{/ui/radiology/reports/{id}/ack-critical(id=${r.id})}" method="post" class="inline-actions">
+                                        <input type="text" name="readbackNotes" required placeholder="Verbal read-back note" style="width:160px"/>
+                                        <button type="submit" class="btn btn-danger btn-sm">Acknowledge</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Schedule Imaging Exam (MWL)</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/radiology/schedule}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Modality</label>
+                                    <select name="modality">
+                                        <option value="CT">CT</option>
+                                        <option value="MR">MR</option>
+                                        <option value="XR">XR</option>
+                                        <option value="US">US</option>
+                                        <option value="DX">DX</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Procedure Code</label>
+                                    <input type="text" name="procedureCode" required placeholder="71260"/>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Procedure Description</label>
+                                    <input type="text" name="procedureDescription" required placeholder="CT Thorax with contrast"/>
+                                </div>
+                                <div class="form-field">
+                                    <label>Body Site</label>
+                                    <input type="text" name="bodySite" placeholder="Chest"/>
+                                </div>
+                                <div class="form-field">
+                                    <label>Priority</label>
+                                    <select name="statUrgent">
+                                        <option value="false">Routine</option>
+                                        <option value="true">STAT Urgent</option>
+                                    </select>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Clinical Indication</label>
+                                    <input type="text" name="clinicalIndication" placeholder="Rule out pulmonary embolism"/>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Schedule on Worklist</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Sign Structured Radiology Report</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/radiology/reports}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Completed Study</label>
+                                    <select name="worklistItemId" required>
+                                        <option th:each="w : ${worklist}" th:value="${w.id}" th:text="${w.accessionNumber + ' · ' + w.modality + ' (' + w.mppsStatus + ')'}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Findings</label>
+                                    <textarea name="findingsText" required placeholder="Structured radiology findings"></textarea>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Impression</label>
+                                    <textarea name="impressionText" required placeholder="Diagnostic impression"></textarea>
+                                </div>
+                                <div class="form-field">
+                                    <label>Critical Finding</label>
+                                    <select name="criticalFinding">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes — Trigger Closed-Loop Alert</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Critical Category</label>
+                                    <input type="text" name="criticalCategory" placeholder="INTRACRANIAL_HEMORRHAGE"/>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Sign Final Report</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

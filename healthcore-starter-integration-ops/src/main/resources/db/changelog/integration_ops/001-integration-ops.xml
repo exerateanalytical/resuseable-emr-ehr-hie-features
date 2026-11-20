@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="integration-ops-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_intops_partner_profiles">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="partner_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="partner_name" type="varchar(180)"><constraints nullable="false"/></column>
+            <column name="protocol_family" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="endpoint_url" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="auth_mode" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="allowed_message_types" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="rate_limit_per_min" type="int" defaultValueNumeric="120"><constraints nullable="false"/></column>
+            <column name="circuit_state" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="consecutive_failures" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="updated_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_intops_partner_profiles" columnNames="facility_id,partner_code" constraintName="uq_intops_partner_code"/>
+
+        <createTable tableName="hc_intops_message_ledger">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="partner_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="direction" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="idempotency_key" type="varchar(128)"><constraints nullable="false"/></column>
+            <column name="protocol_family" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="message_type" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="payload_sha256" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="payload_body" type="${clob_type}"><constraints nullable="false"/></column>
+            <column name="delivery_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="attempt_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="max_attempts" type="int" defaultValueNumeric="5"><constraints nullable="false"/></column>
+            <column name="next_retry_at" type="${ts_type}"/>
+            <column name="last_http_status" type="int"/>
+            <column name="last_error_code" type="varchar(64)"/>
+            <column name="last_error_message" type="varchar(500)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="delivered_at" type="${ts_type}"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_intops_message_ledger" columnNames="facility_id,direction,idempotency_key" constraintName="uq_intops_msg_idempotency"/>
+        <createIndex tableName="hc_intops_message_ledger" indexName="idx_intops_msg_facility_status">
+            <column name="facility_id"/><column name="delivery_status"/><column name="next_retry_at"/>
+        </createIndex>
+
+        <createTable tableName="hc_intops_replay_audit">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="message_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="replayed_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="justification" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="previous_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="outcome_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="replayed_at" type="${ts_type}"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_intops_replay_audit" indexName="idx_intops_replay_msg">
+            <column name="facility_id"/><column name="message_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

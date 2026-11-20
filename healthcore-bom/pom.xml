@@ -237,6 +237,16 @@
                 <artifactId>healthcore-starter-analytics</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-integration-ops</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-revenue-coding-claims</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Healthcare Standards: HL7 FHIR R4 + HL7 v2 -->
             <dependency>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Bed Occupancy Rate</div>
+                    <div class="kpi-value" th:text="${kpis != null ? (kpis.bedOccupancyRatePct + '%') : '0.0%'}">0.0%</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Orders · Verified Results</div>
+                    <div class="kpi-value" th:text="${kpis != null ? (kpis.totalOrders + ' / ' + kpis.verifiedResults) : '0 / 0'}">0 / 0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Unacknowledged Criticals</div>
+                    <div class="kpi-value" th:classappend="${kpis != null and kpis.unacknowledgedCriticalResults > 0} ? ' critical'"
+                         th:text="${kpis != null ? kpis.unacknowledgedCriticalResults : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Payer Claims (Paid / Total)</div>
+                    <div class="kpi-value" th:text="${claimsSummary != null ? (claimsSummary.paidClaims + ' / ' + claimsSummary.totalClaims) : '0 / 0'}">0 / 0</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Clinical Quality Measures (eCQM)</h2></div>
+                        <div th:if="${#lists.isEmpty(measures)}" class="empty-state">
+                            No clinical quality measures recorded yet. Log a reporting period measure on the right.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(measures)}">
+                            <thead>
+                            <tr><th>Code</th><th>Measure</th><th>Period</th><th class="num">Num / Denom</th><th class="num">Rate</th></tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="m : ${measures}">
+                                <td class="mono" th:text="${m.measureCode}">CMS-165</td>
+                                <td th:text="${m.measureTitle}">Controlling High Blood Pressure</td>
+                                <td class="mono" th:text="${m.reportingPeriod}">2026-Q4</td>
+                                <td class="mono num" th:text="${m.numeratorCount + ' / ' + m.denominatorCount}">84 / 100</td>
+                                <td class="mono num state-text state-ok" th:text="${m.performanceRatePct + '%'}">84.0%</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Governed De-Identified Cohort Exports</h2></div>
+                        <div th:if="${#lists.isEmpty(exports)}" class="empty-state">
+                            No cohort export requests logged yet.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(exports)}">
+                            <thead>
+                            <tr><th>Cohort</th><th>Purpose</th><th class="num">Matched</th><th>Status</th><th>Governance</th></tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="e : ${exports}">
+                                <td th:text="${e.cohortName}">Hypertension Outcomes</td>
+                                <td th:text="${e.exportPurpose}">Quality Audit</td>
+                                <td class="mono num" th:text="${e.matchedPatientCount}">250</td>
+                                <td class="state-text" th:classappend="${e.exportStatus == 'APPROVED'} ? ' state-ok' : ' state-warn'" th:text="${e.exportStatus}">PENDING_APPROVAL</td>
+                                <td>
+                                    <form th:if="${e.exportStatus == 'PENDING_APPROVAL'}" th:action="@{/ui/analytics/exports/{id}/approve(id=${e.id})}" method="post">
+                                        <button type="submit" class="btn btn-primary btn-sm">Approve DPO</button>
+                                    </form>
+                                    <span class="mono" th:if="${e.exportStatus != 'PENDING_APPROVAL'}" th:text="${e.approvedBy}">ui.dpo</span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Record Clinical Quality Measure</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/analytics/measures}" method="post" class="form-grid">
+                                <div class="form-field"><label>Measure Code</label><input type="text" name="measureCode" required placeholder="CMS-165"/></div>
+                                <div class="form-field"><label>Reporting Period</label><input type="text" name="reportingPeriod" required placeholder="2026-Q4"/></div>
+                                <div class="form-field full"><label>Measure Title</label><input type="text" name="measureTitle" required placeholder="Controlling High Blood Pressure"/></div>
+                                <div class="form-field"><label>Numerator</label><input type="number" name="numeratorCount" value="85" required/></div>
+                                <div class="form-field"><label>Denominator</label><input type="number" name="denominatorCount" value="100" required/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Record Measure</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Request De-Identified Cohort Export</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/analytics/exports}" method="post" class="form-grid">
+                                <div class="form-field full"><label>Cohort Name</label><input type="text" name="cohortName" required placeholder="2026 Diabetes Cohort"/></div>
+                                <div class="form-field full"><label>Export Purpose</label><input type="text" name="exportPurpose" required placeholder="Public Health Reporting"/></div>
+                                <div class="form-field"><label>Min Cell Suppression (k)</label><input type="number" name="minimumCellSuppression" value="10" required/></div>
+                                <div class="form-field"><label>Matched Patients</label><input type="number" name="matchedPatientCount" value="120" required/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-secondary">Submit Export Request</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

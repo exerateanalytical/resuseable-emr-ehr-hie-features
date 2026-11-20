@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Durable Tenant AI Policy</div>
+                    <div class="kpi-value" th:text="${aiEnabled ? 'ENABLED' : 'DISABLED'}">DISABLED</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Pending Clinician Attestation</div>
+                    <div class="kpi-value" th:text="${aiMetrics != null ? aiMetrics.pendingAttestationCount : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Approved Drafts</div>
+                    <div class="kpi-value" th:text="${aiMetrics != null ? (aiMetrics.approvedCount + aiMetrics.approvedWithEditsCount) : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">PHI Identifiers Redacted</div>
+                    <div class="kpi-value" th:text="${aiMetrics != null ? aiMetrics.totalPhiIdentifiersRedacted : 0}">0</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <section class="panel">
+                    <div class="panel-header"><h2 class="panel-title">Clinical AI Drafts &amp; Human Attestation Queue</h2></div>
+                    <div th:if="${#lists.isEmpty(drafts)}" class="empty-state">
+                        No governed Clinical AI drafts generated for this facility yet. All AI outputs require explicit human clinician attestation before clinical adoption.
+                    </div>
+                    <table class="data-table" th:if="${!#lists.isEmpty(drafts)}">
+                        <thead>
+                        <tr>
+                            <th>Capability</th>
+                            <th>Model</th>
+                            <th>PHI Redacted</th>
+                            <th>Status</th>
+                            <th>Clinician Decision</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="d : ${drafts}">
+                            <td class="mono" th:text="${d.capability}">AMBIENT_SCRIBE</td>
+                            <td class="mono" th:text="${d.modelId}">gemini-2.5-pro</td>
+                            <td class="mono" th:text="${d.totalPhiRedactions}">0</td>
+                            <td class="state-text" th:classappend="${d.status.name() == 'PENDING_ATTESTATION'} ? ' state-warn' : ' state-ok'" th:text="${d.status}">PENDING_ATTESTATION</td>
+                            <td>
+                                <div class="inline-actions" th:if="${d.status.name() == 'PENDING_ATTESTATION'}">
+                                    <form th:action="@{/ui/clinical-ai/drafts/{id}/attest(id=${d.draftId})}" method="post">
+                                        <input type="hidden" name="decision" value="APPROVED_AS_IS"/>
+                                        <button type="submit" class="btn btn-primary btn-sm">Attest</button>
+                                    </form>
+                                    <form th:action="@{/ui/clinical-ai/drafts/{id}/attest(id=${d.draftId})}" method="post">
+                                        <input type="hidden" name="decision" value="REJECTED"/>
+                                        <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                                    </form>
+                                </div>
+                                <span class="mono" th:if="${d.status.name() != 'PENDING_ATTESTATION'}" th:text="${d.attestedByPractitionerId}">dr.attending</span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header"><h2 class="panel-title">Tenant AI Governance &amp; Safety Guardrails</h2></div>
+                    <div class="panel-body">
+                        <p class="meta-line">
+                            <span>Zero Autonomous Diagnosis</span> ·
+                            <span>Zero Autonomous Prescribing</span> ·
+                            <span>Mandatory PHI Redaction Gateway</span> ·
+                            <span>Immutable Draft Audit Trail</span>
+                        </p>
+                        <form th:action="@{/ui/clinical-ai/policy}" method="post" class="form-grid" style="margin-top:14px">
+                            <div class="form-field full">
+                                <label>Facility Clinical AI Master Switch</label>
+                                <select name="enabled">
+                                    <option value="true" th:selected="${aiEnabled}">ENABLED — Clinician-Attested Draft Mode</option>
+                                    <option value="false" th:selected="${!aiEnabled}">DISABLED — Fail-Closed Kill Switch</option>
+                                </select>
+                            </div>
+                            <div class="form-field full">
+                                <button type="submit" class="btn btn-primary">Save Durable Tenant AI Policy</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

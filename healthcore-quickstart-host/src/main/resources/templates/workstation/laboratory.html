@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Accessioned Specimens</div>
+                    <div class="kpi-value" th:text="${#lists.size(specimens)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Unacknowledged Panic Values</div>
+                    <div class="kpi-value" th:classappend="${!#lists.isEmpty(criticalResults)} ? ' critical'" th:text="${#lists.size(criticalResults)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">QC Verification Gate</div>
+                    <div class="kpi-value">Westgard 1_3s</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Analyzer Interfaces</div>
+                    <div class="kpi-value">ASTM · HL7 ORU</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Accessioned Laboratory Specimens</h2></div>
+                        <div th:if="${#lists.isEmpty(specimens)}" class="empty-state">
+                            No specimens accessioned yet. Scan or enter a specimen barcode on the right.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(specimens)}">
+                            <thead>
+                            <tr>
+                                <th>Barcode</th>
+                                <th>Specimen Type</th>
+                                <th>LOINC Panel</th>
+                                <th>QC Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="s : ${specimens}">
+                                <td class="mono" th:text="${s.accessionBarcode}">SPEC-001</td>
+                                <td th:text="${s.specimenType}">WHOLE_BLOOD</td>
+                                <td class="mono" th:text="${s.loincPanelCode}">24323-8</td>
+                                <td class="state-text state-ok" th:text="${s.status}">ACCESSIONED</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Panic-Value Verbal Read-Back Queue</h2></div>
+                        <div th:if="${#lists.isEmpty(criticalResults)}" class="empty-state">
+                            No unacknowledged laboratory panic results pending verbal read-back.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(criticalResults)}">
+                            <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Test</th>
+                                <th>Value</th>
+                                <th>Flag</th>
+                                <th>Closed-Loop Read-Back</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="r : ${criticalResults}">
+                                <td class="mono" th:text="${r.resultCode}">2823-3</td>
+                                <td th:text="${r.resultDisplay}">Serum Potassium</td>
+                                <td class="mono" th:text="${r.numericValue + ' ' + (r.unit != null ? r.unit : '')}">6.9 mmol/L</td>
+                                <td class="state-text state-crit" th:text="${r.abnormalFlag}">CRITICAL_HIGH</td>
+                                <td>
+                                    <form th:action="@{/ui/orders/results/{id}/ack-critical(id=${r.id})}" method="post" class="inline-actions">
+                                        <input type="text" name="notes" required placeholder="Read-back clinician &amp; time" style="width:170px"/>
+                                        <button type="submit" class="btn btn-danger btn-sm">Confirm Read-Back</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Accession Barcoded Specimen</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/laboratory/accession}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Specimen Type</label>
+                                    <select name="specimenType">
+                                        <option value="WHOLE_BLOOD">WHOLE_BLOOD</option>
+                                        <option value="SERUM">SERUM</option>
+                                        <option value="PLASMA">PLASMA</option>
+                                        <option value="URINE">URINE</option>
+                                        <option value="SWAB">SWAB</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>LOINC Panel Code</label>
+                                    <input type="text" name="loincPanelCode" required placeholder="24323-8"/>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Barcode (optional auto-generated)</label>
+                                    <input type="text" name="barcode" placeholder="SPEC-2026-0001"/>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Accession Specimen</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

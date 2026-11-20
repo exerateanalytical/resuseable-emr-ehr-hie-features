@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Active ED Board Visits</div>
+                    <div class="kpi-value" th:text="${#lists.size(edBoard)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Active NEWS2 Escalations</div>
+                    <div class="kpi-value" th:classappend="${!#lists.isEmpty(escalations)} ? ' critical'" th:text="${#lists.size(escalations)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Triage Standard</div>
+                    <div class="kpi-value">ESI 1–5</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Early Warning Gate</div>
+                    <div class="kpi-value">NEWS2 ≥ 5</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Emergency Department Acuity Board</h2></div>
+                        <div th:if="${#lists.isEmpty(edBoard)}" class="empty-state">
+                            No active Emergency Department visits. Register a triage arrival on the right.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(edBoard)}">
+                            <thead>
+                            <tr>
+                                <th>ESI</th>
+                                <th>Bay</th>
+                                <th>Chief Complaint</th>
+                                <th>Arrival</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="v : ${edBoard}">
+                                <td class="state-text" th:classappend="${v.esiLevel <= 2} ? ' state-crit' : ' state-warn'" th:text="${'ESI-' + v.esiLevel}">ESI-2</td>
+                                <td class="mono" th:text="${v.assignedBay}">BAY-01</td>
+                                <td th:text="${v.chiefComplaint}">Acute chest pain</td>
+                                <td class="mono" th:text="${v.arrivalMode}">AMBULANCE</td>
+                                <td class="mono" th:text="${v.dispositionStatus}">TRIAGED</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Active NEWS2 Escalation Alerts</h2></div>
+                        <div th:if="${#lists.isEmpty(escalations)}" class="empty-state">
+                            No active NEWS2 high-risk escalations.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(escalations)}">
+                            <thead>
+                            <tr>
+                                <th>Score</th>
+                                <th>Risk Band</th>
+                                <th>RR / SpO2 / SBP / HR</th>
+                                <th>Temp</th>
+                                <th>ACVPU</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="e : ${escalations}">
+                                <td class="state-text state-crit" th:text="${e.news2TotalScore}">7</td>
+                                <td class="state-text state-crit" th:text="${e.clinicalRiskBand}">HIGH</td>
+                                <td class="mono" th:text="${e.respiratoryRate + ' · ' + e.spo2Percent + '% · ' + e.systolicBp + ' · ' + e.heartRate}">26 · 91% · 88 · 122</td>
+                                <td class="mono" th:text="${e.temperatureC + ' °C'}">39.2 °C</td>
+                                <td class="mono" th:text="${e.consciousnessAcvpu}">CONFUSION</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Register ED Triage Arrival</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/emergency-nursing/triage}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>ESI Acuity (1–5)</label>
+                                    <select name="esiLevel">
+                                        <option value="1">ESI-1 Resuscitation</option>
+                                        <option value="2">ESI-2 Emergent</option>
+                                        <option value="3" selected>ESI-3 Urgent</option>
+                                        <option value="4">ESI-4 Less Urgent</option>
+                                        <option value="5">ESI-5 Non-Urgent</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>Assigned Bay</label>
+                                    <input type="text" name="assignedBay" value="TRAUMA-01" required/>
+                                </div>
+                                <div class="form-field full">
+                                    <label>Chief Complaint</label>
+                                    <input type="text" name="chiefComplaint" required placeholder="Shortness of breath / fever"/>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Record ED Triage</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Capture NEWS2 Bedside Vitals</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/emergency-nursing/news2}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Resp. Rate (/min)</label><input type="number" name="respiratoryRate" value="18" required/></div>
+                                <div class="form-field"><label>SpO2 (%)</label><input type="number" name="spo2Percent" value="98" required/></div>
+                                <div class="form-field"><label>Systolic BP (mmHg)</label><input type="number" name="systolicBp" value="120" required/></div>
+                                <div class="form-field"><label>Heart Rate (bpm)</label><input type="number" name="heartRate" value="78" required/></div>
+                                <div class="form-field"><label>Temperature (°C)</label><input type="number" step="0.1" name="temperatureC" value="36.8" required/></div>
+                                <div class="form-field">
+                                    <label>Consciousness (ACVPU)</label>
+                                    <select name="consciousnessAcvpu">
+                                        <option value="ALERT">ALERT</option>
+                                        <option value="CONFUSION">CONFUSION</option>
+                                        <option value="VOICE">VOICE</option>
+                                        <option value="PAIN">PAIN</option>
+                                        <option value="UNRESPONSIVE">UNRESPONSIVE</option>
+                                    </select>
+                                </div>
+                                <div class="form-field full">
+                                    <button type="submit" class="btn btn-primary">Calculate &amp; Save NEWS2</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Inpatient Discharge Readiness Gate</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/emergency-nursing/discharge-readiness}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label><input type="checkbox" name="medReconciliationComplete" value="true"/> Med Reconciliation</label></div>
+                                <div class="form-field"><label><input type="checkbox" name="dischargeSummarySigned" value="true"/> Discharge Summary Signed</label></div>
+                                <div class="form-field"><label><input type="checkbox" name="patientEducationDocumented" value="true"/> Patient Education</label></div>
+                                <div class="form-field"><label><input type="checkbox" name="followUpScheduled" value="true"/> Follow-Up Scheduled</label></div>
+                                <div class="form-field full"><label><input type="checkbox" name="billingCleared" value="true"/> Billing / Discharge Cleared</label></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-secondary">Save Readiness Checklist</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

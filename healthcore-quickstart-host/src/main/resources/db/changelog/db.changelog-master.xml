@@ -66,6 +66,8 @@
     <include file="classpath:db/changelog/radiology/001-radiology-ris.xml"/>
     <include file="classpath:db/changelog/emergency_nursing/001-emergency-nursing.xml"/>
     <include file="classpath:db/changelog/analytics/001-analytics-quality.xml"/>
+    <include file="classpath:db/changelog/integration_ops/001-integration-ops.xml"/>
+    <include file="classpath:db/changelog/revenue_claims/001-revenue-coding-claims.xml"/>
     <include file="classpath:db/changelog/quickstart/001-practitioners.xml"/>
     <include file="classpath:db/changelog/quickstart/002-observations.xml"/>
     <include file="classpath:db/changelog/core/003-postgresql-optimizations.xml"/>

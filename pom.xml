@@ -93,6 +93,8 @@
         <module>healthcore-starter-radiology</module>
         <module>healthcore-starter-emergency-nursing</module>
         <module>healthcore-starter-analytics</module>
+        <module>healthcore-starter-integration-ops</module>
+        <module>healthcore-starter-revenue-coding-claims</module>
         <module>healthcore-quickstart-host</module>
     </modules>
 

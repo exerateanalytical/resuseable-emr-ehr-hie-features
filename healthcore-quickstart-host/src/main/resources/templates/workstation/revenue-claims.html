@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <div class="kpi-strip">
+                <div class="kpi-cell">
+                    <div class="kpi-label">Active Facility Tariffs</div>
+                    <div class="kpi-value" th:text="${#lists.size(tariffs)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Clinical Coding Queue</div>
+                    <div class="kpi-value" th:text="${#lists.size(codingRecords)}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Total Billed (Minor Units)</div>
+                    <div class="kpi-value" th:text="${claimsSummary != null ? claimsSummary.totalBilledMinor : 0}">0</div>
+                </div>
+                <div class="kpi-cell">
+                    <div class="kpi-label">Total Paid via ERA</div>
+                    <div class="kpi-value" th:text="${claimsSummary != null ? claimsSummary.totalPaidMinor : 0}">0</div>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Clinical Coding Workbench (ICD-10/11 · CPT · DRG)</h2></div>
+                        <div th:if="${#lists.isEmpty(codingRecords)}" class="empty-state">
+                            No clinical coding assignments created yet. Assign ICD/CPT codes on the right; every coding batch requires independent clinician review before claim submission.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(codingRecords)}">
+                            <thead>
+                            <tr><th>System · Primary ICD</th><th>CPT / DRG</th><th>Review Status</th><th>Action</th></tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="c : ${codingRecords}">
+                                <td class="mono" th:text="${c.codingSystem + ' · ' + c.primaryIcdCode}">ICD10 · J18.9</td>
+                                <td class="mono" th:text="${(c.cptProcedureCodes != null ? c.cptProcedureCodes : '-') + ' / ' + (c.drgCode != null ? c.drgCode : '-')}">99223 / DRG-194</td>
+                                <td class="state-text" th:classappend="${c.reviewStatus == 'PENDING_CLINICAL_REVIEW'} ? ' state-warn' : ' state-ok'" th:text="${c.reviewStatus}">PENDING</td>
+                                <td>
+                                    <form th:if="${c.reviewStatus == 'PENDING_CLINICAL_REVIEW'}" th:action="@{/ui/revenue-claims/coding/{id}/approve(id=${c.id})}" method="post">
+                                        <button type="submit" class="btn btn-primary btn-sm">Approve Coding</button>
+                                    </form>
+                                    <span class="mono" th:if="${c.reviewStatus != 'PENDING_CLINICAL_REVIEW'}" th:text="${c.reviewedBy}">dr.reviewer</span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Payer Claims (X12 837 / FHIR) &amp; X12 835 ERA Remittance</h2></div>
+                        <div th:if="${#lists.isEmpty(claims)}" class="empty-state">
+                            No payer claims submitted yet.
+                        </div>
+                        <table class="data-table" th:if="${!#lists.isEmpty(claims)}">
+                            <thead>
+                            <tr><th>Claim #</th><th>Payer · Format</th><th class="num">Billed / Paid</th><th>Status</th><th>Post ERA</th></tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="cl : ${claims}">
+                                <td class="mono" th:text="${cl.claimControlNumber}">CLM-1001</td>
+                                <td class="mono" th:text="${cl.payerCode + ' · ' + cl.claimFormat}">CNPS · X12_837P</td>
+                                <td class="mono num" th:text="${cl.billedAmountMinor + ' / ' + cl.paidAmountMinor}">75000 / 0</td>
+                                <td class="state-text"
+                                    th:classappend="${cl.claimStatus == 'PAID'} ? ' state-ok' : (${cl.claimStatus == 'DENIED'} ? ' state-crit' : ' state-warn')"
+                                    th:text="${cl.claimStatus}">SUBMITTED</td>
+                                <td>
+                                    <form th:if="${cl.claimStatus == 'SUBMITTED' or cl.claimStatus == 'APPEALED'}"
+                                          th:action="@{/ui/revenue-claims/claims/{id}/era(id=${cl.id})}" method="post" class="inline-actions">
+                                        <input type="hidden" name="eraTraceNumber" th:value="${'ERA-' + cl.claimControlNumber}"/>
+                                        <input type="hidden" name="allowedAmountMinor" th:value="${cl.billedAmountMinor}"/>
+                                        <input type="hidden" name="paidAmountMinor" th:value="${cl.billedAmountMinor}"/>
+                                        <button type="submit" class="btn btn-secondary btn-sm">Post Paid ERA</button>
+                                    </form>
+                                    <span class="mono" th:if="${cl.claimStatus != 'SUBMITTED' and cl.claimStatus != 'APPEALED'}" th:text="${cl.eraTraceNumber}">ERA-1</span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Upsert Facility / Payer Tariff</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/revenue-claims/tariffs}" method="post" class="form-grid">
+                                <div class="form-field"><label>Payer Code</label><input type="text" name="payerCode" value="SELF_PAY" required/></div>
+                                <div class="form-field"><label>Service Code</label><input type="text" name="serviceCode" required placeholder="99213"/></div>
+                                <div class="form-field full"><label>Service Name</label><input type="text" name="serviceName" required placeholder="Outpatient Consultation"/></div>
+                                <div class="form-field"><label>Unit Price (Minor)</label><input type="number" name="unitPriceMinor" value="15000" required/></div>
+                                <div class="form-field"><label>Currency</label><input type="text" name="currencyCode" value="XAF"/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-secondary">Save Tariff</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Assign Clinical Coding (ICD-10 / CPT / DRG)</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/revenue-claims/coding}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Patient</label>
+                                    <select name="patientId" required>
+                                        <option th:each="p : ${patients}" th:value="${p.id}" th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Primary ICD-10</label><input type="text" name="primaryIcdCode" required placeholder="J18.9"/></div>
+                                <div class="form-field"><label>CPT Codes</label><input type="text" name="cptProcedureCodes" placeholder="99223"/></div>
+                                <div class="form-field"><label>DRG Code</label><input type="text" name="drgCode" placeholder="DRG-194"/></div>
+                                <div class="form-field"><label>Est. Reimbursement</label><input type="number" name="estimatedReimbursementMinor" value="75000"/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Create Coding Batch</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Submit Payer Claim (X12 837 / FHIR)</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/revenue-claims/claims}" method="post" class="form-grid">
+                                <div class="form-field full">
+                                    <label>Approved Coding Assignment</label>
+                                    <select name="codingRecordId" required>
+                                        <option th:each="c : ${codingRecords}" th:value="${c.id}" th:text="${c.primaryIcdCode + ' (' + c.reviewStatus + ')'}"></option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Claim Control #</label><input type="text" name="claimControlNumber" required placeholder="CLM-2026-001"/></div>
+                                <div class="form-field"><label>Payer Code</label><input type="text" name="payerCode" required placeholder="CNPS"/></div>
+                                <div class="form-field">
+                                    <label>Format</label>
+                                    <select name="claimFormat">
+                                        <option value="X12_837P">X12_837P</option>
+                                        <option value="X12_837I">X12_837I</option>
+                                        <option value="FHIR_CLAIM">FHIR_CLAIM</option>
+                                    </select>
+                                </div>
+                                <div class="form-field"><label>Billed Amount (Minor)</label><input type="number" name="billedAmountMinor" value="75000" required/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Submit Payer Claim</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

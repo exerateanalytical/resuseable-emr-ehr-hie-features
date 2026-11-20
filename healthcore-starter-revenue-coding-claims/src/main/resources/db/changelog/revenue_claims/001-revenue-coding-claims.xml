@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="revenue-coding-claims-001-tables" author="opes-healthcore">
+        <createTable tableName="hc_rev_facility_tariffs">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="payer_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="service_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="service_name" type="varchar(220)"><constraints nullable="false"/></column>
+            <column name="service_category" type="varchar(48)"><constraints nullable="false"/></column>
+            <column name="unit_price_minor" type="bigint"><constraints nullable="false"/></column>
+            <column name="currency_code" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="effective_from" type="date"><constraints nullable="false"/></column>
+            <column name="effective_to" type="date"/>
+            <column name="active" type="${bool_type}" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_rev_facility_tariffs" columnNames="facility_id,payer_code,service_code" constraintName="uq_rev_tariff_payer_service"/>
+
+        <createTable tableName="hc_rev_clinical_coding">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="coding_system" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="primary_icd_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="secondary_icd_codes" type="varchar(400)"/>
+            <column name="cpt_procedure_codes" type="varchar(400)"/>
+            <column name="drg_code" type="varchar(32)"/>
+            <column name="coder_id" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="review_status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="reviewed_by" type="varchar(120)"/>
+            <column name="reviewed_at" type="${ts_type}"/>
+            <column name="estimated_reimbursement_minor" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_rev_clinical_coding" indexName="idx_rev_coding_facility_status">
+            <column name="facility_id"/><column name="review_status"/>
+        </createIndex>
+
+        <createTable tableName="hc_rev_insurance_auth">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="payer_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="member_policy_number" type="varchar(96)"><constraints nullable="false"/></column>
+            <column name="service_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="eligibility_verified" type="${bool_type}" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="prior_auth_number" type="varchar(64)"/>
+            <column name="auth_status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="approved_units" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="valid_until" type="date"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="hc_rev_payer_claims">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="claim_control_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="patient_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="encounter_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="coding_record_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="authorization_id" type="${uuid_type}"/>
+            <column name="payer_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="claim_format" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="claim_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="currency_code" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="billed_amount_minor" type="bigint"><constraints nullable="false"/></column>
+            <column name="allowed_amount_minor" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="paid_amount_minor" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="patient_responsibility_minor" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="refund_amount_minor" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="denial_reason_code" type="varchar(64)"/>
+            <column name="era_trace_number" type="varchar(64)"/>
+            <column name="submitted_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="adjudicated_at" type="${ts_type}"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_rev_payer_claims" columnNames="facility_id,claim_control_number" constraintName="uq_rev_claim_control_num"/>
+        <createIndex tableName="hc_rev_payer_claims" indexName="idx_rev_claims_facility_status">
+            <column name="facility_id"/><column name="claim_status"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

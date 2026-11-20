@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${pageTitle})}"></head>
+<body>
+<div class="app-shell">
+    <aside th:replace="~{fragments/layout :: sidebar(${activeNav}, ${facility})}"></aside>
+    <main class="workspace-main">
+        <header th:replace="~{fragments/layout :: topbar(${pageTitle}, ${facility})}"></header>
+        <div class="content-body">
+            <div th:replace="~{fragments/layout :: flashes}"></div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Active Patient Portal Context</h2>
+                    <form th:action="@{/ui/portal}" method="get" class="inline-actions">
+                        <select name="patientId">
+                            <option th:each="p : ${patients}" th:value="${p.id}" th:selected="${p.id == selectedPatientId}"
+                                    th:text="${p.mrn + ' — ' + p.familyName + ', ' + p.givenName}"></option>
+                        </select>
+                        <button type="submit" class="btn btn-secondary btn-sm">Switch Patient</button>
+                    </form>
+                </div>
+            </section>
+
+            <div class="grid-two">
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Patient Appointments</h2></div>
+                        <div th:if="${portalAppointments == null or #lists.isEmpty(portalAppointments)}" class="empty-state">
+                            No portal-visible appointments (enroll patient portal account first if not enrolled).
+                        </div>
+                        <table class="data-table" th:if="${portalAppointments != null and !#lists.isEmpty(portalAppointments)}">
+                            <thead><tr><th>Type</th><th>Start Time</th><th>Status</th></tr></thead>
+                            <tbody>
+                            <tr th:each="a : ${portalAppointments}">
+                                <td class="mono" th:text="${a.appointmentTypeCode}">CONSULT</td>
+                                <td class="mono" th:text="${a.startTime}">2026-11-20</td>
+                                <td class="state-text state-ok" th:text="${a.status}">BOOKED</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Released Clinical Results (Final Only)</h2></div>
+                        <div th:if="${portalResults == null or #lists.isEmpty(portalResults)}" class="empty-state">
+                            No verified final results released to this patient portal yet.
+                        </div>
+                        <table class="data-table" th:if="${portalResults != null and !#lists.isEmpty(portalResults)}">
+                            <thead><tr><th>Code</th><th>Result</th><th>Value</th><th>Flag</th></tr></thead>
+                            <tbody>
+                            <tr th:each="r : ${portalResults}">
+                                <td class="mono" th:text="${r.resultCode}">2823-3</td>
+                                <td th:text="${r.resultDisplay}">Potassium</td>
+                                <td class="mono" th:text="${r.valueDisplay + ' ' + (r.unit != null ? r.unit : '')}">4.2 mmol/L</td>
+                                <td class="state-text" th:text="${r.abnormalFlag}">NORMAL</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Secure Care-Team Threads</h2></div>
+                        <div th:if="${portalThreads == null or #lists.isEmpty(portalThreads)}" class="empty-state">
+                            No patient messaging threads opened yet.
+                        </div>
+                        <table class="data-table" th:if="${portalThreads != null and !#lists.isEmpty(portalThreads)}">
+                            <thead><tr><th>Subject</th><th>Department</th><th>Status</th></tr></thead>
+                            <tbody>
+                            <tr th:each="t : ${portalThreads}">
+                                <td th:text="${t.subject}">Medication Question</td>
+                                <td class="mono" th:text="${t.careTeamDepartment}">OUTPATIENT</td>
+                                <td class="state-text state-ok" th:text="${t.status}">OPEN</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div>
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Enroll Portal Account</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/portal/enroll}" method="post" class="form-grid">
+                                <input type="hidden" name="patientId" th:value="${selectedPatientId}"/>
+                                <div class="form-field"><label>Locale</label><input type="text" name="preferredLocale" value="en"/></div>
+                                <div class="form-field"><label>Phone</label><input type="text" name="contactPhone" placeholder="+237600000000"/></div>
+                                <div class="form-field full"><label>Email</label><input type="email" name="contactEmail" placeholder="patient@example.org"/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Enroll Portal Account</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Grant Caregiver / Proxy Access</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/portal/proxy}" method="post" class="form-grid">
+                                <input type="hidden" name="patientId" th:value="${selectedPatientId}"/>
+                                <div class="form-field"><label>Proxy Subject ID</label><input type="text" name="proxySubject" required placeholder="caregiver.subject"/></div>
+                                <div class="form-field"><label>Relationship</label><input type="text" name="relationship" required placeholder="PARENT / SPOUSE"/></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-secondary">Grant Scoped Proxy</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header"><h2 class="panel-title">Send Care-Team Message</h2></div>
+                        <div class="panel-body">
+                            <form th:action="@{/ui/portal/threads}" method="post" class="form-grid">
+                                <input type="hidden" name="patientId" th:value="${selectedPatientId}"/>
+                                <div class="form-field"><label>Subject</label><input type="text" name="subject" required placeholder="Follow-up question"/></div>
+                                <div class="form-field"><label>Department</label><input type="text" name="careTeamDepartment" value="OUTPATIENT"/></div>
+                                <div class="form-field full"><label>Message</label><textarea name="initialMessage" required placeholder="Write message to care team"></textarea></div>
+                                <div class="form-field full"><button type="submit" class="btn btn-primary">Open Secure Thread</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>

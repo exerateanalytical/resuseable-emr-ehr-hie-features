@@ -20,13 +20,30 @@
         <li><a class="nav-link" th:classappend="${activeNav == 'overview'} ? ' active'" th:href="@{/ui/overview}">Hospital Overview</a></li>
         <li><a class="nav-link" th:classappend="${activeNav == 'patients'} ? ' active'" th:href="@{/ui/patients}">Patients &amp; MPI</a></li>
         <li><a class="nav-link" th:classappend="${activeNav == 'scheduling'} ? ' active'" th:href="@{/ui/scheduling}">Appointments &amp; Queue</a></li>
-        <li><a class="nav-link" th:classappend="${activeNav == 'orders'} ? ' active'" th:href="@{/ui/orders}">Unified Orders &amp; Labs</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'orders'} ? ' active'" th:href="@{/ui/orders}">Unified Orders</a></li>
         <li><a class="nav-link" th:classappend="${activeNav == 'pharmacy'} ? ' active'" th:href="@{/ui/pharmacy}">Pharmacy &amp; FEFO Stock</a></li>
-        <li><a class="nav-link" th:classappend="${activeNav == 'billing'} ? ' active'" th:href="@{/ui/billing}">Billing &amp; Ledger</a></li>
     </ul>
 
-    <div class="nav-section">Governance &amp; Trust</div>
+    <div class="nav-section">Specialty Care</div>
     <ul class="nav-list">
+        <li><a class="nav-link" th:classappend="${activeNav == 'emergency-nursing'} ? ' active'" th:href="@{/ui/emergency-nursing}">ED Triage &amp; Nursing</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'laboratory'} ? ' active'" th:href="@{/ui/laboratory}">Laboratory &amp; Panic QC</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'radiology'} ? ' active'" th:href="@{/ui/radiology}">Radiology &amp; PACS RIS</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'blood-ot'} ? ' active'" th:href="@{/ui/blood-ot}">Blood Bank &amp; OT / PACU</a></li>
+    </ul>
+
+    <div class="nav-section">Revenue &amp; Patient Portal</div>
+    <ul class="nav-list">
+        <li><a class="nav-link" th:classappend="${activeNav == 'billing'} ? ' active'" th:href="@{/ui/billing}">Billing &amp; Ledger</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'revenue-claims'} ? ' active'" th:href="@{/ui/revenue-claims}">Coding &amp; Payer Claims</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'portal'} ? ' active'" th:href="@{/ui/portal}">Patient Portal</a></li>
+    </ul>
+
+    <div class="nav-section">Governance, AI &amp; Ops</div>
+    <ul class="nav-list">
+        <li><a class="nav-link" th:classappend="${activeNav == 'integration-ops'} ? ' active'" th:href="@{/ui/integration-ops}">Integration Ops &amp; DLQ</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'clinical-ai'} ? ' active'" th:href="@{/ui/clinical-ai}">Governed Clinical AI</a></li>
+        <li><a class="nav-link" th:classappend="${activeNav == 'analytics'} ? ' active'" th:href="@{/ui/analytics}">Analytics &amp; Quality</a></li>
         <li><a class="nav-link" th:classappend="${activeNav == 'governance'} ? ' active'" th:href="@{/ui/governance}">Tenant &amp; Feature Flags</a></li>
         <li><a class="nav-link" th:classappend="${activeNav == 'audit'} ? ' active'" th:href="@{/ui/audit}">Audit Log Explorer</a></li>
         <li><a class="nav-link" th:href="@{/swagger-ui.html}" target="_blank">OpenAPI / FHIR Docs</a></li>
@@ -39,8 +56,7 @@
         <span th:text="${pageTitle}">Overview</span>
     </div>
     <div class="topbar-meta">
-        <span class="mono" th:if="${facility != null}" th:text="${facility.countryIso + ' · ' + facility.currencyCode + ' · ' + facility.timezoneId}">CM · XAF</span>
-        <span class="status-tag status-ok" th:if="${facility != null}" th:text="${facility.lifecycleStatus}">ACTIVE</span>
+        <span class="mono" th:if="${facility != null}" th:text="${facility.countryIso + ' · ' + facility.currencyCode + ' · ' + facility.timezoneId + ' · ' + facility.lifecycleStatus}">CM · XAF · ACTIVE</span>
     </div>
 </header>
 
