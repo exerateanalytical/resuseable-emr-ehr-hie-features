@@ -15,6 +15,24 @@ import static org.mockito.Mockito.mock;
 class LisDiagnosticsStarterTest {
 
     @Test
+    void recordsCriticalResultClinicianAcknowledgmentInPersistedField() {
+        DiagnosticReportRepository repo = mock(DiagnosticReportRepository.class);
+        com.opeshealth.healthcore.pharmacylis.domain.PharmacyLisEntities.DiagnosticReportEntity report =
+                new com.opeshealth.healthcore.pharmacylis.domain.PharmacyLisEntities.DiagnosticReportEntity();
+        java.util.UUID reportId = report.getId();
+        org.mockito.Mockito.when(repo.findById(reportId)).thenReturn(java.util.Optional.of(report));
+        org.mockito.Mockito.when(repo.save(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        LisWestgardAndCriticalResultService service = new LisWestgardAndCriticalResultService(
+                mock(PharmacyLisService.class), mock(LabSpecimenRepository.class), repo);
+        service.recordCriticalPanicReadBack(new CriticalPanicReadBackRequest(
+                reportId, "clinician-A", "scientist-B"));
+        assertEquals("clinician-A", report.getPanicAcknowledgedBy());
+        org.mockito.Mockito.verify(repo).save(report);
+    }
+
+    @Test
     void rejectsRunViolatingWestgard13sRuleAndAcceptsInControlRun() {
         LisWestgardAndCriticalResultService service = new LisWestgardAndCriticalResultService(
                 mock(PharmacyLisService.class),

@@ -232,7 +232,7 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Install Android SDK and accept required licenses
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android 35 build platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
