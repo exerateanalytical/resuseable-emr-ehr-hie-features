@@ -69,6 +69,10 @@ class SchedulingServiceTest {
         AppointmentWaitlistEntity wait = new AppointmentWaitlistEntity();
         wait.setFacilityId(facId);
         wait.setCalendarId(cal.getId());
+        wait.setPatientId(UUID.randomUUID());
+        wait.setAppointmentTypeCode("CONSULT");
+        wait.setPreferredFrom(start.minus(30, ChronoUnit.MINUTES));
+        wait.setPreferredUntil(end.plus(30, ChronoUnit.MINUTES));
         when(waitlistRepo.findByFacilityIdAndCalendarIdAndStatusOrderByPriorityRankAscCreatedAtAsc(
                 facId, cal.getId(), WaitlistStatus.WAITING)).thenReturn(List.of(wait));
         CancellationOutcome outcome = service.cancelAppointment(facId, appt.getId(), "Patient rescheduled", "clerk.1");
