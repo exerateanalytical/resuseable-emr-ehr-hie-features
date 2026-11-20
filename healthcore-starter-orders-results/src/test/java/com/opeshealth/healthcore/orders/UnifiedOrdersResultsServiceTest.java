@@ -67,7 +67,7 @@ class UnifiedOrdersResultsServiceTest {
 
         ClinicalResultEntity acked = service.acknowledgeCriticalResult(facId, prelim.getId(), "dr.attending",
                 "Verbal read-back completed and calcium gluconate ordered");
-        assertTrue(acked.isCriticalAcknowledged());
+        assertNotNull(acked.getCriticalAckAt());
         assertNotNull(service.toFhirServiceRequest(order));
         assertNotNull(service.toFhirDiagnosticReport(acked));
     }

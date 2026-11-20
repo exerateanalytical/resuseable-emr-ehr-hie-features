@@ -42,9 +42,9 @@ class SchedulingServiceTest {
         UUID patientId = UUID.randomUUID();
 
         ResourceCalendarEntity cal = service.createCalendar(facId, new CreateCalendarRequest(
-                "OPD", ResourceKind.PRACTITIONER, "DR-01", "Dr. Mballa Clinic", 20, 1));
+                "OPD", ResourceKind.PROVIDER, "DR-01", "Dr. Mballa Clinic", 20, 1));
         when(calendarRepo.findByIdAndFacilityId(cal.getId(), facId)).thenReturn(Optional.of(cal));
-        when(apptRepo.findOverlappingActive(eq(facId), eq(cal.getId()), any(), any())).thenReturn(List.of());
+        when(apptRepo.findOverlappingBookings(eq(facId), eq(cal.getId()), anyCollection(), any(), any())).thenReturn(List.of());
 
         Instant start = Instant.now().plus(2, ChronoUnit.HOURS);
         Instant end = start.plus(20, ChronoUnit.MINUTES);
@@ -54,7 +54,7 @@ class SchedulingServiceTest {
         assertEquals(AppointmentStatus.BOOKED, appt.getStatus());
 
         // Double booking conflict rejected when maxConcurrentBookings=1
-        when(apptRepo.findOverlappingActive(eq(facId), eq(cal.getId()), any(), any())).thenReturn(List.of(appt));
+        when(apptRepo.findOverlappingBookings(eq(facId), eq(cal.getId()), anyCollection(), any(), any())).thenReturn(List.of(appt));
         assertThrows(IllegalStateException.class, () -> service.bookAppointment(facId,
                 new BookAppointmentRequest(cal.getId(), null, UUID.randomUUID(), "CONSULT", start, end, "Overlap"),
                 "clerk.1"));

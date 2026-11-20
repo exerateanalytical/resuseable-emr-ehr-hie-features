@@ -342,8 +342,8 @@ public class EmergencyNursingService {
 
     private void audit(UUID facilityId, UUID patientId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, patientId, actor != null ? actor : "NURSING_SYSTEM", action,
-                    "EmergencyNursing", resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null ? actor : "NURSING_SYSTEM",
+                    "NURSING", action, "EmergencyNursing", resourceId, patientId, "SUCCESS", detail, "internal");
         }
     }
 
