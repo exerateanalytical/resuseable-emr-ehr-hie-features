@@ -873,7 +873,9 @@ public class HieInteropService {
     /** Parses ASTM E1394 benchtop lab analyzer result frame ({@code R|seq|^^^LOINC|val|unit}). */
     public List<Map<String, String>> parseAstmE1394(String astmPayload) {
         List<Map<String, String>> results = new ArrayList<>();
-        for (String line : astmPayload.split("\\r?\\n")) {
+        Objects.requireNonNull(astmPayload, "ASTM analyzer frame is required");
+        // ASTM E1394 records are CR-delimited; tolerate CRLF and LF transports too.
+        for (String line : astmPayload.split("\\r\\n|\\r|\\n")) {
             if (line.startsWith("R|")) {
                 String[] parts = line.split("\\|");
                 String code = parts.length > 2 ? parts[2].replace("^", "") : "";
