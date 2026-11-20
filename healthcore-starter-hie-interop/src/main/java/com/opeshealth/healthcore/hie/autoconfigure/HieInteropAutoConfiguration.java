@@ -38,7 +38,7 @@ import java.util.List;
 @AutoConfiguration
 @Import(HieInteropSecurityConfiguration.class)
 @EntityScan(basePackageClasses = HieEntities.class)
-@EnableJpaRepositories(basePackageClasses = HieInteropService.class)
+@EnableJpaRepositories(basePackageClasses = HieInteropService.class, considerNestedRepositories = true)
 public class HieInteropAutoConfiguration {
 
     private static final String FHIR_HIE_MARKER = "com.opeshealth.healthcore.starters.FhirHieStarter";

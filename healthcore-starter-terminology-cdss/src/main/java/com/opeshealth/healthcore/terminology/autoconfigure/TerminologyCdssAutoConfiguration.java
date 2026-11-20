@@ -23,7 +23,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = TerminologyEntities.class)
-@EnableJpaRepositories(basePackageClasses = TerminologyService.class)
+@EnableJpaRepositories(basePackageClasses = TerminologyService.class, considerNestedRepositories = true)
 public class TerminologyCdssAutoConfiguration {
 
     @Bean

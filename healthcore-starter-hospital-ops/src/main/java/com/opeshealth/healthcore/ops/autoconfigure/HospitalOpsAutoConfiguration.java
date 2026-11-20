@@ -33,7 +33,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = HospitalOpsEntities.class)
-@EnableJpaRepositories(basePackageClasses = HospitalOpsService.class)
+@EnableJpaRepositories(basePackageClasses = HospitalOpsService.class, considerNestedRepositories = true)
 @Import(BiomedicalColdChainMqttClient.class)
 public class HospitalOpsAutoConfiguration {
 

@@ -32,7 +32,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = PublicHealthEntities.class)
-@EnableJpaRepositories(basePackageClasses = {PublicHealthService.class, Dhis2PushClient.class})
+@EnableJpaRepositories(basePackageClasses = {PublicHealthService.class, Dhis2PushClient.class}, considerNestedRepositories = true)
 public class PublicHealthAutoConfiguration {
 
     private static final String CHW_MARKER = "com.opeshealth.healthcore.starters.ChwHomeCareStarter";

@@ -29,7 +29,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = PharmacyLisEntities.class)
-@EnableJpaRepositories(basePackageClasses = PharmacyLisService.class)
+@EnableJpaRepositories(basePackageClasses = PharmacyLisService.class, considerNestedRepositories = true)
 public class PharmacyLisAutoConfiguration {
 
     private static final String PHARMACY_MARKER = "com.opeshealth.healthcore.starters.PharmacyInventoryStarter";

@@ -25,7 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = MpiEntities.class)
-@EnableJpaRepositories(basePackageClasses = MpiCommandService.class)
+@EnableJpaRepositories(basePackageClasses = MpiCommandService.class, considerNestedRepositories = true)
 public class MpiAutoConfiguration {
 
     @Bean

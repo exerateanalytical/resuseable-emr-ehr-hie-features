@@ -23,7 +23,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = UhcBillingEntities.class)
-@EnableJpaRepositories(basePackageClasses = UhcBillingService.class)
+@EnableJpaRepositories(basePackageClasses = UhcBillingService.class, considerNestedRepositories = true)
 public class UhcBillingAutoConfiguration {
 
     @Bean @ConditionalOnMissingBean public MtnMomoAdapter mtnMomoAdapter() { return new MtnMomoAdapter(); }

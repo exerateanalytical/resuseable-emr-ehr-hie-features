@@ -335,15 +335,16 @@ public class EmrClinicalWorkflowService {
             }
             augmented.add(new CdsHooksEngine.CdsCard(
                     "INCOMPLETE_SAFETY_CONTEXT",
-                    "warning",
                     "Missing renal/weight context for medication safety check",
                     "Order placed without "
                             + (resolvedWeight == null ? "patient weight" : "")
                             + (resolvedWeight == null && request.patientEgfr() == null ? " and " : "")
                             + (request.patientEgfr() == null ? "recent eGFR" : "")
                             + "; verify renal and weight-based dosing manually.",
-                    false,
-                    List.of("Verify renal function (eGFR) and current weight before administration")
+                    "warning",
+                    "Opes HealthCore EMR Safety Context",
+                    List.of("Verify renal function (eGFR) and current weight before administration"),
+                    false
             ));
             return Map.of("order", result.get("order"), "cdssCards", List.copyOf(augmented));
         }
@@ -661,10 +662,19 @@ public class EmrClinicalWorkflowService {
     }
 
     private void enforceActivePractitionerLicense(UUID facilityId, String practitionerId) {
-        WorkforceCredentialSpi spi = workforceCredentialProvider.getIfAvailable();
-        if (spi != null && facilityId != null && practitionerId != null
-                && !spi.isPractitionerActive(facilityId, practitionerId)) {
-            throw new SecurityException("Clinical action blocked: Practitioner credential/license is expired or suspended for " + practitionerId);
+        WorkforceCredentialSpi spi = workforceCredentialProvider != null
+                ? workforceCredentialProvider.getIfAvailable()
+                : null;
+        if (spi == null) {
+            return;
+        }
+        if (facilityId == null || practitionerId == null || practitionerId.isBlank()) {
+            throw new SecurityException(
+                    "Clinical action blocked: Practitioner ID and facility tenant are required for license verification.");
+        }
+        if (!spi.isPractitionerActive(facilityId, practitionerId)) {
+            throw new SecurityException(
+                    "Clinical action blocked: Practitioner credential/license is expired or suspended for " + practitionerId);
         }
     }
 

@@ -27,7 +27,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = EmrEntities.class)
-@EnableJpaRepositories(basePackageClasses = EmrClinicalWorkflowService.class)
+@EnableJpaRepositories(basePackageClasses = EmrClinicalWorkflowService.class, considerNestedRepositories = true)
 public class EmrClinicalAutoConfiguration {
 
     @Bean @ConditionalOnMissingBean public SpecialtyPackSpi.DentalPack dentalPack() { return new SpecialtyPackSpi.DentalPack(); }

@@ -50,7 +50,7 @@ import java.util.Optional;
 @EnableCaching
 @EnableScheduling
 @EntityScan(basePackageClasses = TransactionalOutboxEntity.class)
-@EnableJpaRepositories(basePackageClasses = OutboxRelayService.class)
+@EnableJpaRepositories(basePackageClasses = OutboxRelayService.class, considerNestedRepositories = true)
 @Import({
         TwoTierAndKafkaExtensions.TwoTierCacheConfiguration.class,
         TwoTierAndKafkaExtensions.KafkaEventPublisherConfiguration.class,

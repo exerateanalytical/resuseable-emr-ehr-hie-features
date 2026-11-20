@@ -51,7 +51,7 @@ import java.util.*;
 @EnableAspectJAutoProxy
 @Import(SmartOnFhirDiscoveryController.class)
 @EntityScan(basePackageClasses = {AuditChainHeadEntity.class, AuditLogEntity.class, ConsentPolicyEntity.class})
-@EnableJpaRepositories(basePackageClasses = {AuditRepositories.class, ConsentAndAbacService.class})
+@EnableJpaRepositories(basePackageClasses = {AuditRepositories.class, ConsentAndAbacService.class}, considerNestedRepositories = true)
 public class OidcAndSmartSecurityAutoConfiguration {
 
     @Bean

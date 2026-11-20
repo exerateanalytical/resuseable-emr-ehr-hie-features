@@ -23,7 +23,7 @@ import java.util.List;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = TemplatesAndOnboardingEntities.class)
-@EnableJpaRepositories(basePackageClasses = TemplatesAndOperationsService.class)
+@EnableJpaRepositories(basePackageClasses = TemplatesAndOperationsService.class, considerNestedRepositories = true)
 public class TemplatesAndDashboardsAutoConfiguration {
 
     @Bean @ConditionalOnMissingBean public PostgresBackupProvider postgresBackupProvider() { return new PostgresBackupProvider(); }

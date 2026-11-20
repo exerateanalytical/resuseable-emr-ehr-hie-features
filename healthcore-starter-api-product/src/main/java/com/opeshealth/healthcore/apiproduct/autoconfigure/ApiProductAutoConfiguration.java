@@ -19,7 +19,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @AutoConfiguration
 @EntityScan(basePackageClasses = ApiProductService.class)
-@EnableJpaRepositories(basePackageClasses = ApiProductService.class)
+@EnableJpaRepositories(basePackageClasses = ApiProductService.class, considerNestedRepositories = true)
 public class ApiProductAutoConfiguration {
 
     @Bean

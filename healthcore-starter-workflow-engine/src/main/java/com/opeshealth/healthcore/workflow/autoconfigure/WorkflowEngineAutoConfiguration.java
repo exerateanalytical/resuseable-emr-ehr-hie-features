@@ -30,7 +30,7 @@ import java.util.List;
  */
 @AutoConfiguration
 @EntityScan(basePackageClasses = WorkflowEntities.class)
-@EnableJpaRepositories(basePackageClasses = WorkflowOrchestrationService.class)
+@EnableJpaRepositories(basePackageClasses = WorkflowOrchestrationService.class, considerNestedRepositories = true)
 public class WorkflowEngineAutoConfiguration {
 
     @Bean

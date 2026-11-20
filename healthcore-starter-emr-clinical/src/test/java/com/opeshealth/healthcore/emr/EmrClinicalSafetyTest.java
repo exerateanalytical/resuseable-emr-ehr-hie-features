@@ -1,0 +1,269 @@
+/*
+ * =============================================================================
+ * Opes HealthCore SDK — EMR Clinical Safety (CLIN-001, CLIN-002, CLIN-003) Tests
+ * Author / Architect : Jude Nshome — Opes Health Systems
+ * =============================================================================
+ */
+package com.opeshealth.healthcore.emr;
+
+import com.opeshealth.healthcore.emr.domain.EmrEntities.*;
+import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService;
+import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService.*;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
+import com.opeshealth.healthcore.persistence.outbox.TransactionalOutboxEntity;
+import com.opeshealth.healthcore.security.rbac.WorkforceCredentialSpi;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+/**
+ * Clinical patient-safety tests for {@link EmrClinicalWorkflowService} verifying:
+ * <ul>
+ *   <li>CLIN-001: Practitioner credential verification fails closed on expired/suspended/blank clinician IDs</li>
+ *   <li>CLIN-002: CPOE medication ordering requires allergy verification (or NKDA/override) and enforces critical CDSS overrides</li>
+ *   <li>CLIN-003: 5-Rights Barcode eMAR blocks wristband, drug, dose, route, and inactive-order mismatches</li>
+ *   <li>Deterministic RCP NEWS2 Scale 1 scoring thresholds</li>
+ * </ul>
+ */
+class EmrClinicalSafetyTest {
+
+    private AppointmentRepository appointmentRepo;
+    private EncounterRepository encounterRepo;
+    private TriageRepository triageRepo;
+    private VitalSignsRepository vitalsRepo;
+    private ClinicalNoteRepository noteRepo;
+    private ClinicalOrderRepository orderRepo;
+    private WardBedRepository bedRepo;
+    private AdmissionRepository admissionRepo;
+    private EmarRepository emarRepo;
+    private CarePlanRepository carePlanRepo;
+    private SpecialtyRecordRepository specialtyRepo;
+    private FluidBalanceRepository fluidRepo;
+    private ShiftHandoverRepository handoverRepo;
+    private MedReconciliationRepository medRecRepo;
+    private ClinicalReferralRepository referralRepo;
+    private CdsHooksEngine cdsHooksEngine;
+    private OutboxRelayService.OutboxRepository outboxRepo;
+    private WorkforceCredentialSpi workforceSpi;
+    private ObjectProvider<WorkforceCredentialSpi> workforceProvider;
+    private EmrClinicalWorkflowService service;
+    private UUID facilityId;
+
+    @SuppressWarnings("unchecked")
+    @BeforeEach
+    void setUp() {
+        appointmentRepo = mock(AppointmentRepository.class);
+        encounterRepo = mock(EncounterRepository.class);
+        triageRepo = mock(TriageRepository.class);
+        vitalsRepo = mock(VitalSignsRepository.class);
+        noteRepo = mock(ClinicalNoteRepository.class);
+        orderRepo = mock(ClinicalOrderRepository.class);
+        bedRepo = mock(WardBedRepository.class);
+        admissionRepo = mock(AdmissionRepository.class);
+        emarRepo = mock(EmarRepository.class);
+        carePlanRepo = mock(CarePlanRepository.class);
+        specialtyRepo = mock(SpecialtyRecordRepository.class);
+        fluidRepo = mock(FluidBalanceRepository.class);
+        handoverRepo = mock(ShiftHandoverRepository.class);
+        medRecRepo = mock(MedReconciliationRepository.class);
+        referralRepo = mock(ClinicalReferralRepository.class);
+        cdsHooksEngine = mock(CdsHooksEngine.class);
+        outboxRepo = mock(OutboxRelayService.OutboxRepository.class);
+        workforceSpi = mock(WorkforceCredentialSpi.class);
+        workforceProvider = mock(ObjectProvider.class);
+        when(workforceProvider.getIfAvailable()).thenReturn(workforceSpi);
+
+        service = new EmrClinicalWorkflowService(
+                appointmentRepo, encounterRepo, triageRepo, vitalsRepo, noteRepo, orderRepo,
+                bedRepo, admissionRepo, emarRepo, carePlanRepo, specialtyRepo, fluidRepo,
+                handoverRepo, medRecRepo, referralRepo, cdsHooksEngine, outboxRepo,
+                workforceProvider, List.of());
+        facilityId = UUID.randomUUID();
+        FacilityContext.setFacilityId(facilityId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        FacilityContext.clear();
+    }
+
+    @Test
+    void clin001BlocksOrderWhenPractitionerLicenseExpiredOrBlank() {
+        when(workforceSpi.isPractitionerActive(facilityId, "dr-expired")).thenReturn(false);
+
+        ClinicalOrderEntity expiredOrder = buildMedicationOrder("RX-100", "500 mg PO", "dr-expired");
+        assertThrows(SecurityException.class, () ->
+                service.placeOrderWithCdss(expiredOrder, List.of(), List.of(), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+
+        ClinicalOrderEntity blankAuthorOrder = buildMedicationOrder("RX-100", "500 mg PO", "   ");
+        assertThrows(SecurityException.class, () ->
+                service.placeOrderWithCdss(blankAuthorOrder, List.of(), List.of(), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+    }
+
+    @Test
+    void clin002BlocksMedicationOrderWithoutAllergyContextOrNkdaVerification() {
+        ClinicalOrderEntity order = buildMedicationOrder("723", "500 mg PO TID", "dr-active");
+        CpoeOrderRequest missingAllergyReq = new CpoeOrderRequest(
+                order, List.of(), List.of(), BigDecimal.valueOf(72), BigDecimal.valueOf(85), false);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.placeOrderWithLoadedPatientContext(missingAllergyReq));
+        assertTrue(ex.getMessage().contains("MISSING_PATIENT_SAFETY_CONTEXT"));
+        verify(orderRepo, never()).save(any());
+    }
+
+    @Test
+    void clin002EmitsIncompleteContextWarningCardWhenWeightOrEgfrMissingButNkdaVerified() {
+        when(workforceSpi.isPractitionerActive(facilityId, "dr-active")).thenReturn(true);
+        when(orderRepo.findByFacilityIdAndPatientIdAndOrderCategoryAndStatus(
+                eq(facilityId), any(UUID.class), eq("MEDICATION"), eq("ACTIVE"))).thenReturn(List.of());
+        when(vitalsRepo.findByPatientIdOrderByRecordedAtDesc(any(UUID.class))).thenReturn(List.of());
+        when(cdsHooksEngine.evaluateOrderSafety(any())).thenReturn(List.of());
+        when(orderRepo.save(any(ClinicalOrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClinicalOrderEntity order = buildMedicationOrder("723", "500 mg PO TID", "dr-active");
+        CpoeOrderRequest nkdaReq = new CpoeOrderRequest(order, List.of(), List.of(), null, null, true);
+
+        Map<String, Object> result = service.placeOrderWithLoadedPatientContext(nkdaReq);
+
+        @SuppressWarnings("unchecked")
+        List<CdsHooksEngine.CdsCard> cards = (List<CdsHooksEngine.CdsCard>) result.get("cdssCards");
+        assertEquals(1, cards.size());
+        assertEquals("INCOMPLETE_SAFETY_CONTEXT", cards.getFirst().uuid());
+        assertEquals("warning", cards.getFirst().indicator());
+        assertFalse(cards.getFirst().overrideRequired());
+        verify(outboxRepo).save(any(TransactionalOutboxEntity.class));
+    }
+
+    @Test
+    void clin002RequiresClinicalOverrideReasonForCriticalCdssBlocker() {
+        when(workforceSpi.isPractitionerActive(facilityId, "dr-active")).thenReturn(true);
+        CdsHooksEngine.CdsCard critical = new CdsHooksEngine.CdsCard(
+                UUID.randomUUID().toString(),
+                "Drug-Allergy Cross-Reactivity Alert",
+                "Penicillin allergy contraindicates Amoxicillin",
+                "critical",
+                "Opes HealthCore CDSS",
+                List.of("Switch to Macrolide"),
+                true);
+        when(cdsHooksEngine.evaluateOrderSafety(any())).thenReturn(List.of(critical));
+        when(orderRepo.save(any(ClinicalOrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClinicalOrderEntity unoverridden = buildMedicationOrder("723", "500 mg PO", "dr-active");
+        assertThrows(IllegalStateException.class, () ->
+                service.placeOrderWithCdss(unoverridden, List.of(), List.of("PENICILLIN"), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+
+        unoverridden.setCdssOverrideReason("Desensitization protocol approved by ID attending");
+        Map<String, Object> allowed = service.placeOrderWithCdss(
+                unoverridden, List.of(), List.of("PENICILLIN"), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90));
+        assertNotNull(allowed.get("order"));
+    }
+
+    @Test
+    void clin003FiveRightsEmarRejectsMismatchesAndAcceptsValidScan() {
+        when(workforceSpi.isPractitionerActive(facilityId, "rn-01")).thenReturn(true);
+
+        UUID patientId = UUID.randomUUID();
+        UUID admissionId = UUID.randomUUID();
+        ClinicalOrderEntity order = buildMedicationOrder("RXNORM-197361", "500 mg PO", "dr-active");
+        order.setPatientId(patientId);
+        order.setStatus("ACTIVE");
+
+        AdmissionEntity adm = new AdmissionEntity();
+        adm.setFacilityId(facilityId);
+        adm.setPatientId(patientId);
+
+        when(orderRepo.findById(order.getId())).thenReturn(Optional.of(order));
+        when(admissionRepo.findById(admissionId)).thenReturn(Optional.of(adm));
+        when(emarRepo.save(any(EmarAdministrationEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // 1. Wrong wristband (Right Patient)
+        EmarAdministrationEntity wrongPatient = buildEmar(admissionId, order.getId(), patientId,
+                "WB:" + UUID.randomUUID(), "RX:RXNORM-197361", "500 mg PO", "rn-01");
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(wrongPatient));
+
+        // 2. Wrong drug barcode (Right Drug)
+        EmarAdministrationEntity wrongDrug = buildEmar(admissionId, order.getId(), patientId,
+                "WB:" + patientId, "RX:WRONG-DRUG", "500 mg PO", "rn-01");
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(wrongDrug));
+
+        // 3. Wrong dose (Right Dose)
+        EmarAdministrationEntity wrongDose = buildEmar(admissionId, order.getId(), patientId,
+                "WB:" + patientId, "RX:RXNORM-197361", "1000 mg PO", "rn-01");
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(wrongDose));
+
+        // 4. Wrong route (Right Route)
+        EmarAdministrationEntity wrongRoute = buildEmar(admissionId, order.getId(), patientId,
+                "WB:" + patientId, "RX:RXNORM-197361", "500 mg IV", "rn-01");
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(wrongRoute));
+
+        // 5. All 5 Rights satisfied
+        EmarAdministrationEntity valid = buildEmar(admissionId, order.getId(), patientId,
+                "WB:" + patientId, "RX:RXNORM-197361", "500 mg PO", "rn-01");
+        EmarAdministrationEntity saved = service.administerMedicationFiveRights(valid);
+        assertEquals(order.getId(), saved.getOrderId());
+        verify(emarRepo).save(valid);
+    }
+
+    @Test
+    void news2ComputesNormalAndCriticalDeteriorationAccurately() {
+        VitalSignsEntity normal = new VitalSignsEntity();
+        normal.setRespRatePerMin(16);
+        normal.setSpo2Percent(98);
+        normal.setSystolicBp(120);
+        normal.setHeartRateBpm(72);
+        normal.setTempCelsius(new BigDecimal("37.0"));
+        assertEquals(0, service.computeNews2(normal, false, "A"));
+
+        VitalSignsEntity critical = new VitalSignsEntity();
+        critical.setRespRatePerMin(28);   // +3
+        critical.setSpo2Percent(89);      // +3
+        critical.setSystolicBp(85);       // +3
+        critical.setHeartRateBpm(136);    // +3
+        critical.setTempCelsius(new BigDecimal("39.5")); // +2
+        // +2 supplemental O2 + 3 confusion = 19
+        assertEquals(19, service.computeNews2(critical, true, "C"));
+    }
+
+    private ClinicalOrderEntity buildMedicationOrder(String code, String dosage, String orderedBy) {
+        ClinicalOrderEntity order = new ClinicalOrderEntity();
+        order.setFacilityId(facilityId);
+        order.setEncounterId(UUID.randomUUID());
+        order.setPatientId(UUID.randomUUID());
+        order.setOrderCategory("MEDICATION");
+        order.setCodeSystem("RxNorm");
+        order.setOrderCode(code);
+        order.setOrderDisplay("Medication " + code);
+        order.setDosageOrInstructions(dosage);
+        order.setStatus("ACTIVE");
+        order.setOrderedBy(orderedBy);
+        return order;
+    }
+
+    private EmarAdministrationEntity buildEmar(
+            UUID admissionId, UUID orderId, UUID patientId,
+            String wristband, String drugBarcode, String dose, String nurseId) {
+        EmarAdministrationEntity mar = new EmarAdministrationEntity();
+        mar.setAdmissionId(admissionId);
+        mar.setOrderId(orderId);
+        mar.setPatientId(patientId);
+        mar.setScannedPatientWristband(wristband);
+        mar.setScannedDrugBarcode(drugBarcode);
+        mar.setDoseAdministered(dose);
+        mar.setAdministeredBy(nurseId);
+        return mar;
+    }
+}
