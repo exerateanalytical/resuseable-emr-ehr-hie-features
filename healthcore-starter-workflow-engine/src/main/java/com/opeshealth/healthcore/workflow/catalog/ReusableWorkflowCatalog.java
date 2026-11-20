@@ -44,6 +44,7 @@ public final class ReusableWorkflowCatalog {
     public static final String OPD_CONSULTATION_FLOW = "OPD_CONSULTATION_FLOW";
     public static final String INPATIENT_ADT_CARE_FLOW = "INPATIENT_ADT_CARE_FLOW";
     public static final String DIAGNOSTIC_LAB_FLOW = "DIAGNOSTIC_LAB_FLOW";
+    public static final String RADIOLOGY_IMAGING_FULFILLMENT = "RADIOLOGY_IMAGING_FULFILLMENT";
     public static final String PHARMACY_DISPENSE_FLOW = "PHARMACY_DISPENSE_FLOW";
     public static final String EHR_HIE_EXCHANGE_FLOW = "EHR_HIE_EXCHANGE_FLOW";
     public static final String CLOSED_LOOP_REFERRAL_FLOW = "CLOSED_LOOP_REFERRAL_FLOW";
@@ -125,6 +126,28 @@ public final class ReusableWorkflowCatalog {
                         "SCIENTIST_VERIFIED", Set.of("FINAL_FHIR_PUBLISHED")
                 ),
                 "Standalone LIS / Hospital Lab journey enforcing barcode accession, Westgard QC gate, panic escalation, and FHIR DiagnosticReport publication"
+        ));
+
+        // Radiology / imaging order fulfillment and clinician result return.
+        m.put(RADIOLOGY_IMAGING_FULFILLMENT, new WorkflowTemplate(
+                RADIOLOGY_IMAGING_FULFILLMENT,
+                WorkflowDomainCategory.SPECIALTY,
+                "ROUTED",
+                Set.of("DELIVERED_TO_CLINICIAN_INBOX", "CANCELLED"),
+                120,
+                Map.ofEntries(
+                        Map.entry("ROUTED", Set.of("ON_FINANCIAL_HOLD", "RADIOLOGY_QUEUED", "CANCELLED")),
+                        Map.entry("ON_FINANCIAL_HOLD", Set.of("RADIOLOGY_QUEUED", "CANCELLED")),
+                        Map.entry("RADIOLOGY_QUEUED", Set.of("EXAM_IN_PROGRESS", "NO_SHOW", "CANCELLED")),
+                        Map.entry("EXAM_IN_PROGRESS", Set.of("IMAGES_ACQUIRED", "EXAM_ABORTED")),
+                        Map.entry("IMAGES_ACQUIRED", Set.of("PRELIMINARY_READ", "REPORT_SIGNED")),
+                        Map.entry("PRELIMINARY_READ", Set.of("REPORT_SIGNED", "ADDENDUM_SIGNED")),
+                        Map.entry("REPORT_SIGNED", Set.of("DELIVERED_TO_CLINICIAN_INBOX", "ADDENDUM_SIGNED")),
+                        Map.entry("ADDENDUM_SIGNED", Set.of("DELIVERED_TO_CLINICIAN_INBOX")),
+                        Map.entry("EXAM_ABORTED", Set.of("RADIOLOGY_QUEUED", "CANCELLED")),
+                        Map.entry("NO_SHOW", Set.of("RADIOLOGY_QUEUED", "CANCELLED"))
+                ),
+                "Radiology fulfillment: routing, financial clearance, acquisition, report signing and clinician delivery"
         ));
 
         // 4. Pharmacy FEFO & Controlled Substance Dispense
