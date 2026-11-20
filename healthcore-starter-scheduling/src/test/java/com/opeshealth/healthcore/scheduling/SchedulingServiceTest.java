@@ -55,7 +55,7 @@ class SchedulingServiceTest {
 
         // Double booking conflict rejected when maxConcurrentBookings=1
         when(apptRepo.findOverlappingBookings(eq(facId), eq(cal.getId()), anyCollection(), any(), any())).thenReturn(List.of(appt));
-        assertThrows(IllegalStateException.class, () -> service.bookAppointment(facId,
+        assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> service.bookAppointment(facId,
                 new BookAppointmentRequest(cal.getId(), null, UUID.randomUUID(), "CONSULT", start, end, "Overlap"),
                 "clerk.1"));
 

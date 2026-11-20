@@ -191,8 +191,8 @@ public class OfflineDeviceGovernanceService {
 
     private void audit(UUID facilityId, String actor, String action, String resourceId, String detail) {
         if (auditService != null) {
-            auditService.record(facilityId, null, actor != null ? actor : "SYNC_GOVERNANCE",
-                    action, "OfflineSyncDevice", resourceId, "SUCCESS", detail);
+            auditService.recordEvent(facilityId.toString(), actor != null ? actor : "SYNC_GOVERNANCE",
+                    "SYNC_GOVERNANCE", action, "OfflineSyncDevice", resourceId, null, "SUCCESS", detail, "internal");
         }
     }
 

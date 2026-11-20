@@ -1,6 +1,7 @@
 package com.opeshealth.healthcore.starters;
 
 import com.opeshealth.healthcore.publichealth.service.PublicHealthService;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService;
 import com.opeshealth.healthcore.publichealth.service.PublicHealthService.*;
 import com.opeshealth.healthcore.starters.ChwHomeCareStarter.*;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,14 @@ class ChwHomeCareStarterTest {
 
     @Test
     void detectsSevereAcuteMalnutritionAndFastBreathingReferral() {
-        PublicHealthService phService = mock(PublicHealthService.class);
-        when(phService.recordChwVisit(any())).thenAnswer(i -> i.getArgument(0));
+        // Execute the canonical referral-token generator rather than mocking it away.
+        ChwVisitRepository visitRepo = mock(ChwVisitRepository.class);
+        when(visitRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+        PublicHealthService phService = new PublicHealthService(
+                mock(ChwHouseholdRepository.class), visitRepo, mock(HomeCarePlanRepository.class),
+                mock(ImmunizationRepository.class), mock(SurveillanceCaseRepository.class),
+                mock(ContactTracingRepository.class), mock(CaseInvestigationRepository.class),
+                mock(ChronicCascadeRepository.class), mock(OutboxRelayService.OutboxRepository.class));
 
         ChwIccmAndHomeCareTriageService service = new ChwIccmAndHomeCareTriageService(
                 phService, mock(ChwHouseholdRepository.class), mock(ChwVisitRepository.class),

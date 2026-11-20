@@ -59,7 +59,7 @@ class TenantGovernanceServiceTest {
         FacilityFeatureFlagEntity flag = service.upsertFeatureFlag(fac.getId(), "clinical.ai", true, true, "admin.1");
         assertTrue(flag.isKillSwitch());
         when(flagRepo.findByFacilityIdAndFlagKey(fac.getId(), "clinical.ai")).thenReturn(Optional.of(flag));
-        assertFalse(service.isFeatureEnabled(fac.getId(), "clinical.ai"));
+        assertFalse(service.isFeatureEnabled(fac.getId(), "clinical.ai", false));
     }
 
     @Test

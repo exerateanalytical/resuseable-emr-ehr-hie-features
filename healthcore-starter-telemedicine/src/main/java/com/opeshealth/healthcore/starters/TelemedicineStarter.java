@@ -13,6 +13,8 @@ import com.opeshealth.healthcore.ops.autoconfigure.HospitalOpsAutoConfiguration;
 import com.opeshealth.healthcore.ops.domain.HospitalOpsEntities.TelemedicineSessionEntity;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.TelemedicineRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -92,16 +94,20 @@ public class TelemedicineStarter {
                 throw new IllegalArgumentException("patientId and practitionerId are required to provision a Telemedicine session");
             }
 
+            UUID authorizedFacility = FacilityContext.requireFacilityId();
+            if (req.facilityId() != null && !req.facilityId().equals(authorizedFacility)) {
+                throw new AccessDeniedException("Cannot provision telemedicine session for another facility");
+            }
             TelemedicineSessionEntity entity = new TelemedicineSessionEntity();
-            entity.setFacilityId(req.facilityId() != null ? req.facilityId() : new UUID(0L, 1L));
+            entity.setFacilityId(authorizedFacility);
             entity.setPatientId(req.patientId());
-            entity.setPractitionerId(req.practitionerId().trim());
+            entity.setClinicianId(req.practitionerId().trim());
 
             int bw = req.initialBandwidthKbps() > 0 ? req.initialBandwidthKbps() : 512;
             boolean lowBw = bw < 250;
-            entity.setLowBandwidth3gMode(lowBw);
+            entity.setLowBandwidthAudioMode(lowBw);
             entity.setStatus(lowBw ? "ACTIVE_3G_AUDIO_FALLBACK" : "ACTIVE_WEBRTC_VIDEO");
-            entity.setRoomToken(generateSignedRoomToken(entity.getFacilityId(), req.patientId(), req.practitionerId()));
+            entity.setSignalingRoomToken(generateSignedRoomToken(entity.getFacilityId(), req.patientId(), req.practitionerId()));
 
             return telemedicineRepository.save(entity);
         }
@@ -115,7 +121,7 @@ public class TelemedicineStarter {
         @ClinicalAudit(action = "TELEMEDICINE_ADAPT_BANDWIDTH", resourceType = "TelemedicineSession")
         public AdaptiveBandwidthDecision evaluateAndAdaptBandwidth(UUID sessionId, NetworkTelemetryUpdate telemetry) {
             Objects.requireNonNull(telemetry, "NetworkTelemetryUpdate must not be null");
-            TelemedicineSessionEntity session = telemedicineRepository.findById(sessionId)
+            TelemedicineSessionEntity session = telemedicineRepository.findByIdAndFacilityId(sessionId, FacilityContext.requireFacilityId())
                     .orElseThrow(() -> new NoSuchElementException("Telemedicine session not found: " + sessionId));
 
             String previousMode = session.getStatus();
@@ -150,13 +156,13 @@ public class TelemedicineStarter {
                 advisory = "Optimal broadband link (" + kbps + " kbps). Operating in 720p30 HD clinical video mode.";
             }
 
-            session.setLowBandwidth3gMode(lowBwFallback);
+            session.setLowBandwidthAudioMode(lowBwFallback);
             session.setStatus(newMode);
             telemedicineRepository.save(session);
 
             return new AdaptiveBandwidthDecision(
                     session.getId(),
-                    session.getRoomToken(),
+                    session.getSignalingRoomToken(),
                     previousMode,
                     newMode,
                     lowBwFallback,

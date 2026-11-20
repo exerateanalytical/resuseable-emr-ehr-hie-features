@@ -16,6 +16,8 @@ import com.opeshealth.healthcore.ops.service.HospitalOpsService;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.CredentialRepository;
 import com.opeshealth.healthcore.ops.service.HospitalOpsService.WorkforceRosterRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -108,9 +110,9 @@ public class WorkforceRosterStarter {
                     .orElseThrow(() -> new SecurityException("Cannot roster practitioner '" + req.practitionerId()
                             + "': no verified medical council credential on file for facility " + req.facilityId()));
 
-            if (cred.isSuspended() || cred.getLicenseExpiresOn() == null || cred.getLicenseExpiresOn().isBefore(shiftDate)) {
+            if (cred.isSuspended() || cred.getExpiresOn() == null || cred.getExpiresOn().isBefore(shiftDate)) {
                 throw new SecurityException("Clinical License Gate blocked shift assignment for '"
-                        + req.practitionerId() + "': license expired on " + cred.getLicenseExpiresOn()
+                        + req.practitionerId() + "': license expired on " + cred.getExpiresOn()
                         + " or suspended=" + cred.isSuspended());
             }
 
@@ -131,10 +133,10 @@ public class WorkforceRosterStarter {
             WorkforceRosterEntity roster = new WorkforceRosterEntity();
             roster.setFacilityId(req.facilityId());
             roster.setPractitionerId(req.practitionerId().trim());
-            roster.setDepartment(req.department() != null && !req.department().isBlank() ? req.department().trim() : "GENERAL_MEDICINE");
+            roster.setDepartmentCode(req.department() != null && !req.department().isBlank() ? req.department().trim() : "GENERAL_MEDICINE");
             roster.setShiftDate(shiftDate);
-            roster.setShiftType(normShift);
-            roster.setOnCallEscalation(req.onCallEscalation());
+            // Shift type is the canonical persisted on-call indicator in the existing schema.
+            roster.setShiftType(req.onCallEscalation() ? "ON_CALL" : normShift);
 
             return workforceRosterRepository.save(roster);
         }
@@ -144,9 +146,11 @@ public class WorkforceRosterStarter {
          */
         @Transactional(readOnly = true)
         public CredentialComplianceAudit auditFacilityCredentials(UUID facilityId) {
-            List<PractitionerCredentialEntity> all = credentialRepository.findAll().stream()
-                    .filter(c -> facilityId == null || facilityId.equals(c.getFacilityId()))
-                    .toList();
+            UUID authorizedFacility = FacilityContext.requireFacilityId();
+            if (facilityId != null && !facilityId.equals(authorizedFacility)) {
+                throw new AccessDeniedException("Cross-facility workforce license audit denied");
+            }
+            List<PractitionerCredentialEntity> all = credentialRepository.findByFacilityId(authorizedFacility);
 
             LocalDate today = LocalDate.now();
             LocalDate thirtyDaysOut = today.plus(30, ChronoUnit.DAYS);
@@ -156,19 +160,19 @@ public class WorkforceRosterStarter {
             List<String> blocked = new ArrayList<>();
 
             for (PractitionerCredentialEntity c : all) {
-                if (c.isSuspended() || c.getLicenseExpiresOn() == null || c.getLicenseExpiresOn().isBefore(today)) {
+                if (c.isSuspended() || c.getExpiresOn() == null || c.getExpiresOn().isBefore(today)) {
                     expiredOrSuspended++;
                     blocked.add(c.getPractitionerId());
                 } else {
                     valid++;
-                    if (!c.getLicenseExpiresOn().isAfter(thirtyDaysOut)) {
+                    if (!c.getExpiresOn().isAfter(thirtyDaysOut)) {
                         expiringSoon++;
                     }
                 }
             }
 
             return new CredentialComplianceAudit(
-                    facilityId,
+                    authorizedFacility,
                     all.size(),
                     valid,
                     expiringSoon,
