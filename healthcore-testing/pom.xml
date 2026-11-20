@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  Opes HealthCore SDK — Centralized ISO/HL7 Data-Driven Testing Module
+  =============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opeshealth.healthcore</groupId>
+        <artifactId>healthcore-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>healthcore-testing</artifactId>
+    <name>Opes HealthCore Centralized Testing Fixtures</name>
+    <description>
+        Centralized HealthCoreDataFixture and ISO/HL7-compliant standardized sample data
+        for isolated workflow verification across the 8 Reference Hospital consoles and
+        the Integration Ops + Revenue Coding/Claims backend starters.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-persistence-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-security-audit</artifactId>
+        </dependency>
+
+        <!-- Optional domain starters so consuming tests preserve strict module isolation -->
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-tenant-governance</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-mpi</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-emr-clinical</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-orders-results</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-pharmacy-lis</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-radiology</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-emergency-nursing</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-hospital-ops</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-blood-bank</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-surgery-ot</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-patient-portal</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-clinical-ai</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-analytics</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-integration-ops</artifactId><optional>true</optional></dependency>
+        <dependency><groupId>com.opeshealth.healthcore</groupId><artifactId>healthcore-starter-revenue-coding-claims</artifactId><optional>true</optional></dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>

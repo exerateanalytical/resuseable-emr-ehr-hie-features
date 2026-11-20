@@ -2,11 +2,16 @@
 
 > **Execution Environment Disclosure**: This workspace container does not have a local JDK 25, Maven, or Docker daemon installed. Therefore, this register strictly separates **(A) Implemented Test Suites & Statically Verified Checks (Executed Locally)** from **(B) Full JDK 25 / Maven / Multi-DB Testcontainers Execution (Executed in External CI via `.github/workflows/ci.yml`)**. No unexecuted runtime test is claimed as executed here.
 
-## A. Implemented Automated Test Suites (62 JUnit 5 Suites + 2 KMP Suites + 11 Example Smoke Tests & Scripts)
+## A. Implemented Automated Test Suites (67 JUnit 5 Suites + 2 KMP Suites + 11 Example Smoke Tests & Scripts)
 
-### 1. New Universal SDK, Contract & Industry Pack Isolation Test Suites (11 New Suites)
+### 1. New Universal SDK, Contract, Data-Driven Fixture & Industry Pack Isolation Test Suites (16 New Suites)
 | Test Suite | Module | Verified Behavior / Governance Rules |
 |---|---|---|
+| `WorkflowVerificationServiceTest` | `healthcore-testing` | Verifies programmatic execution and SLF4J `[PASS]`/`[FAIL]` logging of all 9 documented core README workflows after `HealthCoreDataFixture` seeding, isolated single-workflow verification, and resilient failure reporting |
+| `IndustryPackFixtureIsolationTest` | `healthcore-testing` | Verifies each of the 8 Industry Capability Packs initializes cleanly in strict isolation with `HealthCoreDataFixture` (supports `-Dhealthcore.pack=<pack>` CI matrix filtering) while asserting zero forbidden transitive leaks and clean `FacilityContext` teardown |
+| `HealthCoreDataFixtureTest` | `healthcore-testing` | Verifies centralized ISO/HL7-compliant `HealthCoreDataFixture` seeding both new backend starters (`healthcore-starter-integration-ops`, `healthcore-starter-revenue-coding-claims`) in strict isolation and all 8 Reference Hospital consoles + both new starters end-to-end with guaranteed `FacilityContext` cleanup |
+| `DataDrivenWorkflowFixtureLoaderTest` | `healthcore-persistence-core` | Loads and validates the canonical zero-PII JSON workflow dataset (`healthcore-standard-workflows-dataset.json`), enforces `syntheticOnly=true`, and rejects dangling referential keys |
+| `CoreModulesDataDrivenTestFixtureTest` | `healthcore-quickstart-host` | Executes `CoreModulesDataDrivenTestFixture` end-to-end across all 14 core modules in topological workflow order, asserts populated IDs/counts, verifies `FacilityContext` cleanup, and tests inline custom dataset overrides |
 | `CapabilityPackIsolationTest` | `healthcore-persistence-core` | Recursively resolves all 8 `packs/healthcore-pack-*/pom.xml` transitive graphs against `pack-manifest.json` `requiredModules`, `forbiddenTransitiveModules`, and asserts all 16+ required Section 5 manifest fields |
 | `UniversalSdkContractsTest` | `healthcore-persistence-core` | Tests `CapabilityPackManifestContract.detectDependencyConflicts` (major version mismatch & pharmacy module conflict), `SpecialtyExtensionContract` (all 6 specialty templates + validation), and `EhrProvenanceReconciliationContract` (provenance SHA-256, privacy segmentation & multi-source conflict detection) |
 | `PharmacyCommerceServiceTest` | `healthcore-starter-pharmacy-commerce` | Expired goods rejection, FEFO lot selection, controlled-substance independent witness gate, recall quarantine auto-skip, supplier & PO receipt, inter-branch stock transfers, stock adjustments, partial dispensing & refills, counseling notes, low-stock alerts |
@@ -26,15 +31,15 @@
 - Every one of the 11 `examples/*` projects includes `WorkflowSmokeTest.java`, `docker-compose.yml`, `.env.example`, `seed/synthetic-dataset.json`, `api/postman-collection.json`, and `scripts/smoke-test.sh` (plus portable Liquibase master changelogs for Mode A/Mode C examples).
 
 ## B. Local Static & Structural Verification Executed in This Workspace
-1. **XML Well-Formedness & Liquibase Include Audit**: Parsed 100% of `pom.xml` and Liquibase `.xml` changelogs (all 58 reactor modules + 8 pack masters + 5 Mode A example masters + 11 example POMs) and verified every `<include file="classpath:..."/>` target exists on disk.
+1. **XML Well-Formedness & Liquibase Include Audit**: Parsed 100% of `pom.xml` and Liquibase `.xml` changelogs (all 59 reactor modules + 8 pack masters + 5 Mode A example masters + 11 example POMs) and verified every `<include file="classpath:..."/>` target exists on disk.
 2. **16+ Field Pack Manifest Schema Audit**: Parsed 100% of `packs/*/src/main/resources/META-INF/healthcore/pack-manifest.json` and verified all 16+ required Section 5 keys and referenced doc/example paths exist.
-3. **Transitive Pack Isolation Graph Verification**: Executed recursive transitive closure verification over all 8 pack POMs + all 58 module POMs matching `CapabilityPackIsolationTest` logic — **0 forbidden cross-industry dependencies detected**.
+3. **Transitive Pack Isolation Graph Verification**: Executed recursive transitive closure verification over all 8 pack POMs + all 59 module POMs matching `CapabilityPackIsolationTest` logic (including verifying all domain starter dependencies in `healthcore-testing/pom.xml` are `<optional>true</optional>`) — **0 forbidden cross-industry dependencies detected**.
 4. **Java Internal Import & Type Resolution Audit**: Verified all internal `com.opeshealth.healthcore.*` imports across all Java sources resolve to real public classes/interfaces/records.
 5. **Example & JSON Artifact Audit**: Verified all 11 `examples/*` have valid `seed/synthetic-dataset.json`, `api/postman-collection.json`, executable `scripts/smoke-test.sh`, `docker-compose.yml`, and `WorkflowSmokeTest.java`.
 6. **No-TypeScript / Pure Java Guardrail**: Confirmed 0 `package.json`, `tsconfig.json`, or `vite.config.ts` files exist in the repository.
 
 ## C. External CI Verification Required for Release Sign-Off
 Run on a JDK 25 + Maven 3.9+ + Docker runner (automated in `.github/workflows/ci.yml`):
-1. `mvn -B -T 1C clean verify` (compiles all 58 modules & executes all 62 JUnit suites including `CapabilityPackIsolationTest` and `UniversalSdkContractsTest`).
+1. `mvn -B -T 1C clean verify` (compiles all 59 modules & executes all 65 JUnit suites including `HealthCoreDataFixtureTest`, `CapabilityPackIsolationTest`, and `UniversalSdkContractsTest`).
 2. `mvn -B -pl healthcore-quickstart-host -Dtest=MultiDbTestcontainersIT test` (PostgreSQL 16, SQL Server 2022, MySQL 8.4).
 3. Independent build of each `examples/*` project after `mvn install -DskipTests`.

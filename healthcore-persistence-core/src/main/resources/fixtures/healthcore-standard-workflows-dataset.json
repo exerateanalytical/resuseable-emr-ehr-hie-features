@@ -1,0 +1,277 @@
+{
+  "datasetId": "healthcore-standard-workflows-v1",
+  "version": "1.0.0",
+  "syntheticOnly": true,
+  "description": "Standardized, deterministic, zero-PII data-driven workflow test dataset for OPES HealthCore core modules and industry packs.",
+  "tenant": {
+    "orgCode": "SYN-NET-001",
+    "orgName": "Synthetic Reference Health Network",
+    "orgType": "HOSPITAL_NETWORK",
+    "countryCode": "CM",
+    "facilityCode": "SYN-FAC-001",
+    "facilityName": "Synthetic Douala Reference Hospital",
+    "facilityType": "TERTIARY_HOSPITAL",
+    "timezone": "Africa/Douala",
+    "currency": "XAF",
+    "language": "fr",
+    "active": true,
+    "departments": [
+      { "code": "OPD-MED", "name": "Outpatient Internal Medicine", "kind": "OUTPATIENT", "bedCapacity": 0 },
+      { "code": "OPD-CARDIO", "name": "Cardiology Clinic", "kind": "OUTPATIENT", "bedCapacity": 0 },
+      { "code": "ED-ACUTE", "name": "Emergency & Trauma Unit", "kind": "EMERGENCY", "bedCapacity": 12 },
+      { "code": "WARD-A", "name": "Medical Ward A", "kind": "INPATIENT_WARD", "bedCapacity": 24 },
+      { "code": "RAD-DIAG", "name": "Diagnostic Radiology & PACS", "kind": "RADIOLOGY", "bedCapacity": 0 },
+      { "code": "LAB-CORE", "name": "Central Clinical Laboratory", "kind": "LABORATORY", "bedCapacity": 0 },
+      { "code": "PHARM-MAIN", "name": "Main Hospital Pharmacy", "kind": "PHARMACY", "bedCapacity": 0 },
+      { "code": "OT-SUITE", "name": "Operating Theater & PACU", "kind": "SURGERY", "bedCapacity": 6 }
+    ],
+    "featureFlags": [
+      { "key": "scheduling.waitlist", "enabled": true, "locked": false },
+      { "key": "orders.reflex.engine", "enabled": true, "locked": false },
+      { "key": "portal.patient.messaging", "enabled": true, "locked": false }
+    ]
+  },
+  "patients": [
+    {
+      "mrn": "SYN-MRN-1001",
+      "familyName": "Synthetique",
+      "givenName": "Amina",
+      "birthDate": "1988-04-14",
+      "sex": "female",
+      "bloodGroup": "O+",
+      "phone": "+237600001001",
+      "language": "fr",
+      "nationalIdType": "SYN-CNI",
+      "nationalIdNumber": "SYN19880414001",
+      "city": "Douala",
+      "emergencyContactName": "Moussa Synthetique",
+      "emergencyContactPhone": "+237600009001"
+    },
+    {
+      "mrn": "SYN-MRN-1002",
+      "familyName": "Testeur",
+      "givenName": "Paul",
+      "birthDate": "1972-09-03",
+      "sex": "male",
+      "bloodGroup": "A+",
+      "phone": "+237600001002",
+      "language": "fr",
+      "nationalIdType": "SYN-CNI",
+      "nationalIdNumber": "SYN19720903002",
+      "city": "Douala",
+      "emergencyContactName": "Claire Testeur",
+      "emergencyContactPhone": "+237600009002"
+    },
+    {
+      "mrn": "SYN-MRN-1003",
+      "familyName": "Fixture",
+      "givenName": "Jean-Luc",
+      "birthDate": "1961-02-19",
+      "sex": "male",
+      "bloodGroup": "AB+",
+      "phone": "+237600001003",
+      "language": "en",
+      "nationalIdType": "SYN-CNI",
+      "nationalIdNumber": "SYN19610219003",
+      "city": "Yaounde",
+      "emergencyContactName": "Marie Fixture",
+      "emergencyContactPhone": "+237600009003"
+    }
+  ],
+  "scheduling": {
+    "calendars": [
+      { "departmentCode": "OPD-MED", "resourceKind": "PROVIDER", "resourceCode": "dr.syn.ekane", "displayName": "Dr. Ekane (Synthetic Internal Med)", "slotDurationMinutes": 20, "concurrency": 1 },
+      { "departmentCode": "OPD-CARDIO", "resourceKind": "PROVIDER", "resourceCode": "dr.syn.ngono", "displayName": "Dr. Ngono (Synthetic Cardiology)", "slotDurationMinutes": 30, "concurrency": 1 }
+    ],
+    "appointmentTypes": [
+      { "code": "CONSULT", "name": "General Consultation", "specialty": "INTERNAL_MED", "durationMinutes": 20, "bufferMinutes": 0 },
+      { "code": "CARDIO_FU", "name": "Cardiology Follow-Up", "specialty": "CARDIO", "durationMinutes": 30, "bufferMinutes": 5 }
+    ],
+    "appointments": [
+      { "departmentCode": "OPD-MED", "patientMrn": "SYN-MRN-1001", "appointmentTypeCode": "CONSULT", "offsetMinutesFromBase": 0, "durationMinutes": 20, "reason": "Persistent fever workup", "checkIn": true },
+      { "departmentCode": "OPD-CARDIO", "patientMrn": "SYN-MRN-1002", "appointmentTypeCode": "CARDIO_FU", "offsetMinutesFromBase": 60, "durationMinutes": 30, "reason": "Hypertension and electrolyte review", "checkIn": false }
+    ]
+  },
+  "encounters": [
+    { "encounterKey": "ENC-AMB-001", "patientMrn": "SYN-MRN-1001", "encounterClass": "AMB", "status": "IN_PROGRESS", "attendingId": "dr.syn.ekane", "departmentCode": "OPD-MED", "primaryIcd10": "R50.9" },
+    { "encounterKey": "ENC-IMP-002", "patientMrn": "SYN-MRN-1003", "encounterClass": "IMP", "status": "IN_PROGRESS", "attendingId": "dr.syn.ngono", "departmentCode": "WARD-A", "primaryIcd10": "I10" }
+  ],
+  "ordersAndResults": {
+    "orderSets": [
+      { "code": "FEVER-WORKUP", "name": "Acute Febrile Illness Panel", "indication": "Suspected malaria or bacterial infection", "itemsSpec": "LABORATORY|58410-2|Complete Blood Count (CBC)|URGENT;LABORATORY|32700-7|Malaria Blood Smear|STAT" }
+    ],
+    "reflexRules": [
+      { "triggerLoinc": "2823-3", "triggerFlag": "CRITICAL_HIGH", "reflexDomain": "PROCEDURE", "reflexCode": "11524-6", "reflexName": "12-Lead Electrocardiogram STAT", "reflexPriority": "STAT" }
+    ],
+    "orders": [
+      {
+        "orderKey": "ORD-HB-001",
+        "patientMrn": "SYN-MRN-1001",
+        "encounterKey": "ENC-AMB-001",
+        "domain": "LABORATORY",
+        "codeSystem": "http://loinc.org",
+        "code": "718-7",
+        "displayName": "Hemoglobin [Mass/volume] in Blood",
+        "priority": "ROUTINE",
+        "clinicalNotes": "Baseline CBC",
+        "orderingProvider": "dr.syn.ekane",
+        "accessionNumber": "SYN-ACC-1001",
+        "specimenType": "BLOOD_EDTA",
+        "collectedBy": "rn.syn.biya",
+        "numericValue": 12.6,
+        "unit": "g/dL",
+        "referenceRange": "12.0-15.5",
+        "abnormalFlag": "NORMAL",
+        "enteredBy": "lab.syn.tech1",
+        "verifiedBy": "lab.syn.director"
+      },
+      {
+        "orderKey": "ORD-K-002",
+        "patientMrn": "SYN-MRN-1003",
+        "encounterKey": "ENC-IMP-002",
+        "domain": "LABORATORY",
+        "codeSystem": "http://loinc.org",
+        "code": "2823-3",
+        "displayName": "Serum Potassium",
+        "priority": "STAT",
+        "clinicalNotes": "Inpatient ACEi electrolyte monitoring",
+        "orderingProvider": "dr.syn.ngono",
+        "accessionNumber": "SYN-ACC-1002",
+        "specimenType": "SERUM",
+        "collectedBy": "rn.syn.biya",
+        "numericValue": 6.4,
+        "unit": "mmol/L",
+        "referenceRange": "3.5-5.1",
+        "abnormalFlag": "CRITICAL_HIGH",
+        "enteredBy": "lab.syn.tech1",
+        "verifiedBy": "lab.syn.director"
+      }
+    ]
+  },
+  "pharmacyAndLab": {
+    "medicationBatches": [
+      { "drugCode": "RX-AMOX-500", "drugName": "Amoxicillin 500mg Capsule", "lotNumber": "SYN-LOT-2026-A", "expiryDaysFromNow": 300, "quantityOnHand": 240, "reorderThreshold": 50 },
+      { "drugCode": "RX-AMLO-5", "drugName": "Amlodipine 5mg Tablet", "lotNumber": "SYN-LOT-2026-B", "expiryDaysFromNow": 420, "quantityOnHand": 180, "reorderThreshold": 40 }
+    ],
+    "labSpecimens": [
+      { "patientMrn": "SYN-MRN-1003", "specimenType": "SERUM_CHEMISTRY", "loincPanelCode": "24323-8", "accessionBarcode": "SYN-SPEC-2026-01" }
+    ]
+  },
+  "billingCharges": [
+    { "patientMrn": "SYN-MRN-1001", "amountMinorUnits": 15000, "currency": "XAF", "invoiceRef": "SYN-INV-0001", "description": "Outpatient consultation + CBC" },
+    { "patientMrn": "SYN-MRN-1003", "amountMinorUnits": 48500, "currency": "XAF", "invoiceRef": "SYN-INV-0002", "description": "Inpatient Ward A bed day + STAT electrolytes" }
+  ],
+  "patientPortal": {
+    "enrollments": [
+      {
+        "patientMrn": "SYN-MRN-1001",
+        "language": "fr",
+        "email": "amina.synthetique@example.invalid",
+        "phone": "+237600001001",
+        "proxyUsername": "proxy.syn.moussa",
+        "proxyRelationship": "SPOUSE",
+        "proxyScopes": ["APPOINTMENTS", "RESULTS"],
+        "threadSubject": "Fasting instructions before follow-up draw",
+        "threadDepartment": "OPD-MED",
+        "threadBody": "Synthetic patient message verifying portal messaging workflow."
+      }
+    ]
+  },
+  "radiologyExams": [
+    {
+      "patientMrn": "SYN-MRN-1003",
+      "encounterKey": "ENC-IMP-002",
+      "modality": "CT",
+      "procedureCode": "71260",
+      "procedureName": "CT Chest with Contrast",
+      "bodyPart": "THORAX",
+      "clinicalIndication": "Rule out pulmonary embolism",
+      "aeTitle": "SYN_CT_01",
+      "orderingProvider": "dr.syn.ngono",
+      "contrastRequired": true
+    }
+  ],
+  "emergencyAndNursing": {
+    "edTriages": [
+      {
+        "patientMrn": "SYN-MRN-1002",
+        "chiefComplaint": "Acute chest tightness radiating to left arm",
+        "esiLevel": 2,
+        "arrivalMode": "AMBULANCE",
+        "bayCode": "RESUS-02",
+        "triageNurse": "rn.syn.triage"
+      }
+    ],
+    "news2Observations": [
+      {
+        "patientMrn": "SYN-MRN-1003",
+        "encounterKey": "ENC-IMP-002",
+        "respiratoryRate": 23,
+        "spo2": 93,
+        "supplementalOxygen": true,
+        "systolicBp": 96,
+        "heartRate": 114,
+        "temperatureCelsius": 38.4,
+        "consciousness": "ALERT",
+        "recordedBy": "rn.syn.ward"
+      }
+    ]
+  },
+  "hospitalOps": {
+    "bloodUnits": [
+      { "isbtUnitCode": "W000026990001", "componentType": "PRBC", "aboRhd": "O-", "expiryDaysFromNow": 28, "status": "AVAILABLE" }
+    ],
+    "surgicalSchedules": [
+      { "patientMrn": "SYN-MRN-1002", "theaterRoom": "OT-01", "procedureName": "Laparoscopic Cholecystectomy", "leadSurgeonId": "dr.syn.mbock", "whoChecklistCompleted": true, "status": "SCHEDULED" }
+    ]
+  },
+  "integrationOps": {
+    "partners": [
+      { "code": "SYN-NAT-HIE", "name": "Synthetic National HIE Hub", "protocol": "FHIR_R4", "endpointUrl": "https://hie.example.invalid/fhir", "authMode": "MTLS", "resourceTypes": "Patient,Observation,Bundle", "timeoutSeconds": 180, "enabled": true }
+    ],
+    "outboundMessages": [
+      { "partnerCode": "SYN-NAT-HIE", "correlationId": "SYN-FHIR-IPS-001", "messageType": "Bundle", "payload": "{\"resourceType\":\"Bundle\",\"type\":\"document\",\"id\":\"syn-ips-1\"}", "maxRetries": 5 }
+    ]
+  },
+  "revenueAndClaims": {
+    "tariffs": [
+      { "payerCode": "SYN-UHC", "serviceCode": "CONS-SPEC", "description": "Specialist Consultation", "category": "CONSULTATION", "amountMinorUnits": 25000, "currency": "XAF" }
+    ],
+    "claims": [
+      {
+        "claimNumber": "SYN-CLM-2026-0001",
+        "patientMrn": "SYN-MRN-1003",
+        "encounterKey": "ENC-IMP-002",
+        "codeSystem": "ICD10",
+        "primaryCode": "I10",
+        "secondaryCodes": "E87.5",
+        "procedureCodes": "99222,80051",
+        "drgCode": "DRG-304",
+        "coderId": "coder.syn.01",
+        "approverId": "dr.syn.ngono",
+        "payerCode": "SYN-UHC",
+        "memberNumber": "SYN-UHC-2026-4410",
+        "serviceCode": "INP-WARD-A",
+        "inNetwork": true,
+        "approvedDays": 3,
+        "claimFormat": "FHIR_CLAIM",
+        "billedAmountMinorUnits": 48500,
+        "currency": "XAF"
+      }
+    ]
+  },
+  "analytics": {
+    "qualityMeasures": [
+      { "measureCode": "CMS165v12", "title": "Controlling High Blood Pressure", "reportingPeriod": "2026-Q4", "numerator": 84, "denominator": 100, "exclusions": 4, "sourceTables": "hc_emr_encounters+hc_orders" }
+    ],
+    "cohortExports": [
+      { "cohortName": "Hypertension Outcomes Q4", "filterJson": "{\"icd10\":\"I10\"}", "purpose": "PUBLIC_HEALTH_QUALITY", "deidentified": true, "kAnonymityThreshold": 10, "estimatedRecordCount": 42, "requestedBy": "dr.syn.ngono" }
+    ]
+  },
+  "universalVerticalPacks": {
+    "pharmacyCommerceSku": "SYN-AMOX-500",
+    "diagnosticsCatalogLoinc": "2823-3",
+    "pharmaQmsSopCode": "SOP-SYN-QC-001",
+    "clinicalResearchProtocol": "SYN-TRIAL-2026"
+  }
+}

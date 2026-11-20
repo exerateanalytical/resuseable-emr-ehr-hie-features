@@ -337,6 +337,13 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <!-- Centralized ISO/HL7 Data-Driven Testing Fixtures -->
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-testing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- Healthcare Standards: HL7 FHIR R4 + HL7 v2 -->
             <dependency>
                 <groupId>ca.uhn.hapi.fhir</groupId>

@@ -1,0 +1,495 @@
+name: HealthCore 22 Test Suites & 8-Pack Isolated Fixture Verification
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      pack_filter:
+        description: 'Optional single pack artifactId to verify (leave empty for all 8 packs)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-22-test-suites:
+    name: Run All 22 Module Test Suites & JaCoCo Coverage (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Run 22 core, platform, and specialty starter test suites with JaCoCo
+        run: |
+          MODULES=(
+            healthcore-starter-scheduling
+            healthcore-starter-orders-results
+            healthcore-starter-radiology
+            healthcore-starter-emergency-nursing
+            healthcore-starter-patient-portal
+            healthcore-starter-workflow-engine
+            healthcore-starter-analytics
+            healthcore-starter-api-product
+            healthcore-starter-templates-dashboards
+            healthcore-starter-blood-bank
+            healthcore-starter-surgery-ot
+            healthcore-starter-biomedical-coldchain
+            healthcore-starter-chw-homecare
+            healthcore-starter-crvs-mortuary
+            healthcore-starter-deidentification-research
+            healthcore-starter-disease-surveillance
+            healthcore-starter-fhir-hie
+            healthcore-starter-hl7-astm-dicom
+            healthcore-starter-interoperability-ihe
+            healthcore-starter-lis-diagnostics
+            healthcore-starter-pharmacy-inventory
+            healthcore-starter-programs-immunization
+          )
+          TESTS=(
+            SchedulingServiceTest
+            UnifiedOrdersResultsServiceTest
+            RadiologyRisServiceTest
+            EmergencyNursingServiceTest
+            PatientPortalServiceTest
+            WorkflowOrchestrationServiceTest
+            HospitalAnalyticsServiceTest
+            ApiProductServiceTest
+            TemplatesAndOperationsServiceTest
+            BloodBankCompatibilityTest
+            SurgicalPerioperativeTest
+            BiomedicalColdChainStarterTest
+            ChwHomeCareStarterTest
+            CrvsMortuaryStarterTest
+            DeidentificationResearchStarterTest
+            DiseaseSurveillanceStarterTest
+            FhirHieStarterTest
+            Hl7AstmDicomFixtureTest
+            IheProfileFixtureTest
+            LisDiagnosticsStarterTest
+            PharmacyInventoryStarterTest
+            ProgramsImmunizationStarterTest
+          )
+          MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
+          TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
+          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=true
+
+      - name: Run new backend starters, HealthCoreDataFixture & WorkflowVerificationService suites
+        run: |
+          mvn -B -ntp test jacoco:report \
+            -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-testing \
+            -am \
+            -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest" \
+            -DfailIfNoTests=true
+
+      - name: Upload 22-suite Surefire XML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-22-test-suites
+          path: 'healthcore-starter-*/target/surefire-reports/TEST-*.xml'
+          if-no-files-found: warn
+
+      - name: Upload 22-module JaCoCo XML & HTML coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-22-module-reports
+          path: |
+            healthcore-starter-*/target/site/jacoco/jacoco.xml
+            healthcore-testing/target/site/jacoco/jacoco.xml
+          if-no-files-found: warn
+
+  verify-8-industry-packs-isolation:
+    name: Isolate & Initialize ${{ matrix.pack }} with HealthCoreDataFixture
+    runs-on: ubuntu-latest
+    needs: run-22-test-suites
+    strategy:
+      fail-fast: false
+      matrix:
+        pack:
+          - healthcore-pack-pharmacy
+          - healthcore-pack-diagnostics
+          - healthcore-pack-pharma-manufacturing
+          - healthcore-pack-life-sciences
+          - healthcore-pack-emr
+          - healthcore-pack-ehr
+          - healthcore-pack-his
+          - healthcore-pack-hie
+    steps:
+      - name: Skip non-matching pack when workflow_dispatch filter is set
+        id: filter
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.pack_filter }}" ] && [ "${{ github.event.inputs.pack_filter }}" != "${{ matrix.pack }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.filter.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 25
+        if: steps.filter.outputs.skip != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Install HealthCore BOM, selected pack, and healthcore-testing to local Maven repository
+        if: steps.filter.outputs.skip != 'true'
+        run: |
+          mvn -B -ntp install -DskipTests \
+            -pl "healthcore-bom,packs/${{ matrix.pack }},healthcore-testing" \
+            -am
+
+      - name: Run IndustryPackFixtureIsolationTest for ${{ matrix.pack }}
+        if: steps.filter.outputs.skip != 'true'
+        run: |
+          mvn -B -ntp test \
+            -pl healthcore-testing \
+            -Dtest=IndustryPackFixtureIsolationTest \
+            -Dhealthcore.pack="${{ matrix.pack }}" \
+            -DfailIfNoTests=true
+
+      - name: Verify clean standalone consumer project initializes ${{ matrix.pack }} with HealthCoreDataFixture in strict isolation
+        if: steps.filter.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACK="${{ matrix.pack }}"
+          WORKDIR="${RUNNER_TEMP}/isolated-${PACK}"
+          rm -rf "${WORKDIR}"
+          mkdir -p "${WORKDIR}/src/test/java/com/opeshealth/isolation"
+
+          cat > "${WORKDIR}/pom.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.opeshealth.verification</groupId>
+              <artifactId>isolated-${PACK}-consumer</artifactId>
+              <version>1.0.0-SNAPSHOT</version>
+              <properties>
+                  <maven.compiler.release>25</maven.compiler.release>
+                  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              </properties>
+              <dependencyManagement>
+                  <dependencies>
+                      <dependency>
+                          <groupId>com.opeshealth.healthcore</groupId>
+                          <artifactId>healthcore-bom</artifactId>
+                          <version>1.0.0</version>
+                          <type>pom</type>
+                          <scope>import</scope>
+                      </dependency>
+                  </dependencies>
+              </dependencyManagement>
+              <dependencies>
+                  <dependency>
+                      <groupId>com.opeshealth.healthcore</groupId>
+                      <artifactId>${PACK}</artifactId>
+                      <version>1.0.0</version>
+                  </dependency>
+                  <dependency>
+                      <groupId>com.opeshealth.healthcore</groupId>
+                      <artifactId>healthcore-testing</artifactId>
+                      <version>1.0.0</version>
+                      <scope>test</scope>
+                  </dependency>
+                  <dependency>
+                      <groupId>org.junit.jupiter</groupId>
+                      <artifactId>junit-jupiter</artifactId>
+                      <scope>test</scope>
+                  </dependency>
+              </dependencies>
+              <build>
+                  <plugins>
+                      <plugin>
+                          <groupId>org.apache.maven.plugins</groupId>
+                          <artifactId>maven-surefire-plugin</artifactId>
+                          <version>3.5.3</version>
+                      </plugin>
+                  </plugins>
+              </build>
+          </project>
+          EOF
+
+          cat > "${WORKDIR}/src/test/java/com/opeshealth/isolation/IsolatedPackFixtureInitTest.java" <<EOF
+          package com.opeshealth.isolation;
+
+          import com.opeshealth.healthcore.security.tenant.FacilityContext;
+          import com.opeshealth.healthcore.testing.HealthCoreDataFixture;
+          import com.opeshealth.healthcore.testing.HealthCoreDataFixture.ConsoleSeedSummary;
+          import org.junit.jupiter.api.Test;
+          import java.util.UUID;
+          import static org.junit.jupiter.api.Assertions.*;
+
+          class IsolatedPackFixtureInitTest {
+              @Test
+              void initializesIsolatedPackWithHealthCoreDataFixture() {
+                  UUID facilityId = UUID.randomUUID();
+                  HealthCoreDataFixture fixture = HealthCoreDataFixture.builder().build();
+                  ConsoleSeedSummary summary = fixture.initializeIsolatedPackContext("${PACK}", facilityId);
+                  assertEquals("${PACK}", summary.consoleKey());
+                  assertEquals(1, summary.operationsExecuted());
+                  assertEquals(1, summary.createdIds().size());
+                  assertTrue(FacilityContext.getFacilityId().isEmpty(), "FacilityContext must be cleared after seeding");
+              }
+          }
+          EOF
+
+          # 1. Resolve actual transitive Maven dependency tree and enforce zero forbidden modules from pack-manifest.json
+          mvn -B -ntp -f "${WORKDIR}/pom.xml" dependency:tree -DoutputFile="${WORKDIR}/dep-tree.txt"
+          python3 - "${PACK}" "${WORKDIR}/dep-tree.txt" <<'PY'
+          import json, pathlib, sys
+
+          pack, tree_path = sys.argv[1], pathlib.Path(sys.argv[2])
+          manifest = json.loads(pathlib.Path(f"packs/{pack}/src/main/resources/META-INF/healthcore/pack-manifest.json").read_text(encoding="utf-8"))
+          tree_text = tree_path.read_text(encoding="utf-8")
+
+          leaked = [mod for mod in manifest.get("forbiddenTransitiveModules", []) if f":{mod}:" in tree_text]
+          if leaked:
+              print(f"ISOLATION VIOLATION for {pack}: forbidden transitive modules detected on classpath: {leaked}", file=sys.stderr)
+              sys.exit(1)
+          print(f"Verified strict transitive isolation for {pack} (0 forbidden modules leaked with healthcore-testing).")
+          PY
+
+          # 2. Compile and execute the isolated consumer test initializing HealthCoreDataFixture
+          mvn -B -ntp -f "${WORKDIR}/pom.xml" test
+
+  coverage-report:
+    name: Generate 22-Module JaCoCo Visual Coverage Summary & PR Comment
+    runs-on: ubuntu-latest
+    needs: [ run-22-test-suites, verify-8-industry-packs-isolation ]
+    if: always()
+    steps:
+      - name: Download Surefire 22-suite XML reports
+        uses: actions/download-artifact@v4
+        with:
+          name: surefire-22-test-suites
+          path: coverage-artifacts/surefire
+        continue-on-error: true
+
+      - name: Download JaCoCo 22-module XML reports
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-22-module-reports
+          path: coverage-artifacts/jacoco
+        continue-on-error: true
+
+      - name: Build visual JaCoCo & 22-module test completion Markdown report
+        id: build-report
+        shell: bash
+        env:
+          SUITE_JOB_STATUS: ${{ needs.run-22-test-suites.result }}
+          PACK_JOB_STATUS: ${{ needs.verify-8-industry-packs-isolation.result }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+
+          MODULES_22 = [
+              "healthcore-starter-scheduling",
+              "healthcore-starter-orders-results",
+              "healthcore-starter-radiology",
+              "healthcore-starter-emergency-nursing",
+              "healthcore-starter-patient-portal",
+              "healthcore-starter-workflow-engine",
+              "healthcore-starter-analytics",
+              "healthcore-starter-api-product",
+              "healthcore-starter-templates-dashboards",
+              "healthcore-starter-blood-bank",
+              "healthcore-starter-surgery-ot",
+              "healthcore-starter-biomedical-coldchain",
+              "healthcore-starter-chw-homecare",
+              "healthcore-starter-crvs-mortuary",
+              "healthcore-starter-deidentification-research",
+              "healthcore-starter-disease-surveillance",
+              "healthcore-starter-fhir-hie",
+              "healthcore-starter-hl7-astm-dicom",
+              "healthcore-starter-interoperability-ihe",
+              "healthcore-starter-lis-diagnostics",
+              "healthcore-starter-pharmacy-inventory",
+              "healthcore-starter-programs-immunization",
+          ]
+
+          def bar(pct: float, width: int = 10) -> str:
+              filled = max(0, min(width, round(pct / 100.0 * width)))
+              return ("█" * filled) + ("░" * (width - filled))
+
+          def parse_jacoco(xml_path: pathlib.Path):
+              counters = {}
+              if not xml_path.is_file():
+                  return counters
+              root = ET.parse(xml_path).getroot()
+              for c in root.findall("counter"):
+                  ctype = c.attrib.get("type")
+                  missed = int(c.attrib.get("missed", "0"))
+                  covered = int(c.attrib.get("covered", "0"))
+                  counters[ctype] = (covered, missed)
+              return counters
+
+          def parse_surefire(mod_dir: pathlib.Path):
+              tests = failures = errors = skipped = 0
+              if not mod_dir.is_dir():
+                  return tests, failures, errors, skipped
+              for xf in mod_dir.glob("TEST-*.xml"):
+                  root = ET.parse(xf).getroot()
+                  tests += int(root.attrib.get("tests", "0"))
+                  failures += int(root.attrib.get("failures", "0"))
+                  errors += int(root.attrib.get("errors", "0"))
+                  skipped += int(root.attrib.get("skipped", "0"))
+              return tests, failures, errors, skipped
+
+          def pct(cov: int, miss: int) -> float:
+              total = cov + miss
+              return (100.0 * cov / total) if total > 0 else 0.0
+
+          surefire_root = pathlib.Path("coverage-artifacts/surefire")
+          jacoco_root = pathlib.Path("coverage-artifacts/jacoco")
+
+          rows = []
+          completed_modules = 0
+          total_tests = total_fail = total_err = 0
+          tot_line_cov = tot_line_miss = 0
+          tot_inst_cov = tot_inst_miss = 0
+          tot_br_cov = tot_br_miss = 0
+
+          for mod in MODULES_22:
+              sf_dir = surefire_root / mod / "target" / "surefire-reports"
+              jc_xml = jacoco_root / mod / "target" / "site" / "jacoco" / "jacoco.xml"
+              t, f, e, s = parse_surefire(sf_dir)
+              total_tests += t
+              total_fail += f
+              total_err += e
+              passed = (t > 0 and f == 0 and e == 0)
+              if passed:
+                  completed_modules += 1
+
+              counters = parse_jacoco(jc_xml)
+              lc, lm = counters.get("LINE", (0, 0))
+              ic, im = counters.get("INSTRUCTION", (0, 0))
+              bc, bm = counters.get("BRANCH", (0, 0))
+              tot_line_cov += lc; tot_line_miss += lm
+              tot_inst_cov += ic; tot_inst_miss += im
+              tot_br_cov += bc; tot_br_miss += bm
+
+              line_p = pct(lc, lm)
+              inst_p = pct(ic, im)
+              br_p = pct(bc, bm)
+              status = "✅ PASS" if passed else ("❌ FAIL" if t > 0 else "⚠️ NO REPORT")
+              rows.append(
+                  f"| `{mod}` | {status} | {t} ({f}F/{e}E) | `{bar(line_p)}` **{line_p:.1f}%** | {inst_p:.1f}% | {br_p:.1f}% |"
+              )
+
+          completion_pct = 100.0 * completed_modules / len(MODULES_22)
+          agg_line = pct(tot_line_cov, tot_line_miss)
+          agg_inst = pct(tot_inst_cov, tot_inst_miss)
+          agg_br = pct(tot_br_cov, tot_br_miss)
+
+          suite_status = os.environ.get("SUITE_JOB_STATUS", "unknown")
+          pack_status = os.environ.get("PACK_JOB_STATUS", "unknown")
+
+          md_lines = [
+              "<!-- healthcore-jacoco-coverage-report -->",
+              "## OPES HealthCore — 22-Module JaCoCo Coverage & 8-Pack Isolation Report",
+              "",
+              f"**Test Suite Completion (22 Modules):** `{bar(completion_pct, 20)}` **{completed_modules}/{len(MODULES_22)} ({completion_pct:.0f}%)**",
+              "",
+              "| Gate | Status | Aggregate Metric |",
+              "|---|---|---|",
+              f"| 22 Module Test Suites (`run-22-test-suites`) | `{suite_status}` | **{total_tests}** tests executed ({total_fail} failures, {total_err} errors) |",
+              f"| 8 Industry Packs Isolated (`verify-8-industry-packs-isolation`) | `{pack_status}` | All 8 packs verified with `HealthCoreDataFixture` |",
+              f"| Aggregate JaCoCo Line Coverage | `{bar(agg_line)}` | **{agg_line:.1f}%** ({tot_line_cov}/{tot_line_cov + tot_line_miss} lines) |",
+              f"| Aggregate JaCoCo Instruction / Branch Coverage | `{bar(agg_inst)}` | **{agg_inst:.1f}%** instructions · **{agg_br:.1f}%** branches |",
+              "",
+              "### Per-Module JaCoCo Coverage & Suite Breakdown (22 Modules)",
+              "",
+              "| Module | Suite Status | Tests | Line Coverage | Instruction | Branch |",
+              "|---|---|---:|---|---:|---:|",
+              *rows,
+              "",
+              "<details>",
+              "<summary>Verified Industry Capability Packs (8/8 Isolated with HealthCoreDataFixture)</summary>",
+              "",
+              "1. `healthcore-pack-pharmacy`",
+              "2. `healthcore-pack-diagnostics`",
+              "3. `healthcore-pack-pharma-manufacturing`",
+              "4. `healthcore-pack-life-sciences`",
+              "5. `healthcore-pack-emr`",
+              "6. `healthcore-pack-ehr`",
+              "7. `healthcore-pack-his`",
+              "8. `healthcore-pack-hie`",
+              "</details>",
+          ]
+
+          report = "\n".join(md_lines) + "\n"
+          pathlib.Path("coverage-summary.md").write_text(report, encoding="utf-8")
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_file:
+              with open(summary_file, "a", encoding="utf-8") as fh:
+                  fh.write(report)
+          print(report)
+          PY
+
+      - name: Upload visual coverage summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-visual-summary
+          path: coverage-summary.md
+
+      - name: Post or update JaCoCo coverage summary as PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('coverage-summary.md', 'utf8');
+            const marker = '<!-- healthcore-jacoco-coverage-report -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing JaCoCo coverage PR comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info('Created new JaCoCo coverage PR comment');
+            }

@@ -1,19 +1,20 @@
-# OPES HealthCore — Complete 58-Module Catalog
+# OPES HealthCore — Complete 59-Module Catalog
 
-**Release Version**: `1.0.0` | **Group ID**: `com.opeshealth.healthcore` | **Total Reactor Modules**: `58` (41 Core/HIS modules + 9 Universal Industry Starters + 8 Composable Industry Capability Packs)
+**Release Version**: `1.0.0` | **Group ID**: `com.opeshealth.healthcore` | **Total Reactor Modules**: `59` (42 Core/HIS/Testing modules + 9 Universal Industry Starters + 8 Composable Industry Capability Packs)
 
 > **Status Key**:
 > - `Implemented (Statically Verified)` — Complete Java 25 source, Spring Boot 4.0 auto-configuration, portable Liquibase changelogs, and unit/contract tests verified via static/structural audit; requires JDK 25 + Maven + Testcontainers CI runner for runtime execution.
 
 ---
 
-## 1. Platform Foundation & BOM Modules (6 Modules)
+## 1. Platform Foundation, Testing & BOM Modules (7 Modules)
 
 | Module ArtifactId | Purpose | Industry Relevance | Core Dependencies | Reference Docs | Example / Consumer | Status | Version |
 |---|---|---|---|---|---|---|---|
-| `healthcore-bom` | Central Bill of Materials pinning all 58 module and third-party dependency versions | Universal (All 8 Packs) | None | `README.md` | All 11 examples | Implemented (Statically Verified) | 1.0.0 |
+| `healthcore-bom` | Central Bill of Materials pinning all 59 module and third-party dependency versions | Universal (All 8 Packs) | None | `README.md` | All 11 examples | Implemented (Statically Verified) | 1.0.0 |
 | `healthcore-persistence-core` | UUIDv7 generator, Hibernate multi-tenant filter, SDK SPIs (`ElectronicSignatureSpi`, `AuditLedgerSpi`, `CapabilityPackManifestContract`, `SpecialtyExtensionContract`, `EhrProvenanceReconciliationContract`), Liquibase base | Universal (All 8 Packs) | Spring Data JPA, Liquibase | `healthcore-persistence-core/README.md` | All 11 examples | Implemented (Statically Verified) | 1.0.0 |
 | `healthcore-security-audit` | OAuth2/JWT RBAC, `FacilityContext` tenant isolation, `@ClinicalAudit` immutable hash-chained audit trail | Universal (All 8 Packs) | `persistence-core` | `healthcore-security-audit/README.md` | All 11 examples | Implemented (Statically Verified) | 1.0.0 |
+| `healthcore-testing` | Centralized ISO/HL7-compliant `HealthCoreDataFixture` & `IsoHl7StandardSampleData` (`<optional>true</optional>` starter bindings) for isolated database seeding across all 8 Reference Hospital consoles and both new backend starters | Universal (Test Scope Only) | `persistence-core`, `security-audit` (all domain starters optional) | `healthcore-testing/README.md` | `healthcore-quickstart-host` | Implemented (Statically Verified) | 1.0.0 |
 | `healthcore-starter-api-product` | Partner API keys, tenant rate limiting, webhook subscriptions, OpenAPI metadata | Universal (All 8 Packs) | `persistence-core`, `security-audit` | `healthcore-starter-api-product/README.md` | `examples/regional-hie` | Implemented (Statically Verified) | 1.0.0 |
 | `healthcore-starter-offline-sync` | Store-and-forward delta sync queues, conflict resolution, low-bandwidth edge resilience | Pharmacy, EMR, EHR, HIS | `persistence-core`, `security-audit` | `healthcore-starter-offline-sync/README.md` | `examples/standalone-pharmacy` | Implemented (Statically Verified) | 1.0.0 |
 | `healthcore-starter-tenant-governance` | Multi-facility network provisioning, tenant lifecycle, subscription quotas | Multi-Site Networks, HIS, HIE | `persistence-core`, `security-audit` | `healthcore-starter-tenant-governance/README.md` | `examples/hospital-his` | Implemented (Statically Verified) | 1.0.0 |

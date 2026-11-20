@@ -1,13 +1,14 @@
 # OPES HealthCore — Complete Module Inventory
 
-**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **58** (+ `healthcore-mobile-kmp` companion + 11 standalone `examples/*`).
+**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **59** (+ `healthcore-mobile-kmp` companion + 11 standalone `examples/*`).
 
-## 1. Platform Core & Governance (4 Modules)
+## 1. Platform Core, Testing & Governance (5 Modules)
 | Artifact ID | Category | Purpose |
 |---|---|---|
 | `healthcore-bom` | BOM | Centralized Maven Bill of Materials for all starters, packs, Spring Boot 4, FHIR/HL7, Liquibase, DB drivers, and Testcontainers |
 | `healthcore-persistence-core` | Core | UUIDv7 generator, multi-DB Liquibase base, Hibernate `facilityFilter`, domain-neutral SDK primitives (`ElectronicSignatureSpi`, `TraceableLotPrimitive`, `CapabilityPackManifestContract`) |
 | `healthcore-security-audit` | Core | OIDC/JWT security, RBAC permissions, `FacilityContext`, break-glass controls, tamper-evident `@ClinicalAudit` chain |
+| `healthcore-testing` | Testing | Centralized ISO/HL7-compliant `HealthCoreDataFixture` & `IsoHl7StandardSampleData` (`<optional>true</optional>` starter bindings) for isolated workflow verification of all 8 Reference Hospital consoles and both new backend starters |
 | `healthcore-starter-tenant-governance` | Governance | Multi-facility tenant lifecycle, licensing/tier quotas, cross-facility isolation policies |
 
 ## 2. Standalone Pharmacy & Diagnostics Starters (2 New Isolated Starters + 4 Clinical Starters)
