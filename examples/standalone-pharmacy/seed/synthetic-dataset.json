@@ -1,0 +1,35 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000001",
+  "products": [
+    {
+      "sku": "SYN-AMOX-500",
+      "genericName": "Amoxicillin Trihydrate 500mg",
+      "brandName": "SyntheMox",
+      "atcCode": "J01CA04",
+      "dosageForm": "CAPSULE",
+      "controlledSubstance": false,
+      "reorderThreshold": 25,
+      "unitPrice": 1500.0,
+      "currency": "XAF"
+    },
+    {
+      "sku": "SYN-MORPH-10",
+      "genericName": "Morphine Sulfate 10mg",
+      "brandName": "SyntheDol",
+      "atcCode": "N02AA01",
+      "dosageForm": "TABLET",
+      "controlledSubstance": true,
+      "reorderThreshold": 10,
+      "unitPrice": 4500.0,
+      "currency": "XAF"
+    }
+  ],
+  "suppliers": [
+    {
+      "supplierCode": "SUP-SYN-01",
+      "supplierName": "Synthetic Central Pharma Distributors",
+      "licenseNumber": "LIC-SYN-2026"
+    }
+  ]
+}

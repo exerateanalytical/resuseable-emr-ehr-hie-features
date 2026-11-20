@@ -1,0 +1,16 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000011",
+  "participatingFacilities": [
+    {
+      "facilityCode": "SYN-FAC-YDE",
+      "name": "Synthetic Regional Hospital Yaounde",
+      "iheOid": "2.25.1001"
+    },
+    {
+      "facilityCode": "SYN-FAC-DLA",
+      "name": "Synthetic District Lab Douala",
+      "iheOid": "2.25.1002"
+    }
+  ]
+}

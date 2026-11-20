@@ -1,6 +1,6 @@
 /*
  * =============================================================================
- * Opes HealthCore SDK — Industry Capability Pack Manifest & Isolation Contract
+ * Opes HealthCore SDK — Industry Capability Pack Manifest & Conflict Detector
  * Author / Architect : Jude Nshome — Opes Health Systems
  * Email              : nshome@opesware.com
  * Website            : https://www.opeshealthsystems.com
@@ -9,14 +9,11 @@
  */
 package com.opeshealth.healthcore.persistence.sdk;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Runtime and test-time contract for validating OPES HealthCore Industry Capability Pack
- * dependency graphs, preventing forbidden cross-industry coupling (for example, ensuring
- * {@code healthcore-pack-pharma-manufacturing} never pulls in MPI/EMR/HIS modules).
+ * dependency graphs, detecting cross-industry coupling, and checking module version compatibility.
  */
 public final class CapabilityPackManifestContract {
 
@@ -56,5 +53,33 @@ public final class CapabilityPackManifestContract {
             }
         }
         return new PackCompatibilityReport(manifest.packId(), violations.isEmpty(), List.copyOf(violations));
+    }
+
+    /**
+     * Detects conflicting major versions or mutually exclusive module compositions when developers
+     * assemble Mode C custom compositions across multiple HealthCore starters.
+     */
+    public static PackCompatibilityReport detectDependencyConflicts(
+            String compositionName,
+            Map<String, String> installedModuleVersions) {
+        List<String> violations = new ArrayList<>();
+        Set<String> majorVersions = new HashSet<>();
+        for (var entry : installedModuleVersions.entrySet()) {
+            String ver = entry.getValue();
+            if (ver == null || ver.isBlank()) {
+                violations.add("Module '" + entry.getKey() + "' has missing semantic version.");
+                continue;
+            }
+            String major = ver.split("\\.")[0];
+            majorVersions.add(major);
+        }
+        if (majorVersions.size() > 1) {
+            violations.add("Incompatible HealthCore major versions detected across modules: " + majorVersions);
+        }
+        if (installedModuleVersions.containsKey("healthcore-starter-pharmacy-commerce")
+                && installedModuleVersions.containsKey("healthcore-starter-pharmacy-lis")) {
+            violations.add("Conflicting pharmacy modules installed simultaneously: choose standalone 'healthcore-starter-pharmacy-commerce' OR hospital 'healthcore-starter-pharmacy-lis'.");
+        }
+        return new PackCompatibilityReport(compositionName, violations.isEmpty(), List.copyOf(violations));
     }
 }

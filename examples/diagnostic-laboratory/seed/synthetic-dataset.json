@@ -1,0 +1,24 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000002",
+  "catalogItems": [
+    {
+      "testCode": "LOINC-2823-3",
+      "testName": "Serum Potassium",
+      "category": "CHEMISTRY",
+      "unitOfMeasure": "mmol/L",
+      "referenceRange": "3.5-5.1",
+      "criticalLow": 2.8,
+      "criticalHigh": 6.2,
+      "turnaroundMinutes": 90,
+      "sendOutLabName": null
+    }
+  ],
+  "sampleOrders": [
+    {
+      "patientExternalRef": "SYN-LAB-PT-0001",
+      "testCode": "LOINC-2823-3",
+      "specimenType": "SERUM"
+    }
+  ]
+}

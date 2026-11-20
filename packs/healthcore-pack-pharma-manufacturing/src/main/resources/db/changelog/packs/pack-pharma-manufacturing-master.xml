@@ -25,5 +25,6 @@
     <include file="classpath:db/changelog/security/001-security-audit.xml"/>
     <include file="classpath:db/changelog/pharma_manufacturing/001-pharma-manufacturing.xml"/>
     <include file="classpath:db/changelog/pharma_qms/001-pharma-qms.xml"/>
+    <include file="classpath:db/changelog/pharma_qms/002-pharma-qms-equipment-stability.xml"/>
     <include file="classpath:db/changelog/pharma_serialization/001-pharma-serialization.xml"/>
 </databaseChangeLog>

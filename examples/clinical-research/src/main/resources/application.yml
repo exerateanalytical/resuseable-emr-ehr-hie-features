@@ -13,7 +13,7 @@ spring:
       ddl-auto: validate
   liquibase:
     enabled: true
-    change-log: classpath:db/changelog/clinical_research/001-clinical-research.xml
+    change-log: classpath:db/changelog/db.changelog-master.xml
 
 management:
   endpoints:

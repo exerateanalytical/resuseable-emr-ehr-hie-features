@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -31,13 +32,33 @@ public class DiagnosticsCoreService {
         boolean isReleasePermitted(DiagnosticServiceOrderEntity order);
     }
 
+    /**
+     * Pluggable critical-value escalation SPI allowing facilities to plug in SMS/pager/FHIR Communication
+     * routing rules on panic values.
+     */
+    public interface CriticalValueEscalationSpi {
+        boolean isCritical(DiagnosticCatalogItemEntity catalogItem, BigDecimal numericValue);
+    }
+
     public interface ReferringPartnerRepository extends JpaRepository<ReferringPartnerEntity, UUID> {
         List<ReferringPartnerEntity> findByFacilityIdOrderByPartnerNameAsc(UUID facilityId);
+    }
+
+    public interface DiagnosticCatalogRepository extends JpaRepository<DiagnosticCatalogItemEntity, UUID> {
+        Optional<DiagnosticCatalogItemEntity> findByFacilityIdAndCatalogCode(UUID facilityId, String catalogCode);
     }
 
     public interface DiagnosticServiceOrderRepository extends JpaRepository<DiagnosticServiceOrderEntity, UUID> {
         Optional<DiagnosticServiceOrderEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
         List<DiagnosticServiceOrderEntity> findByFacilityIdOrderByOrderedAtDesc(UUID facilityId);
+    }
+
+    public interface CriticalNotificationRepository extends JpaRepository<CriticalValueNotificationEntity, UUID> {
+        Optional<CriticalValueNotificationEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+    }
+
+    public interface ResultAmendmentRepository extends JpaRepository<ResultAmendmentEntity, UUID> {
+        List<ResultAmendmentEntity> findByFacilityIdAndOrderId(UUID facilityId, UUID orderId);
     }
 
     public interface QualityIncidentRepository extends JpaRepository<QualityIncidentEntity, UUID> {
@@ -51,6 +72,20 @@ public class DiagnosticsCoreService {
             String reportDeliveryChannel
     ) {}
 
+    public record RegisterCatalogItemRequest(
+            String catalogCode,
+            String displayName,
+            String modalityDomain,
+            boolean packagePanel,
+            String unitUcum,
+            BigDecimal refLow,
+            BigDecimal refHigh,
+            BigDecimal criticalLow,
+            BigDecimal criticalHigh,
+            int tatSlaMinutes,
+            String sendOutPartner
+    ) {}
+
     public record CreateDiagnosticOrderRequest(
             String accessionNumber,
             String modalityDomain,
@@ -58,6 +93,21 @@ public class DiagnosticsCoreService {
             String subjectRef,
             String referringPartnerCode,
             int tatSlaMinutes
+    ) {}
+
+    public record EscalateCriticalResultRequest(
+            UUID orderId,
+            BigDecimal numericValue,
+            String criticalValueSummary,
+            String notifiedClinician
+    ) {}
+
+    public record AmendResultRequest(
+            UUID orderId,
+            String priorResultSummary,
+            String amendedResultSummary,
+            String amendmentReason,
+            String amendedBy
     ) {}
 
     public record LogQualityIncidentRequest(
@@ -69,21 +119,41 @@ public class DiagnosticsCoreService {
     ) {}
 
     private final ReferringPartnerRepository partnerRepo;
+    private final DiagnosticCatalogRepository catalogRepo;
     private final DiagnosticServiceOrderRepository orderRepo;
+    private final CriticalNotificationRepository criticalRepo;
+    private final ResultAmendmentRepository amendmentRepo;
     private final QualityIncidentRepository incidentRepo;
     private final DiagnosticsQcPolicySpi qcPolicySpi;
+    private final CriticalValueEscalationSpi criticalSpi;
 
     public DiagnosticsCoreService(
             ReferringPartnerRepository partnerRepo,
+            DiagnosticCatalogRepository catalogRepo,
             DiagnosticServiceOrderRepository orderRepo,
+            CriticalNotificationRepository criticalRepo,
+            ResultAmendmentRepository amendmentRepo,
             QualityIncidentRepository incidentRepo,
-            ObjectProvider<DiagnosticsQcPolicySpi> qcPolicyProvider) {
+            ObjectProvider<DiagnosticsQcPolicySpi> qcPolicyProvider,
+            ObjectProvider<CriticalValueEscalationSpi> criticalSpiProvider) {
         this.partnerRepo = partnerRepo;
+        this.catalogRepo = catalogRepo;
         this.orderRepo = orderRepo;
+        this.criticalRepo = criticalRepo;
+        this.amendmentRepo = amendmentRepo;
         this.incidentRepo = incidentRepo;
         this.qcPolicySpi = qcPolicyProvider != null
                 ? qcPolicyProvider.getIfAvailable(() -> order -> !"REJECTED_RECOLLECT".equals(order.getStatus()))
                 : order -> !"REJECTED_RECOLLECT".equals(order.getStatus());
+        this.criticalSpi = criticalSpiProvider != null
+                ? criticalSpiProvider.getIfAvailable(() -> DiagnosticsCoreService::defaultCriticalCheck)
+                : DiagnosticsCoreService::defaultCriticalCheck;
+    }
+
+    private static boolean defaultCriticalCheck(DiagnosticCatalogItemEntity item, BigDecimal val) {
+        if (item == null || val == null) return true;
+        if (item.getCriticalLow() != null && val.compareTo(item.getCriticalLow()) <= 0) return true;
+        return item.getCriticalHigh() != null && val.compareTo(item.getCriticalHigh()) >= 0;
     }
 
     @Transactional
@@ -97,6 +167,26 @@ public class DiagnosticsCoreService {
         partner.setPartnerType(req.partnerType().trim().toUpperCase(Locale.ROOT));
         partner.setReportDeliveryChannel(req.reportDeliveryChannel() == null ? "PORTAL" : req.reportDeliveryChannel().trim().toUpperCase(Locale.ROOT));
         return partnerRepo.save(partner);
+    }
+
+    @Transactional
+    @ClinicalAudit(action = "DIAG_CATALOG_REGISTER", resourceType = "DiagnosticCatalogItem")
+    public DiagnosticCatalogItemEntity registerCatalogItem(RegisterCatalogItemRequest req) {
+        UUID facId = requireFacility();
+        DiagnosticCatalogItemEntity item = new DiagnosticCatalogItemEntity();
+        item.setFacilityId(facId);
+        item.setCatalogCode(req.catalogCode().trim().toUpperCase(Locale.ROOT));
+        item.setDisplayName(req.displayName().trim());
+        item.setModalityDomain(req.modalityDomain().trim().toUpperCase(Locale.ROOT));
+        item.setPackagePanel(req.packagePanel());
+        item.setUnitUcum(req.unitUcum());
+        item.setRefLow(req.refLow());
+        item.setRefHigh(req.refHigh());
+        item.setCriticalLow(req.criticalLow());
+        item.setCriticalHigh(req.criticalHigh());
+        item.setTatSlaMinutes(req.tatSlaMinutes() > 0 ? req.tatSlaMinutes() : 180);
+        item.setSendOutPartner(req.sendOutPartner());
+        return catalogRepo.save(item);
     }
 
     @Transactional
@@ -131,6 +221,42 @@ public class DiagnosticsCoreService {
     }
 
     @Transactional
+    @ClinicalAudit(action = "DIAG_CRITICAL_ESCALATE", resourceType = "CriticalValueNotification")
+    public CriticalValueNotificationEntity escalateCriticalResult(EscalateCriticalResultRequest req) {
+        UUID facId = requireFacility();
+        DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(req.orderId(), facId)
+                .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + req.orderId()));
+        DiagnosticCatalogItemEntity item = catalogRepo.findByFacilityIdAndCatalogCode(facId, order.getCatalogCode()).orElse(null);
+        if (item != null && req.numericValue() != null && !criticalSpi.isCritical(item, req.numericValue())) {
+            throw new IllegalArgumentException("Numeric value " + req.numericValue() + " is within non-critical threshold for " + item.getCatalogCode());
+        }
+        CriticalValueNotificationEntity notif = new CriticalValueNotificationEntity();
+        notif.setFacilityId(facId);
+        notif.setOrderId(order.getId());
+        notif.setAccessionNumber(order.getAccessionNumber());
+        notif.setCriticalValueSummary(req.criticalValueSummary().trim());
+        notif.setNotifiedClinician(req.notifiedClinician().trim());
+        notif.setStatus("ESCALATED");
+        return criticalRepo.save(notif);
+    }
+
+    @Transactional
+    @ClinicalAudit(action = "DIAG_CRITICAL_READBACK_ACK", resourceType = "CriticalValueNotification")
+    public CriticalValueNotificationEntity acknowledgeCriticalReadBack(UUID notificationId, String acknowledgedBy, boolean readBackVerified) {
+        UUID facId = requireFacility();
+        if (!readBackVerified) {
+            throw new IllegalStateException("ISO 15189 patient-safety rule: clinician read-back verification is mandatory to close a critical value alert.");
+        }
+        CriticalValueNotificationEntity notif = criticalRepo.findByIdAndFacilityId(notificationId, facId)
+                .orElseThrow(() -> new NoSuchElementException("Critical notification not found: " + notificationId));
+        notif.setReadBackVerified(true);
+        notif.setAcknowledgedBy(acknowledgedBy.trim());
+        notif.setAcknowledgedAt(Instant.now());
+        notif.setStatus("ACKNOWLEDGED_READBACK");
+        return criticalRepo.save(notif);
+    }
+
+    @Transactional
     @ClinicalAudit(action = "DIAG_ORDER_VERIFY_RELEASE", resourceType = "DiagnosticServiceOrder")
     public DiagnosticServiceOrderEntity verifyAndReleaseReport(UUID orderId) {
         UUID facId = requireFacility();
@@ -146,6 +272,28 @@ public class DiagnosticsCoreService {
         order.setTatBreached(elapsedMinutes > order.getTatSlaMinutes());
         order.setStatus("VERIFIED_RELEASED");
         return orderRepo.save(order);
+    }
+
+    @Transactional
+    @ClinicalAudit(action = "DIAG_RESULT_AMEND", resourceType = "ResultAmendment")
+    public ResultAmendmentEntity amendVerifiedResult(AmendResultRequest req) {
+        UUID facId = requireFacility();
+        if (req.amendmentReason() == null || req.amendmentReason().isBlank()) {
+            throw new IllegalArgumentException("ISO 15189 rule: documented amendment reason is required.");
+        }
+        DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(req.orderId(), facId)
+                .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + req.orderId()));
+        order.setStatus("AMENDED");
+        orderRepo.save(order);
+
+        ResultAmendmentEntity amend = new ResultAmendmentEntity();
+        amend.setFacilityId(facId);
+        amend.setOrderId(order.getId());
+        amend.setPriorResultSummary(req.priorResultSummary().trim());
+        amend.setAmendedResultSummary(req.amendedResultSummary().trim());
+        amend.setAmendmentReason(req.amendmentReason().trim());
+        amend.setAmendedBy(req.amendedBy().trim());
+        return amendmentRepo.save(amend);
     }
 
     @Transactional
@@ -183,6 +331,12 @@ public class DiagnosticsCoreService {
             return service.registerReferringPartner(req);
         }
 
+        @PostMapping("/catalog")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:verify')")
+        public DiagnosticCatalogItemEntity registerCatalog(@RequestBody RegisterCatalogItemRequest req) {
+            return service.registerCatalogItem(req);
+        }
+
         @PostMapping("/orders")
         @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:order:create')")
         public DiagnosticServiceOrderEntity createOrder(@RequestBody CreateDiagnosticOrderRequest req) {
@@ -195,10 +349,29 @@ public class DiagnosticsCoreService {
             return service.rejectAndRequestRecollection(id, reason);
         }
 
+        @PostMapping("/critical-notifications")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:verify')")
+        public CriticalValueNotificationEntity escalateCritical(@RequestBody EscalateCriticalResultRequest req) {
+            return service.escalateCriticalResult(req);
+        }
+
+        @PostMapping("/critical-notifications/{id}/acknowledge")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:verify')")
+        public CriticalValueNotificationEntity acknowledgeCritical(
+                @PathVariable UUID id, @RequestParam String acknowledgedBy, @RequestParam boolean readBackVerified) {
+            return service.acknowledgeCriticalReadBack(id, acknowledgedBy, readBackVerified);
+        }
+
         @PostMapping("/orders/{id}/verify-release")
         @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:verify')")
         public DiagnosticServiceOrderEntity verifyRelease(@PathVariable UUID id) {
             return service.verifyAndReleaseReport(id);
+        }
+
+        @PostMapping("/amendments")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_lab:verify')")
+        public ResultAmendmentEntity amend(@RequestBody AmendResultRequest req) {
+            return service.amendVerifiedResult(req);
         }
 
         @PostMapping("/quality-incidents")

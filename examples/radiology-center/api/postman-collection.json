@@ -1,0 +1,77 @@
+{
+  "info": {
+    "name": "OPES HealthCore \u2014 Radiology & Imaging Center Example",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Runnable synthetic smoke collection for OPES HealthCore standalone example."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "facilityId",
+      "value": "01950000-0000-7000-8000-000000000003"
+    },
+    {
+      "key": "jwtToken",
+      "value": "REPLACE_WITH_DEV_JWT"
+    }
+  ],
+  "item": [
+    {
+      "name": "Actuator Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Primary Domain Workflow Smoke Request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Facility-Id",
+            "value": "{{facilityId}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/diagnostics/core/catalog",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "diagnostics",
+            "core",
+            "catalog"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"testCode\": \"RAD-CXR-PA\",\n  \"testName\": \"Chest X-Ray PA/Lateral\",\n  \"category\": \"RADIOLOGY\",\n  \"unitOfMeasure\": \"N/A\",\n  \"referenceRange\": \"Normal cardiopulmonary silhouette\",\n  \"criticalLow\": null,\n  \"criticalHigh\": null,\n  \"turnaroundMinutes\": 45,\n  \"sendOutLabName\": null\n}"
+        }
+      }
+    }
+  ]
+}

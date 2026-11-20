@@ -1,0 +1,14 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000007",
+  "subjects": [
+    {
+      "protocolCode": "SYN-TRIAL-01",
+      "siteCode": "SITE01",
+      "subjectPseudonym": "SUBJ-SYN-001",
+      "armCode": "ARM-A",
+      "eligibilityPassed": true,
+      "econsentVersion": "ICF-v1.0"
+    }
+  ]
+}

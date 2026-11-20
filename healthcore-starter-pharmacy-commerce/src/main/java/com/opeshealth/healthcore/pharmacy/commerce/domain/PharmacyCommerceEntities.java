@@ -91,6 +91,108 @@ public final class PharmacyCommerceEntities {
     }
 
     @Entity
+    @Table(name = "hc_phcom_suppliers")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class SupplierEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "supplier_code", nullable = false, length = 64)
+        private String supplierCode;
+
+        @Column(name = "supplier_name", nullable = false, length = 160)
+        private String supplierName;
+
+        @Column(name = "license_number", length = 80)
+        private String licenseNumber;
+
+        @Column(name = "qualified", nullable = false)
+        private boolean qualified = true;
+
+        @Column(name = "created_at", nullable = false)
+        private Instant createdAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getSupplierCode() { return supplierCode; }
+        public void setSupplierCode(String supplierCode) { this.supplierCode = supplierCode; }
+        public String getSupplierName() { return supplierName; }
+        public void setSupplierName(String supplierName) { this.supplierName = supplierName; }
+        public String getLicenseNumber() { return licenseNumber; }
+        public void setLicenseNumber(String licenseNumber) { this.licenseNumber = licenseNumber; }
+        public boolean isQualified() { return qualified; }
+        public void setQualified(boolean qualified) { this.qualified = qualified; }
+        public Instant getCreatedAt() { return createdAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
+    @Table(name = "hc_phcom_purchase_orders")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class PurchaseOrderEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "po_number", nullable = false, length = 64)
+        private String poNumber;
+
+        @Column(name = "supplier_id", nullable = false)
+        private UUID supplierId;
+
+        @Column(name = "product_id", nullable = false)
+        private UUID productId;
+
+        @Column(name = "ordered_quantity", nullable = false)
+        private int orderedQuantity;
+
+        @Column(name = "received_quantity", nullable = false)
+        private int receivedQuantity = 0;
+
+        @Column(name = "status", nullable = false, length = 24)
+        private String status = "OPEN"; // OPEN, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
+
+        @Column(name = "created_at", nullable = false)
+        private Instant createdAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getPoNumber() { return poNumber; }
+        public void setPoNumber(String poNumber) { this.poNumber = poNumber; }
+        public UUID getSupplierId() { return supplierId; }
+        public void setSupplierId(UUID supplierId) { this.supplierId = supplierId; }
+        public UUID getProductId() { return productId; }
+        public void setProductId(UUID productId) { this.productId = productId; }
+        public int getOrderedQuantity() { return orderedQuantity; }
+        public void setOrderedQuantity(int orderedQuantity) { this.orderedQuantity = orderedQuantity; }
+        public int getReceivedQuantity() { return receivedQuantity; }
+        public void setReceivedQuantity(int receivedQuantity) { this.receivedQuantity = receivedQuantity; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public Instant getCreatedAt() { return createdAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
     @Table(name = "hc_phcom_inventory_lots")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
@@ -124,7 +226,7 @@ public final class PharmacyCommerceEntities {
         private int quantityOnHand;
 
         @Column(name = "status", nullable = false, length = 24)
-        private String status = "AVAILABLE"; // AVAILABLE, QUARANTINED_RECALL, EXPIRED
+        private String status = "AVAILABLE"; // AVAILABLE, QUARANTINED_RECALL, EXPIRED_WITHDRAWN, DAMAGED
 
         @Column(name = "received_at", nullable = false)
         private Instant receivedAt = Instant.now();
@@ -180,6 +282,9 @@ public final class PharmacyCommerceEntities {
         @Column(name = "lot_id", nullable = false)
         private UUID lotId;
 
+        @Column(name = "quantity_prescribed")
+        private Integer quantityPrescribed;
+
         @Column(name = "quantity_dispensed", nullable = false)
         private int quantityDispensed;
 
@@ -191,6 +296,9 @@ public final class PharmacyCommerceEntities {
 
         @Column(name = "witness_id", length = 120)
         private String witnessId;
+
+        @Column(name = "counseling_notes", length = 500)
+        private String counselingNotes;
 
         @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
         private BigDecimal totalAmount;
@@ -216,6 +324,8 @@ public final class PharmacyCommerceEntities {
         public void setProductId(UUID productId) { this.productId = productId; }
         public UUID getLotId() { return lotId; }
         public void setLotId(UUID lotId) { this.lotId = lotId; }
+        public Integer getQuantityPrescribed() { return quantityPrescribed; }
+        public void setQuantityPrescribed(Integer quantityPrescribed) { this.quantityPrescribed = quantityPrescribed; }
         public int getQuantityDispensed() { return quantityDispensed; }
         public void setQuantityDispensed(int quantityDispensed) { this.quantityDispensed = quantityDispensed; }
         public int getRefillsRemaining() { return refillsRemaining; }
@@ -224,11 +334,131 @@ public final class PharmacyCommerceEntities {
         public void setPharmacistId(String pharmacistId) { this.pharmacistId = pharmacistId; }
         public String getWitnessId() { return witnessId; }
         public void setWitnessId(String witnessId) { this.witnessId = witnessId; }
+        public String getCounselingNotes() { return counselingNotes; }
+        public void setCounselingNotes(String counselingNotes) { this.counselingNotes = counselingNotes; }
         public BigDecimal getTotalAmount() { return totalAmount; }
         public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
         public Instant getDispensedAt() { return dispensedAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
+    @Table(name = "hc_phcom_stock_transfers")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class StockTransferEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "transfer_ref", nullable = false, length = 64)
+        private String transferRef;
+
+        @Column(name = "destination_branch_id", nullable = false)
+        private UUID destinationBranchId;
+
+        @Column(name = "product_id", nullable = false)
+        private UUID productId;
+
+        @Column(name = "lot_id", nullable = false)
+        private UUID lotId;
+
+        @Column(name = "quantity", nullable = false)
+        private int quantity;
+
+        @Column(name = "status", nullable = false, length = 24)
+        private String status = "IN_TRANSIT"; // IN_TRANSIT, RECEIVED_CONFIRMED, CANCELLED
+
+        @Column(name = "requested_by", nullable = false, length = 120)
+        private String requestedBy;
+
+        @Column(name = "received_by", length = 120)
+        private String receivedBy;
+
+        @Column(name = "updated_at", nullable = false)
+        private Instant updatedAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getTransferRef() { return transferRef; }
+        public void setTransferRef(String transferRef) { this.transferRef = transferRef; }
+        public UUID getDestinationBranchId() { return destinationBranchId; }
+        public void setDestinationBranchId(UUID destinationBranchId) { this.destinationBranchId = destinationBranchId; }
+        public UUID getProductId() { return productId; }
+        public void setProductId(UUID productId) { this.productId = productId; }
+        public UUID getLotId() { return lotId; }
+        public void setLotId(UUID lotId) { this.lotId = lotId; }
+        public int getQuantity() { return quantity; }
+        public void setQuantity(int quantity) { this.quantity = quantity; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public String getRequestedBy() { return requestedBy; }
+        public void setRequestedBy(String requestedBy) { this.requestedBy = requestedBy; }
+        public String getReceivedBy() { return receivedBy; }
+        public void setReceivedBy(String receivedBy) { this.receivedBy = receivedBy; }
+        public Instant getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
+    @Table(name = "hc_phcom_stock_adjustments")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class StockAdjustmentEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "lot_id", nullable = false)
+        private UUID lotId;
+
+        @Column(name = "adjustment_type", nullable = false, length = 32)
+        private String adjustmentType; // EXPIRY_WITHDRAWAL, DAMAGED_WRITE_OFF, CUSTOMER_RETURN, RECALL_DESTRUCTION, CYCLE_COUNT
+
+        @Column(name = "quantity_delta", nullable = false)
+        private int quantityDelta;
+
+        @Column(name = "reason", nullable = false, length = 240)
+        private String reason;
+
+        @Column(name = "performed_by", nullable = false, length = 120)
+        private String performedBy;
+
+        @Column(name = "recorded_at", nullable = false)
+        private Instant recordedAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public UUID getLotId() { return lotId; }
+        public void setLotId(UUID lotId) { this.lotId = lotId; }
+        public String getAdjustmentType() { return adjustmentType; }
+        public void setAdjustmentType(String adjustmentType) { this.adjustmentType = adjustmentType; }
+        public int getQuantityDelta() { return quantityDelta; }
+        public void setQuantityDelta(int quantityDelta) { this.quantityDelta = quantityDelta; }
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+        public String getPerformedBy() { return performedBy; }
+        public void setPerformedBy(String performedBy) { this.performedBy = performedBy; }
+        public Instant getRecordedAt() { return recordedAt; }
         public long getVersion() { return version; }
     }
 }

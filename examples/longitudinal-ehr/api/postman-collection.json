@@ -1,0 +1,40 @@
+{
+  "info": {
+    "name": "OPES HealthCore \u2014 Longitudinal EHR Example",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Runnable synthetic smoke collection for OPES HealthCore standalone example."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8089"
+    },
+    {
+      "key": "facilityId",
+      "value": "01950000-0000-7000-8000-000000000009"
+    },
+    {
+      "key": "jwtToken",
+      "value": "REPLACE_WITH_DEV_JWT"
+    }
+  ],
+  "item": [
+    {
+      "name": "Actuator Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000006",
+  "aliquots": [
+    {
+      "aliquotBarcode": "SYN-CRYO-0001",
+      "donorPseudonym": "DONOR-SYN-01",
+      "specimenMatrix": "PLASMA",
+      "volumeMicroliters": 500,
+      "freezerCode": "LN2-01",
+      "rackCode": "R1",
+      "boxCode": "B1",
+      "slotCode": "A1",
+      "consentActive": true
+    }
+  ]
+}

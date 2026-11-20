@@ -210,4 +210,96 @@ public final class ClinicalResearchEntities {
         public Instant getReportedAt() { return reportedAt; }
         public long getVersion() { return version; }
     }
+
+    @Entity
+    @Table(name = "hc_cr_ip_accountability")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class InvestigationalProductLedgerEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "protocol_code", nullable = false, length = 64)
+        private String protocolCode;
+
+        @Column(name = "site_code", nullable = false, length = 32)
+        private String siteCode;
+
+        @Column(name = "kit_number", nullable = false, length = 64)
+        private String kitNumber;
+
+        @Column(name = "lot_number", nullable = false, length = 64)
+        private String lotNumber;
+
+        @Column(name = "subject_id")
+        private UUID subjectId;
+
+        @Column(name = "dispensed_units", nullable = false)
+        private int dispensedUnits = 0;
+
+        @Column(name = "returned_units", nullable = false)
+        private int returnedUnits = 0;
+
+        @Column(name = "destroyed_units", nullable = false)
+        private int destroyedUnits = 0;
+
+        @Column(name = "status", nullable = false, length = 24)
+        private String status = "DISPENSED"; // DISPENSED, RETURNED, DESTROYED
+
+        @Column(name = "dispensed_by", length = 120)
+        private String dispensedBy;
+
+        @Column(name = "reconciled_by", length = 120)
+        private String reconciledBy;
+
+        @Column(name = "destruction_witness_id", length = 120)
+        private String destructionWitnessId;
+
+        @Column(name = "witness_sig_sha256", length = 64)
+        private String witnessSigSha256;
+
+        @Column(name = "updated_at", nullable = false)
+        private Instant updatedAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getProtocolCode() { return protocolCode; }
+        public void setProtocolCode(String protocolCode) { this.protocolCode = protocolCode; }
+        public String getSiteCode() { return siteCode; }
+        public void setSiteCode(String siteCode) { this.siteCode = siteCode; }
+        public String getKitNumber() { return kitNumber; }
+        public void setKitNumber(String kitNumber) { this.kitNumber = kitNumber; }
+        public String getLotNumber() { return lotNumber; }
+        public void setLotNumber(String lotNumber) { this.lotNumber = lotNumber; }
+        public UUID getSubjectId() { return subjectId; }
+        public void setSubjectId(UUID subjectId) { this.subjectId = subjectId; }
+        public int getDispensedUnits() { return dispensedUnits; }
+        public void setDispensedUnits(int dispensedUnits) { this.dispensedUnits = dispensedUnits; }
+        public int getReturnedUnits() { return returnedUnits; }
+        public void setReturnedUnits(int returnedUnits) { this.returnedUnits = returnedUnits; }
+        public int getDestroyedUnits() { return destroyedUnits; }
+        public void setDestroyedUnits(int destroyedUnits) { this.destroyedUnits = destroyedUnits; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public String getDispensedBy() { return dispensedBy; }
+        public void setDispensedBy(String dispensedBy) { this.dispensedBy = dispensedBy; }
+        public String getReconciledBy() { return reconciledBy; }
+        public void setReconciledBy(String reconciledBy) { this.reconciledBy = reconciledBy; }
+        public String getDestructionWitnessId() { return destructionWitnessId; }
+        public void setDestructionWitnessId(String destructionWitnessId) { this.destructionWitnessId = destructionWitnessId; }
+        public String getWitnessSigSha256() { return witnessSigSha256; }
+        public void setWitnessSigSha256(String witnessSigSha256) { this.witnessSigSha256 = witnessSigSha256; }
+        public Instant getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+        public long getVersion() { return version; }
+    }
 }

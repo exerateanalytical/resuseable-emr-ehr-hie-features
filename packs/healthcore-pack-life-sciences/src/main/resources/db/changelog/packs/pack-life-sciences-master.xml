@@ -27,4 +27,5 @@
     <include file="classpath:db/changelog/biobanking/001-biobanking.xml"/>
     <include file="classpath:db/changelog/genomics_research/001-genomics-research.xml"/>
     <include file="classpath:db/changelog/clinical_research/001-clinical-research.xml"/>
+    <include file="classpath:db/changelog/clinical_research/002-clinical-research-ip.xml"/>
 </databaseChangeLog>

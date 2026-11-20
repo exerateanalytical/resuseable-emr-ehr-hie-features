@@ -3,6 +3,12 @@
   "packNumber": "PACK-02",
   "version": "1.0.0",
   "industryDomain": "DIAGNOSTIC_CENTERS",
+  "description": "Standalone medical diagnostic laboratories, specimen collection networks, and radiology/imaging centers pack with accessioning, chain-of-custody, IQC/EQA gates, critical-value read-back escalation, result amendments, and HL7/ASTM/DICOM readiness.",
+  "intendedDeveloperAudience": [
+    "Independent Medical Laboratory Software Teams",
+    "Radiology & Imaging Center Engineering Teams",
+    "Multi-Site Diagnostic Collection Network Integrators"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -14,6 +20,12 @@
     "healthcore-starter-hl7-astm-dicom",
     "healthcore-starter-api-product"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-emr-clinical",
     "healthcore-starter-hospital-ops",
@@ -21,5 +33,94 @@
     "healthcore-starter-crvs-mortuary",
     "healthcore-starter-pharma-manufacturing",
     "healthcore-starter-pharmacy-commerce"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Diagnostic test/panel catalog with LOINC, UCUM units, reference intervals, and critical limits",
+    "External patient registration and diagnostic order accessioning",
+    "Specimen barcode tracking, collection, rejection, and chain-of-custody",
+    "IQC / EQA Westgard control runs blocking unsafe result release",
+    "Two-stage technical and medical/pathologist e-signed release",
+    "Critical-value escalation with mandatory read-back acknowledgment",
+    "Immutable result amendment audit history and optional LIS/RIS/DICOM profiles"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/diagnostics/core",
+      "/api/v1/lis",
+      "/api/v1/radiology"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.diagnostics.core.service.DiagnosticsCoreService.CriticalValueEscalationSpi",
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi"
+    ],
+    "domainEvents": [
+      "diagnostics.order.accessioned",
+      "diagnostics.iqc.failed",
+      "diagnostics.result.critical.escalated",
+      "diagnostics.result.verified",
+      "diagnostics.result.amended"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-diagnostics-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "LAB_TECHNOLOGIST": [
+      "PERM_lab:result:enter",
+      "PERM_lab:specimen:manage"
+    ],
+    "PATHOLOGIST_OR_LAB_DIRECTOR": [
+      "PERM_lab:verify",
+      "PERM_facility:manage",
+      "PERM_audit:read"
+    ],
+    "RADIOLOGIST": [
+      "PERM_radiology:report",
+      "PERM_lab:verify"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "ISO 15189:2022",
+      "scope": "Technical support for specimen traceability, IQC gating, critical-value read-back, result amendments, and audit trails (does not confer accreditation)",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "LOINC & UCUM",
+      "scope": "Catalog test codes and standardized quantitative units",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "HL7 v2 / ASTM E1381-E1394 / DICOM",
+      "scope": "Analyzer & modality integration via optional hl7-astm-dicom starter",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_02_DIAGNOSTICS_INTEGRATION_GUIDE.md",
+    "docs/integrations/modules/healthcore-starter-diagnostics-core.md"
+  ],
+  "installationExamples": [
+    "examples/diagnostic-laboratory",
+    "examples/radiology-center"
+  ],
+  "knownLimitations": [
+    "ISO 15189 accreditation requires laboratory SOPs, physical calibration, proficiency testing, and accreditation body audit.",
+    "Physical RS-232/TCP analyzer connections require site-deployed interface agents or MLLP/ASTM bridges."
   ]
 }

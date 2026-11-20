@@ -1,0 +1,23 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000004",
+  "controlledDocuments": [
+    {
+      "documentCode": "SOP-SYN-001",
+      "documentVersion": "v1.0",
+      "documentType": "SOP",
+      "title": "Synthetic Tablet Compression Line Clearance",
+      "documentBody": "Verify zero residual tablets prior to batch start.",
+      "authoredBy": "qa.author.syn",
+      "reviewDueDate": "2027-01-01"
+    }
+  ],
+  "equipment": [
+    {
+      "assetCode": "SYN-PRESS-01",
+      "equipmentName": "Synthetic Rotary Press",
+      "qualificationStage": "PQ",
+      "calibrationDueDate": "2027-06-01"
+    }
+  ]
+}

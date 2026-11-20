@@ -3,6 +3,12 @@
   "packNumber": "PACK-06",
   "version": "1.0.0",
   "industryDomain": "LONGITUDINAL_EHR",
+  "description": "Longitudinal multi-facility Electronic Health Record (EHR) pack extending Pack 05 (EMR) with cross-organization provenance, consent/privacy segmentation, multi-source reconciliation, FHIR R4 / IPS exchange, and patient portal access.",
+  "intendedDeveloperAudience": [
+    "Multi-Clinic Health Network Engineering Teams",
+    "National / Regional Longitudinal EHR Platform Builders",
+    "Patient Portal & Care Coordination Teams"
+  ],
   "requiredModules": [
     "healthcore-pack-emr",
     "healthcore-starter-hie-interop",
@@ -15,11 +21,95 @@
     "healthcore-starter-analytics",
     "healthcore-starter-offline-sync"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-hospital-ops",
     "healthcore-starter-surgery-ot",
     "healthcore-starter-crvs-mortuary",
     "healthcore-starter-pharma-manufacturing",
     "healthcore-starter-biobanking"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "All Pack 05 (EMR) clinical capabilities",
+    "Cross-facility longitudinal timeline with source-facility provenance attribution",
+    "Privacy segmentation (HIV, mental health, behavioral, reproductive, genomics) & break-glass audit",
+    "Multi-source medication, allergy, and problem reconciliation with conflict detection",
+    "HL7 FHIR R4 International Patient Summary (IPS) generation & ingestion",
+    "Patient portal access and care-team summary dashboards"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/emr",
+      "/api/v1/hie",
+      "/api/v1/fhir",
+      "/api/v1/portal"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.EhrProvenanceReconciliationContract",
+      "com.opeshealth.healthcore.persistence.sdk.SpecialtyExtensionContract"
+    ],
+    "domainEvents": [
+      "ehr.summary.reconciled",
+      "ehr.consent.updated",
+      "ehr.ips.bundle.exported"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-ehr-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "CLINICIAN": [
+      "PERM_emr:write",
+      "PERM_hie:read",
+      "PERM_hie:reconcile"
+    ],
+    "PRIVACY_OFFICER": [
+      "PERM_audit:read",
+      "PERM_consent:manage"
+    ],
+    "PATIENT": [
+      "PERM_portal:self:read"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "HL7 FHIR R4 & International Patient Summary (IPS)",
+      "scope": "Longitudinal summary bundle generation and reconciliation",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "ISO/HL7 10781 EHR-S Functional Model",
+      "scope": "Provenance, longitudinal timeline, and consent-aware retrieval controls",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_06_LONGITUDINAL_EHR_INTEGRATION_GUIDE.md"
+  ],
+  "installationExamples": [
+    "examples/longitudinal-ehr"
+  ],
+  "knownLimitations": [
+    "Cross-border patient identity linking requires external Master Patient Index governance agreements."
   ]
 }

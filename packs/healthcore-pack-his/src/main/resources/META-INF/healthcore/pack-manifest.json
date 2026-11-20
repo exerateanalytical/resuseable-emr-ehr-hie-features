@@ -3,12 +3,11 @@
   "packNumber": "PACK-07",
   "version": "1.0.0",
   "industryDomain": "COMPOSABLE_HOSPITAL_HIS",
-  "profiles": [
-    "outpatient-hospital",
-    "general-hospital",
-    "multispecialty",
-    "tertiary-referral",
-    "multi-facility-network"
+  "description": "Composable Hospital Information System (HIS) pack extending Pack 06 (EHR) with ADT/inpatient wards, Emergency & Nursing MAR, Hospital Pharmacy & LIS, UHC/Insurance Billing, and optional Maven profiles for Radiology, Surgery/OT, Blood Bank, Biomedical Cold-Chain, CRVS, Workforce, and Revenue Claims.",
+  "intendedDeveloperAudience": [
+    "General, Multispecialty & Tertiary Hospital IT Teams",
+    "Public Health Network & Ministry Hospital System Builders",
+    "Healthcare Systems Integrators"
   ],
   "requiredModules": [
     "healthcore-pack-ehr",
@@ -30,6 +29,14 @@
     "healthcore-starter-integration-ops",
     "healthcore-starter-analytics"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": [
+      "healthcore-starter-pharmacy-commerce"
+    ]
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-pharma-manufacturing",
     "healthcore-starter-pharma-qms",
@@ -37,5 +44,96 @@
     "healthcore-starter-life-sciences-lims",
     "healthcore-starter-biobanking",
     "healthcore-starter-genomics-research"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "All Pack 06 (EHR) longitudinal clinical capabilities",
+    "Inpatient ADT, ward/bed allocation, transfers, and discharge summaries",
+    "Emergency triage and inpatient nursing MAR / care plans",
+    "Hospital inpatient/outpatient pharmacy and clinical LIS",
+    "UHC, insurance, mobile money, and cash hospital billing",
+    "Optional department profiles: outpatient-hospital, general-hospital, multispecialty, tertiary-referral, multi-facility-network"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/hospital-ops",
+      "/api/v1/emergency",
+      "/api/v1/billing",
+      "/api/v1/emr"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi",
+      "com.opeshealth.healthcore.persistence.sdk.AuditLedgerSpi"
+    ],
+    "domainEvents": [
+      "his.adt.admitted",
+      "his.adt.discharged",
+      "his.nursing.mar.administered",
+      "his.billing.invoice.settled"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-his-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "HOSPITAL_ADMIN": [
+      "PERM_facility:manage",
+      "PERM_audit:read"
+    ],
+    "ATTENDING_PHYSICIAN": [
+      "PERM_emr:write",
+      "PERM_orders:create",
+      "PERM_adt:manage"
+    ],
+    "WARD_NURSE": [
+      "PERM_nursing:mar",
+      "PERM_adt:read"
+    ],
+    "BILLING_OFFICER": [
+      "PERM_billing:collect",
+      "PERM_claims:submit"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "HL7 FHIR R4 / ICD-11 / LOINC / SNOMED CT",
+      "scope": "Hospital clinical, lab, and billing coding",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "WHO Emergency Triage & Maternal/CRVS Guidance",
+      "scope": "Structured triage and optional CRVS vital events",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_07_COMPOSABLE_HIS_INTEGRATION_GUIDE.md"
+  ],
+  "installationExamples": [
+    "examples/hospital-his"
+  ],
+  "knownLimitations": [
+    "Hospital pack intentionally excludes pharmaceutical manufacturing and life sciences research modules."
+  ],
+  "profiles": [
+    "outpatient-hospital",
+    "general-hospital",
+    "multispecialty",
+    "tertiary-referral",
+    "multi-facility-network"
   ]
 }

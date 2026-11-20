@@ -45,7 +45,7 @@ resp.raise_for_status()
 - OPES HealthCore itself contains **zero TypeScript/Node build dependencies**; external frontend teams integrate solely via OpenAPI 3.1 JSON (`/v3/api-docs`) or FHIR R4 REST (`/fhir/r4/**`) with standard OIDC PKCE tokens and `Idempotency-Key` headers.
 
 ## 5. Kotlin / Android / iOS (Kotlin Multiplatform)
-- Consume the companion `healthcore-kmp-client` module (`OfflineSyncEngine`, `HealthCoreApiClient`, `EncryptedLocalStore`) for offline-first clinic, pharmacy branch, CHW, or field research specimen collection with automatic vector-clock conflict resolution.
+- Consume the companion `healthcore-mobile-kmp` module (`OfflineSyncEngine`, `HealthCoreApiClient`, `EncryptedLocalStore`) for offline-first clinic, pharmacy branch, CHW, or field research specimen collection with automatic vector-clock conflict resolution.
 
 ## 6. Medical Devices, Analyzers, PACS & ERP Systems
 - **Lab Analyzers**: HL7 v2 ORU/ORM & ASTM E1381/E1394 via `healthcore-starter-hl7-astm-dicom`.

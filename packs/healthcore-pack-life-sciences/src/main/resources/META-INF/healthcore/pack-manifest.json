@@ -3,6 +3,13 @@
   "packNumber": "PACK-04",
   "version": "1.0.0",
   "industryDomain": "LIFE_SCIENCES_RESEARCH",
+  "description": "Life sciences research LIMS, ISO 20387 biobanking (storage hierarchy, consent withdrawal blocking, freeze-thaw tracking), genomics/bioinformatics reproducibility manifests, and ICH E6(R3) clinical research EDC (eCRF, query lock, SAE, IP accountability, CDISC SDTM/CDASH/ADaM & OMOP CDM exports).",
+  "intendedDeveloperAudience": [
+    "Biotech & Life Sciences R&D Engineering Teams",
+    "Biobank & Biorepository Platforms",
+    "Clinical Trial EDC / CRO Engineering Teams",
+    "Genomics & Bioinformatics Pipeline Teams"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -16,6 +23,12 @@
     "healthcore-starter-analytics",
     "healthcore-starter-deidentification-research"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-mpi",
     "healthcore-starter-emr-clinical",
@@ -24,5 +37,103 @@
     "healthcore-starter-uhc-billing",
     "healthcore-starter-pharmacy-commerce",
     "healthcore-starter-crvs-mortuary"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Research study/protocol registration, assay runs, reagent lots, and instrument QC logs",
+    "Biobank cryogenic hierarchy (Freezer/Rack/Box/Slot), aliquot genealogy, freeze-thaw counters, and consent-withdrawal release block",
+    "Genomics run metadata, FASTQ/BAM/VCF SHA-256 provenance, pipeline version & container digest tracking",
+    "Clinical trial pseudonymous enrollment, eConsent gate, eCRF query & PI e-signed database lock",
+    "Adverse event / SAE expedited flagging and Investigational Product (IP) witness-signed accountability",
+    "De-identified CDISC SDTM, CDASH/ADaM ADSL, and OMOP CDM v5.4 exports"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/lifesciences/lims",
+      "/api/v1/lifesciences/biobank",
+      "/api/v1/lifesciences/genomics",
+      "/api/v1/lifesciences/clinical-research"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi",
+      "com.opeshealth.healthcore.persistence.sdk.AuditLedgerSpi"
+    ],
+    "domainEvents": [
+      "lifesciences.assay.completed",
+      "biobank.aliquot.stored",
+      "biobank.consent.withdrawn",
+      "genomics.pipeline.manifest.recorded",
+      "clinicalresearch.ecrf.locked",
+      "clinicalresearch.sae.reported"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-life-sciences-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "RESEARCH_SCIENTIST": [
+      "PERM_lab:result:enter"
+    ],
+    "BIOBANK_CUSTODIAN": [
+      "PERM_lab:specimen:manage",
+      "PERM_lab:verify"
+    ],
+    "PRINCIPAL_INVESTIGATOR": [
+      "PERM_lab:verify",
+      "PERM_facility:manage",
+      "PERM_audit:read"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "ISO 20387:2018 Biobanking",
+      "scope": "Technical support for biospecimen traceability, freeze-thaw logs, consent revocation gates",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "ICH E6(R3) GCP",
+      "scope": "Technical support for eligibility/eConsent gates, query resolution before DB lock, SAE flagging, IP accountability",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "CDISC SDTM / CDASH / ADaM & OMOP CDM 5.4",
+      "scope": "Structured de-identified export projections",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "GA4GH Provenance Concepts",
+      "scope": "Pipeline container digest and SHA-256 artifact manifests",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_04_LIFE_SCIENCES_INTEGRATION_GUIDE.md",
+    "docs/integrations/modules/healthcore-starter-life-sciences-lims.md",
+    "docs/integrations/modules/healthcore-starter-biobanking.md",
+    "docs/integrations/modules/healthcore-starter-genomics-research.md",
+    "docs/integrations/modules/healthcore-starter-clinical-research.md"
+  ],
+  "installationExamples": [
+    "examples/life-sciences-lims",
+    "examples/biobank",
+    "examples/clinical-research"
+  ],
+  "knownLimitations": [
+    "Bulk raw FASTQ/BAM sequencing payloads should reside in external object storage (S3/GCS/MinIO) referenced by SHA-256 URI.",
+    "GCP / ISO 20387 certification requires IRB/ethics governance and organizational quality management."
   ]
 }

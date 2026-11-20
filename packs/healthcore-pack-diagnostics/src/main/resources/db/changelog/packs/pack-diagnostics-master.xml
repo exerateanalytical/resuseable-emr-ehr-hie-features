@@ -24,4 +24,5 @@
     <include file="classpath:db/changelog/core/000-persistence-master.xml"/>
     <include file="classpath:db/changelog/security/001-security-audit.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/001-diagnostics-core.xml"/>
+    <include file="classpath:db/changelog/diagnostics_core/002-diagnostics-core-workflows.xml"/>
 </databaseChangeLog>

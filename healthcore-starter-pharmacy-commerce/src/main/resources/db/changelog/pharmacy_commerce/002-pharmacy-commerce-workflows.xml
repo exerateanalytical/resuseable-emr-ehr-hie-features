@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="phcom-004-suppliers-pos" author="opeshealth">
+        <createTable tableName="hc_phcom_suppliers">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="supplier_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="supplier_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="license_number" type="varchar(80)"/>
+            <column name="qualified" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="hc_phcom_purchase_orders">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="po_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="supplier_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="product_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="ordered_quantity" type="integer"><constraints nullable="false"/></column>
+            <column name="received_quantity" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="phcom-005-transfers-adjustments" author="opeshealth">
+        <createTable tableName="hc_phcom_stock_transfers">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="transfer_ref" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="destination_branch_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="product_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="lot_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="quantity" type="integer"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="requested_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="received_by" type="varchar(120)"/>
+            <column name="updated_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="hc_phcom_stock_adjustments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="lot_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="adjustment_type" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="quantity_delta" type="integer"><constraints nullable="false"/></column>
+            <column name="reason" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="performed_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="phcom-006-dispense-counseling" author="opeshealth">
+        <addColumn tableName="hc_phcom_dispenses">
+            <column name="counseling_notes" type="varchar(500)"/>
+            <column name="quantity_prescribed" type="integer"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

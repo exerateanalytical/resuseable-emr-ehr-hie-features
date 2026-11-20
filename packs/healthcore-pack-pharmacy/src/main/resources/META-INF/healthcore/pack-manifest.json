@@ -3,6 +3,12 @@
   "packNumber": "PACK-01",
   "version": "1.0.0",
   "industryDomain": "INDEPENDENT_PHARMACY",
+  "description": "Standalone retail, community, wholesale, and multi-branch chain pharmacy operations pack with FEFO batch tracking, controlled-substance dual verification, procurement POs, inter-branch transfers, stock adjustments, and POS billing \u2014 zero hospital/EMR coupling.",
+  "intendedDeveloperAudience": [
+    "Retail & Community Pharmacy SaaS Teams",
+    "Multi-Branch Pharmacy Chain Engineering Teams",
+    "Pharmaceutical Wholesalers & Distributors"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -14,6 +20,14 @@
     "healthcore-starter-offline-sync",
     "healthcore-starter-uhc-billing"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": [
+      "healthcore-starter-pharmacy-lis"
+    ]
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-emr-clinical",
     "healthcore-starter-pharmacy-lis",
@@ -22,5 +36,92 @@
     "healthcore-starter-surgery-ot",
     "healthcore-starter-crvs-mortuary",
     "healthcore-starter-pharma-manufacturing"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Product catalog with ATC/INN/NDC/GTIN codes and low-stock thresholds",
+    "Supplier directory, Purchase Orders, and FEFO lot goods receipt",
+    "Inter-branch stock transfer dispatch and receipt confirmation",
+    "Audited stock adjustments (expiry withdrawal, damage write-off, returns)",
+    "Prescription intake, partial dispensing, refills, and counseling notes",
+    "Controlled-substance dual-verifier enforcement and immutable ledger",
+    "Retail POS checkout with cash, mobile money, and payer split settlement"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/pharmacy/commerce"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.pharmacy.commerce.service.PharmacyCommerceService.PharmacyInventoryValuationSpi",
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi"
+    ],
+    "domainEvents": [
+      "pharmacy.goods.received",
+      "pharmacy.prescription.dispensed",
+      "pharmacy.controlled.substance.verified",
+      "pharmacy.pos.sale.completed",
+      "pharmacy.stock.transfer.confirmed"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-pharmacy-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "PHARMACIST": [
+      "PERM_pharmacy:dispense",
+      "PERM_inventory:manage",
+      "PERM_billing:collect"
+    ],
+    "PHARMACY_MANAGER": [
+      "PERM_facility:manage",
+      "PERM_pharmacy:dispense",
+      "PERM_inventory:manage",
+      "PERM_audit:read"
+    ],
+    "PHARMACY_CASHIER": [
+      "PERM_billing:collect"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "WHO Good Pharmacy Practice (GPP)",
+      "scope": "Technical support for dispensing verification, counseling logs, FEFO expiry blocks",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "GS1 GTIN / Lot / Expiry",
+      "scope": "Product master & batch receipt metadata",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "WHO ATC / INN",
+      "scope": "Medication classification and generic mapping",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_01_PHARMACY_INTEGRATION_GUIDE.md",
+    "docs/integrations/modules/healthcore-starter-pharmacy-commerce.md"
+  ],
+  "installationExamples": [
+    "examples/standalone-pharmacy"
+  ],
+  "knownLimitations": [
+    "Hardware fiscal printer / barcode scanner drivers are supplied by host consumer apps via SPI.",
+    "National e-prescription clearinghouse gateways require regional adapter credentials."
   ]
 }

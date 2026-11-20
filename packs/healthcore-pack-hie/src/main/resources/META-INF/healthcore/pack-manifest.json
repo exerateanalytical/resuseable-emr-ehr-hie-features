@@ -3,6 +3,12 @@
   "packNumber": "PACK-08",
   "version": "1.0.0",
   "industryDomain": "REGIONAL_NATIONAL_HIE",
+  "description": "Regional and national Health Information Exchange (HIE) pack with Enterprise MPI, Terminology Services, Consent Registry, FHIR R4 / IHE XDS.b / PIXm / PDQm / ATNA interoperability, Integration Ops DLQ/routing, and API Product management \u2014 zero hospital-ops or billing bloat.",
+  "intendedDeveloperAudience": [
+    "Regional & National Health Information Exchange (HIE) Teams",
+    "Ministry of Health Digital Health Interoperability Architects",
+    "Cross-Organization Healthcare API Gateway Teams"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -19,6 +25,12 @@
     "healthcore-starter-deidentification-research",
     "healthcore-starter-analytics"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-hospital-ops",
     "healthcore-starter-surgery-ot",
@@ -27,5 +39,83 @@
     "healthcore-starter-pharmacy-lis",
     "healthcore-starter-pharma-manufacturing",
     "healthcore-starter-biobanking"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Enterprise Master Patient Index (EMPI) cross-facility identity matching",
+    "Consent enforcement and break-glass audit tracking",
+    "FHIR R4 API facade, Bundle routing, and IPS exchange",
+    "IHE XDS.b, PIXm, PDQm, and ATNA audit repository profiles",
+    "Terminology validation & CodeSystem/ValueSet lookup",
+    "Integration Ops dead-letter queue (DLQ), retry policies, and partner API keys/rate-limits"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/hie",
+      "/api/v1/fhir",
+      "/api/v1/ihe",
+      "/api/v1/integration-ops",
+      "/api/v1/api-product"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.EhrProvenanceReconciliationContract",
+      "com.opeshealth.healthcore.persistence.sdk.AuditLedgerSpi"
+    ],
+    "domainEvents": [
+      "hie.mpi.linked",
+      "hie.document.registered",
+      "hie.consent.verified",
+      "hie.integration.dlq.routed"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-hie-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "HIE_OPERATOR": [
+      "PERM_facility:manage",
+      "PERM_hie:route",
+      "PERM_audit:read"
+    ],
+    "PARTNER_SYSTEM": [
+      "PERM_hie:exchange",
+      "PERM_fhir:read",
+      "PERM_fhir:write"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "HL7 FHIR R4 / IHE PIXm, PDQm, XDS.b, ATNA",
+      "scope": "Interoperability exchange profiles and audit logging",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "OpenHIE Architectural Pattern",
+      "scope": "Client registry (EMPI), terminology, interoperability layer, and SHR exchange",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_08_REGIONAL_HIE_INTEGRATION_GUIDE.md"
+  ],
+  "installationExamples": [
+    "examples/regional-hie"
+  ],
+  "knownLimitations": [
+    "mTLS certificate authorities and national PKI trust anchors must be provisioned in the host network perimeter."
   ]
 }

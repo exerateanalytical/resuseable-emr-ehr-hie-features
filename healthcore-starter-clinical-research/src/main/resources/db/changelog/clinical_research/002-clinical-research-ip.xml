@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="clinres-004-ip-accountability" author="opeshealth">
+        <createTable tableName="hc_cr_ip_accountability">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="protocol_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="site_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="kit_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="lot_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="subject_id" type="${uuid_type}"/>
+            <column name="dispensed_units" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="returned_units" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="destroyed_units" type="integer" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="dispensed_by" type="varchar(120)"/>
+            <column name="reconciled_by" type="varchar(120)"/>
+            <column name="destruction_witness_id" type="varchar(120)"/>
+            <column name="witness_sig_sha256" type="varchar(64)"/>
+            <column name="updated_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_cr_ip_accountability" columnNames="facility_id,kit_number" constraintName="uq_cr_ip_kit"/>
+    </changeSet>
+</databaseChangeLog>

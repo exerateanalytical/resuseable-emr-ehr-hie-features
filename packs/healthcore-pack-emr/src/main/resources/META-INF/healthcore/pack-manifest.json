@@ -3,6 +3,12 @@
   "packNumber": "PACK-05",
   "version": "1.0.0",
   "industryDomain": "OUTPATIENT_EMR",
+  "description": "Outpatient clinic and specialist practice Electronic Medical Record (EMR) pack with MPI registration, scheduling, clinical notes, specialty templates, prescriptions, orders/results, terminology/CDSS, and workflow engine \u2014 without inpatient/surgery/mortuary bloat.",
+  "intendedDeveloperAudience": [
+    "Outpatient Clinic & Polyclinic Software Teams",
+    "Specialty Practice (Pediatrics, Cardiology, Dental, Ophthalmology) Teams",
+    "Telehealth & Ambulatory Care Platforms"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -19,6 +25,12 @@
     "healthcore-starter-patient-portal",
     "healthcore-starter-offline-sync"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-hospital-ops",
     "healthcore-starter-surgery-ot",
@@ -26,5 +38,84 @@
     "healthcore-starter-workforce-roster",
     "healthcore-starter-pharma-manufacturing",
     "healthcore-starter-biobanking"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Master Patient Index (MPI) demographics and deduplication",
+    "Appointment scheduling and ambulatory queue management",
+    "SOAP/structured clinical encounters, problem lists, allergies, immunizations, and specialty templates",
+    "Order entry (labs, imaging, referrals) and electronic prescribing with CDSS checks",
+    "Clinical terminology bindings (ICD-11, SNOMED CT, LOINC, RxNorm/ATC, UCUM)"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/mpi",
+      "/api/v1/scheduling",
+      "/api/v1/emr",
+      "/api/v1/orders"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.SpecialtyExtensionContract",
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi"
+    ],
+    "domainEvents": [
+      "emr.patient.registered",
+      "emr.encounter.signed",
+      "emr.order.placed",
+      "emr.prescription.created"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-emr-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "PHYSICIAN": [
+      "PERM_emr:write",
+      "PERM_orders:create",
+      "PERM_emr:sign"
+    ],
+    "NURSE": [
+      "PERM_emr:vitals",
+      "PERM_scheduling:manage"
+    ],
+    "FRONT_DESK": [
+      "PERM_mpi:write",
+      "PERM_scheduling:manage"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "HL7 FHIR R4",
+      "scope": "Patient, Encounter, Condition, Observation, MedicationRequest mappings",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "ICD-11 / SNOMED CT / LOINC / UCUM",
+      "scope": "Structured problem, lab, and specialty template coding",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_05_OUTPATIENT_EMR_INTEGRATION_GUIDE.md"
+  ],
+  "installationExamples": [
+    "examples/outpatient-emr"
+  ],
+  "knownLimitations": [
+    "Does not include inpatient bed management, operating theatre, or hospital revenue cycle by design; compose with Pack 07 if needed."
   ]
 }

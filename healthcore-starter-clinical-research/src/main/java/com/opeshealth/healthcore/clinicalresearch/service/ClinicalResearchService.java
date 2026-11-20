@@ -1,6 +1,6 @@
 /*
  * =============================================================================
- * Opes HealthCore SDK — Clinical Research & EDC Service (ICH E6(R3) & CDISC)
+ * Opes HealthCore SDK — Clinical Research & EDC Service (ICH E6(R3), CDISC & OMOP)
  * =============================================================================
  */
 package com.opeshealth.healthcore.clinicalresearch.service;
@@ -39,6 +39,11 @@ public class ClinicalResearchService {
         List<SafetyEventEntity> findByFacilityIdAndSubjectId(UUID facilityId, UUID subjectId);
     }
 
+    public interface InvestigationalProductRepository extends JpaRepository<InvestigationalProductLedgerEntity, UUID> {
+        Optional<InvestigationalProductLedgerEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+        List<InvestigationalProductLedgerEntity> findByFacilityIdAndProtocolCode(UUID facilityId, String protocolCode);
+    }
+
     public record EnrollSubjectRequest(
             String protocolCode,
             String siteCode,
@@ -64,19 +69,37 @@ public class ClinicalResearchService {
             String reportedBy
     ) {}
 
+    public record DispenseIpRequest(
+            UUID subjectId,
+            String kitNumber,
+            String lotNumber,
+            int unitsDispensed,
+            String dispensedBy
+    ) {}
+
+    public record ReconcileIpRequest(
+            int returnedUnits,
+            int destroyedUnits,
+            String reconciledBy,
+            String destructionWitnessId
+    ) {}
+
     private final TrialSubjectRepository subjectRepo;
     private final EcrfEntryRepository ecrfRepo;
     private final SafetyEventRepository safetyRepo;
+    private final InvestigationalProductRepository ipRepo;
     private final ElectronicSignatureSpi signatureSpi;
 
     public ClinicalResearchService(
             TrialSubjectRepository subjectRepo,
             EcrfEntryRepository ecrfRepo,
             SafetyEventRepository safetyRepo,
+            InvestigationalProductRepository ipRepo,
             ObjectProvider<ElectronicSignatureSpi> signatureSpiProvider) {
         this.subjectRepo = subjectRepo;
         this.ecrfRepo = ecrfRepo;
         this.safetyRepo = safetyRepo;
+        this.ipRepo = ipRepo;
         this.signatureSpi = signatureSpiProvider != null
                 ? signatureSpiProvider.getIfAvailable(() -> ElectronicSignatureSpi::defaultSign)
                 : ElectronicSignatureSpi::defaultSign;
@@ -193,6 +216,64 @@ public class ClinicalResearchService {
         return safetyRepo.save(ev);
     }
 
+    @Transactional
+    @ClinicalAudit(action = "CLINRES_IP_DISPENSE", resourceType = "InvestigationalProduct")
+    public InvestigationalProductLedgerEntity dispenseInvestigationalProduct(DispenseIpRequest req) {
+        UUID facId = requireFacility();
+        if (req.unitsDispensed() <= 0) {
+            throw new IllegalArgumentException("unitsDispensed must be positive.");
+        }
+        TrialSubjectEntity subject = subjectRepo.findByIdAndFacilityId(req.subjectId(), facId)
+                .orElseThrow(() -> new NoSuchElementException("Trial subject not found: " + req.subjectId()));
+        if (!"ENROLLED".equals(subject.getStatus())) {
+            throw new IllegalStateException("Cannot dispense Investigational Product to non-enrolled subject.");
+        }
+        InvestigationalProductLedgerEntity ip = new InvestigationalProductLedgerEntity();
+        ip.setFacilityId(facId);
+        ip.setProtocolCode(subject.getProtocolCode());
+        ip.setSiteCode(subject.getSiteCode());
+        ip.setSubjectId(subject.getId());
+        ip.setKitNumber(req.kitNumber().trim().toUpperCase(Locale.ROOT));
+        ip.setLotNumber(req.lotNumber().trim().toUpperCase(Locale.ROOT));
+        ip.setDispensedUnits(req.unitsDispensed());
+        ip.setDispensedBy(req.dispensedBy().trim());
+        ip.setStatus("DISPENSED");
+        ip.setUpdatedAt(Instant.now());
+        return ipRepo.save(ip);
+    }
+
+    @Transactional
+    @ClinicalAudit(action = "CLINRES_IP_RECONCILE", resourceType = "InvestigationalProduct")
+    public InvestigationalProductLedgerEntity reconcileInvestigationalProduct(UUID ipId, ReconcileIpRequest req) {
+        UUID facId = requireFacility();
+        InvestigationalProductLedgerEntity ip = ipRepo.findByIdAndFacilityId(ipId, facId)
+                .orElseThrow(() -> new NoSuchElementException("Investigational product kit not found: " + ipId));
+        if (req.returnedUnits() < 0 || req.destroyedUnits() < 0) {
+            throw new IllegalArgumentException("Returned and destroyed units cannot be negative.");
+        }
+        if (req.returnedUnits() + req.destroyedUnits() > ip.getDispensedUnits()) {
+            throw new IllegalStateException("Returned + destroyed units exceed dispensed quantity for kit " + ip.getKitNumber());
+        }
+        ip.setReturnedUnits(req.returnedUnits());
+        ip.setDestroyedUnits(req.destroyedUnits());
+        ip.setReconciledBy(req.reconciledBy().trim());
+        if (req.destroyedUnits() > 0) {
+            ElectronicSignatureProof proof = signatureSpi.sign(new ElectronicSignatureCommand(
+                    req.destructionWitnessId(), "IP_DESTRUCTION_WITNESS", "IP_DESTRUCTION_WITNESSED",
+                    "InvestigationalProduct", ipId.toString(),
+                    ip.getKitNumber() + "|" + ip.getLotNumber() + "|" + req.destroyedUnits(),
+                    req.reconciledBy(), true
+            ));
+            ip.setDestructionWitnessId(proof.signerId());
+            ip.setWitnessSigSha256(proof.signatureDigestSha256());
+            ip.setStatus("DESTROYED");
+        } else {
+            ip.setStatus("RETURNED");
+        }
+        ip.setUpdatedAt(Instant.now());
+        return ipRepo.save(ip);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> exportDeidentifiedCdiscSdtm(String protocolCode) {
         UUID facId = requireFacility();
@@ -214,6 +295,53 @@ public class ClinicalResearchService {
                 "protocolCode", protocolCode.trim().toUpperCase(Locale.ROOT),
                 "subjectCount", rows.size(),
                 "records", rows
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportDeidentifiedCdiscCdashAndAdam(String protocolCode) {
+        UUID facId = requireFacility();
+        String code = protocolCode.trim().toUpperCase(Locale.ROOT);
+        List<TrialSubjectEntity> subjects = subjectRepo.findByFacilityIdAndProtocolCode(facId, code);
+        List<Map<String, Object>> adsl = new ArrayList<>();
+        for (TrialSubjectEntity s : subjects) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("STUDYID", s.getProtocolCode());
+            row.put("USUBJID", s.getProtocolCode() + "-" + s.getSiteCode() + "-" + s.getSubjectPseudonym());
+            row.put("TRT01P", s.getArmCode());
+            row.put("ENRLFL", "ENROLLED".equals(s.getStatus()) ? "Y" : "N");
+            row.put("ICFVER", s.getEconsentVersion());
+            adsl.add(row);
+        }
+        return Map.of(
+                "standards", List.of("CDISC-CDASH-2.2-COMPATIBLE", "CDISC-ADAM-ADSL-1.3-COMPATIBLE"),
+                "deidentified", true,
+                "protocolCode", code,
+                "adslRecordCount", adsl.size(),
+                "adslRecords", adsl
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportDeidentifiedOmopCdm(String protocolCode) {
+        UUID facId = requireFacility();
+        String code = protocolCode.trim().toUpperCase(Locale.ROOT);
+        List<TrialSubjectEntity> subjects = subjectRepo.findByFacilityIdAndProtocolCode(facId, code);
+        List<Map<String, Object>> persons = new ArrayList<>();
+        for (TrialSubjectEntity s : subjects) {
+            Map<String, Object> person = new LinkedHashMap<>();
+            person.put("person_source_value", ElectronicSignatureSpi.sha256Hex(s.getSubjectPseudonym()).substring(0, 16));
+            person.put("care_site_source_value", s.getSiteCode());
+            person.put("cohort_definition_code", s.getProtocolCode() + ":" + s.getArmCode());
+            person.put("cohort_start_datetime", s.getEnrolledAt().toString());
+            persons.add(person);
+        }
+        return Map.of(
+                "standard", "OMOP-CDM-5.4-DEIDENTIFIED-PROJECTION",
+                "deidentified", true,
+                "protocolCode", code,
+                "personCount", persons.size(),
+                "persons", persons
         );
     }
 
@@ -255,10 +383,34 @@ public class ClinicalResearchService {
             return service.reportSafetyEvent(req);
         }
 
+        @PostMapping("/ip/dispense")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_pharmacy:dispense')")
+        public InvestigationalProductLedgerEntity dispenseIp(@RequestBody DispenseIpRequest req) {
+            return service.dispenseInvestigationalProduct(req);
+        }
+
+        @PostMapping("/ip/{id}/reconcile")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_pharmacy:dispense')")
+        public InvestigationalProductLedgerEntity reconcileIp(@PathVariable UUID id, @RequestBody ReconcileIpRequest req) {
+            return service.reconcileInvestigationalProduct(id, req);
+        }
+
         @GetMapping("/protocols/{protocolCode}/export/cdisc-sdtm")
         @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_audit:read')")
         public Map<String, Object> exportSdtm(@PathVariable String protocolCode) {
             return service.exportDeidentifiedCdiscSdtm(protocolCode);
+        }
+
+        @GetMapping("/protocols/{protocolCode}/export/cdisc-cdash-adam")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_audit:read')")
+        public Map<String, Object> exportCdashAdam(@PathVariable String protocolCode) {
+            return service.exportDeidentifiedCdiscCdashAndAdam(protocolCode);
+        }
+
+        @GetMapping("/protocols/{protocolCode}/export/omop-cdm")
+        @PreAuthorize("hasAuthority('PERM_facility:manage') or hasAuthority('PERM_audit:read')")
+        public Map<String, Object> exportOmop(@PathVariable String protocolCode) {
+            return service.exportDeidentifiedOmopCdm(protocolCode);
         }
     }
 }

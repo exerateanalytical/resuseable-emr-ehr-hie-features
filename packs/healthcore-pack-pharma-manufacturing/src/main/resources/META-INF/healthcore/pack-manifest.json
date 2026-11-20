@@ -3,6 +3,12 @@
   "packNumber": "PACK-03",
   "version": "1.0.0",
   "industryDomain": "PHARMACEUTICAL_MANUFACTURING",
+  "description": "Pharmaceutical manufacturing, GMP batch production (MBR/eBMR), QMS (SOPs, QC CoA, OOS, Deviations/CAPA, Equipment Qualification, Stability/Retained Samples, Supplier Qualification, PQR), and GS1/EPCIS serialization pack \u2014 zero patient/EMR/HIS coupling.",
+  "intendedDeveloperAudience": [
+    "Pharmaceutical Manufacturing ERP/MES Teams",
+    "Quality Assurance & QC Laboratory Engineering Teams",
+    "Track-and-Trace & Serialization Platform Teams"
+  ],
   "requiredModules": [
     "healthcore-persistence-core",
     "healthcore-security-audit",
@@ -15,6 +21,12 @@
     "healthcore-starter-analytics",
     "healthcore-starter-integration-ops"
   ],
+  "dependencyConstraints": {
+    "java": ">=25",
+    "springBoot": ">=4.0.0 <5.0.0",
+    "healthcoreBom": "1.0.0",
+    "incompatibleModules": []
+  },
   "forbiddenTransitiveModules": [
     "healthcore-starter-mpi",
     "healthcore-starter-emr-clinical",
@@ -23,5 +35,90 @@
     "healthcore-starter-radiology",
     "healthcore-starter-patient-portal",
     "healthcore-starter-crvs-mortuary"
+  ],
+  "supportedDatabasePlatforms": [
+    "PostgreSQL 16+",
+    "Microsoft SQL Server 2022+",
+    "MySQL 8.4+"
+  ],
+  "providedCapabilities": [
+    "Master Batch Records (MBR), bill of materials, and electronic Batch Manufacturing Records (eBMR)",
+    "Raw material quarantine-to-release gating and line clearance verification",
+    "Controlled documents (SOPs/specs) with maker-checker e-signature",
+    "QC Lab testing, OOS hold blocks, and QA-signed Certificate of Analysis (CoA)",
+    "Deviations, CAPA effectiveness enforcement, Complaint-to-Recall escalation",
+    "Equipment IQ/OQ/PQ qualification & calibration-expiry production gate",
+    "Stability studies, retained samples, supplier qualification, and Product Quality Review (PQR)",
+    "GS1 GTIN/SGTIN/SSCC serialization, aggregation hierarchy, EPCIS events, and batch recall quarantine"
+  ],
+  "exposedApisAndEvents": {
+    "restBasePaths": [
+      "/api/v1/pharma/manufacturing",
+      "/api/v1/pharma/qms",
+      "/api/v1/pharma/serialization"
+    ],
+    "spiContracts": [
+      "com.opeshealth.healthcore.persistence.sdk.ElectronicSignatureSpi",
+      "com.opeshealth.healthcore.persistence.sdk.AuditLedgerSpi"
+    ],
+    "domainEvents": [
+      "pharma.batch.released",
+      "pharma.qc.oos.detected",
+      "pharma.coa.issued",
+      "pharma.capa.closed",
+      "pharma.recall.initiated",
+      "pharma.epcis.event.commissioned"
+    ]
+  },
+  "requiredConfiguration": {
+    "liquibaseChangeLog": "classpath:db/changelog/packs/pack-pharma-manufacturing-master.xml",
+    "requiredEnvVars": [
+      "DB_URL",
+      "DB_USER",
+      "DB_PASSWORD",
+      "JWT_SECRET_OR_JWKS_URI"
+    ],
+    "requiredHttpHeaders": [
+      "X-Facility-Id",
+      "Authorization"
+    ]
+  },
+  "defaultRolesAndPermissions": {
+    "PRODUCTION_OPERATOR": [
+      "PERM_pharma:batch:execute"
+    ],
+    "QC_ANALYST": [
+      "PERM_lab:result:enter"
+    ],
+    "QA_QP_DIRECTOR": [
+      "PERM_facility:manage",
+      "PERM_lab:verify",
+      "PERM_audit:read"
+    ]
+  },
+  "relevantStandardsAndApplicability": [
+    {
+      "standard": "WHO GMP & EU GMP Annex 11 / 21 CFR Part 11",
+      "scope": "Technical enablers: ALCOA+ audit trails, dual-person maker-checker e-signatures, OOS/calibration release gates (organizational CSV/PQ validation required)",
+      "verificationStatus": "Technical Implementation Complete"
+    },
+    {
+      "standard": "GS1 SGTIN / SSCC / EPCIS 2.0",
+      "scope": "Serialization commissioning, parent-child aggregation, and recall trace queries",
+      "verificationStatus": "Technical Implementation Complete"
+    }
+  ],
+  "referenceIntegrations": [
+    "docs/integrations/PACK_03_PHARMA_MANUFACTURING_INTEGRATION_GUIDE.md",
+    "docs/integrations/modules/healthcore-starter-pharma-manufacturing.md",
+    "docs/integrations/modules/healthcore-starter-pharma-qms.md",
+    "docs/integrations/modules/healthcore-starter-pharma-serialization.md"
+  ],
+  "installationExamples": [
+    "examples/pharma-manufacturing"
+  ],
+  "knownLimitations": [
+    "Software alone does not confer WHO GMP, EU GMP, or FDA 21 CFR Part 11 compliance; site IQ/OQ/PQ validation and QA governance are mandatory.",
+    "External national verification hubs (e.g., EMVS/DSCSA VRS) require certified B2B transport adapters."
   ]
 }

@@ -269,4 +269,218 @@ public final class PharmaQmsEntities {
         public void setClosedAt(Instant closedAt) { this.closedAt = closedAt; }
         public long getVersion() { return version; }
     }
+
+    @Entity
+    @Table(name = "hc_pqms_equipment_qual")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class EquipmentQualificationEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "asset_code", nullable = false, length = 64)
+        private String assetCode;
+
+        @Column(name = "equipment_name", nullable = false, length = 180)
+        private String equipmentName;
+
+        @Column(name = "qualification_stage", nullable = false, length = 24)
+        private String qualificationStage; // IQ, OQ, PQ
+
+        @Column(name = "calibration_status", nullable = false, length = 32)
+        private String calibrationStatus = "QUALIFIED"; // QUALIFIED, CALIBRATION_EXPIRED, OUT_OF_SERVICE
+
+        @Column(name = "last_calibrated_date", nullable = false)
+        private LocalDate lastCalibratedDate;
+
+        @Column(name = "calibration_due_date", nullable = false)
+        private LocalDate calibrationDueDate;
+
+        @Column(name = "calibrated_by", nullable = false, length = 120)
+        private String calibratedBy;
+
+        @Column(name = "qa_verified_by", length = 120)
+        private String qaVerifiedBy;
+
+        @Column(name = "created_at", nullable = false)
+        private Instant createdAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getAssetCode() { return assetCode; }
+        public void setAssetCode(String assetCode) { this.assetCode = assetCode; }
+        public String getEquipmentName() { return equipmentName; }
+        public void setEquipmentName(String equipmentName) { this.equipmentName = equipmentName; }
+        public String getQualificationStage() { return qualificationStage; }
+        public void setQualificationStage(String qualificationStage) { this.qualificationStage = qualificationStage; }
+        public String getCalibrationStatus() { return calibrationStatus; }
+        public void setCalibrationStatus(String calibrationStatus) { this.calibrationStatus = calibrationStatus; }
+        public LocalDate getLastCalibratedDate() { return lastCalibratedDate; }
+        public void setLastCalibratedDate(LocalDate lastCalibratedDate) { this.lastCalibratedDate = lastCalibratedDate; }
+        public LocalDate getCalibrationDueDate() { return calibrationDueDate; }
+        public void setCalibrationDueDate(LocalDate calibrationDueDate) { this.calibrationDueDate = calibrationDueDate; }
+        public String getCalibratedBy() { return calibratedBy; }
+        public void setCalibratedBy(String calibratedBy) { this.calibratedBy = calibratedBy; }
+        public String getQaVerifiedBy() { return qaVerifiedBy; }
+        public void setQaVerifiedBy(String qaVerifiedBy) { this.qaVerifiedBy = qaVerifiedBy; }
+        public Instant getCreatedAt() { return createdAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
+    @Table(name = "hc_pqms_stability_samples")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class StabilitySampleEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "study_code", nullable = false, length = 64)
+        private String studyCode;
+
+        @Column(name = "product_code", nullable = false, length = 64)
+        private String productCode;
+
+        @Column(name = "batch_number", nullable = false, length = 64)
+        private String batchNumber;
+
+        @Column(name = "sample_kind", nullable = false, length = 32)
+        private String sampleKind; // STABILITY_STUDY, RETAINED_SAMPLE
+
+        @Column(name = "storage_condition", nullable = false, length = 64)
+        private String storageCondition; // e.g., 25C/60%RH, 40C/75%RH, 30C/65%RH
+
+        @Column(name = "timepoint_months", nullable = false)
+        private int timepointMonths;
+
+        @Column(name = "scheduled_pull_date", nullable = false)
+        private LocalDate scheduledPullDate;
+
+        @Column(name = "actual_pull_date")
+        private LocalDate actualPullDate;
+
+        @Lob
+        @Column(name = "assay_summary_json")
+        private String assaySummaryJson;
+
+        @Column(name = "disposition", nullable = false, length = 24)
+        private String disposition = "SCHEDULED"; // SCHEDULED, PASS, OOT_ALERT, OOS_FAIL
+
+        @Column(name = "analyst_id", length = 120)
+        private String analystId;
+
+        @Column(name = "created_at", nullable = false)
+        private Instant createdAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getStudyCode() { return studyCode; }
+        public void setStudyCode(String studyCode) { this.studyCode = studyCode; }
+        public String getProductCode() { return productCode; }
+        public void setProductCode(String productCode) { this.productCode = productCode; }
+        public String getBatchNumber() { return batchNumber; }
+        public void setBatchNumber(String batchNumber) { this.batchNumber = batchNumber; }
+        public String getSampleKind() { return sampleKind; }
+        public void setSampleKind(String sampleKind) { this.sampleKind = sampleKind; }
+        public String getStorageCondition() { return storageCondition; }
+        public void setStorageCondition(String storageCondition) { this.storageCondition = storageCondition; }
+        public int getTimepointMonths() { return timepointMonths; }
+        public void setTimepointMonths(int timepointMonths) { this.timepointMonths = timepointMonths; }
+        public LocalDate getScheduledPullDate() { return scheduledPullDate; }
+        public void setScheduledPullDate(LocalDate scheduledPullDate) { this.scheduledPullDate = scheduledPullDate; }
+        public LocalDate getActualPullDate() { return actualPullDate; }
+        public void setActualPullDate(LocalDate actualPullDate) { this.actualPullDate = actualPullDate; }
+        public String getAssaySummaryJson() { return assaySummaryJson; }
+        public void setAssaySummaryJson(String assaySummaryJson) { this.assaySummaryJson = assaySummaryJson; }
+        public String getDisposition() { return disposition; }
+        public void setDisposition(String disposition) { this.disposition = disposition; }
+        public String getAnalystId() { return analystId; }
+        public void setAnalystId(String analystId) { this.analystId = analystId; }
+        public Instant getCreatedAt() { return createdAt; }
+        public long getVersion() { return version; }
+    }
+
+    @Entity
+    @Table(name = "hc_pqms_supplier_qual")
+    @BatchSize(size = 32)
+    @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
+    public static class SupplierQualificationEntity {
+        @Id
+        @Column(name = "id", nullable = false, updatable = false)
+        private UUID id = UuidV7Generator.nextUuid();
+
+        @Column(name = "facility_id", nullable = false)
+        private UUID facilityId;
+
+        @Column(name = "supplier_code", nullable = false, length = 64)
+        private String supplierCode;
+
+        @Column(name = "supplier_name", nullable = false, length = 180)
+        private String supplierName;
+
+        @Column(name = "material_scope", nullable = false, length = 180)
+        private String materialScope;
+
+        @Column(name = "qualification_status", nullable = false, length = 24)
+        private String qualificationStatus = "PENDING"; // PENDING, APPROVED, SUSPENDED
+
+        @Column(name = "audit_date", nullable = false)
+        private LocalDate auditDate;
+
+        @Column(name = "requalification_due_date", nullable = false)
+        private LocalDate requalificationDueDate;
+
+        @Column(name = "qa_approver_id", length = 120)
+        private String qaApproverId;
+
+        @Column(name = "approval_sig_sha256", length = 64)
+        private String approvalSigSha256;
+
+        @Column(name = "created_at", nullable = false)
+        private Instant createdAt = Instant.now();
+
+        @Version
+        @Column(name = "version", nullable = false)
+        private long version;
+
+        public UUID getId() { return id; }
+        public UUID getFacilityId() { return facilityId; }
+        public void setFacilityId(UUID facilityId) { this.facilityId = facilityId; }
+        public String getSupplierCode() { return supplierCode; }
+        public void setSupplierCode(String supplierCode) { this.supplierCode = supplierCode; }
+        public String getSupplierName() { return supplierName; }
+        public void setSupplierName(String supplierName) { this.supplierName = supplierName; }
+        public String getMaterialScope() { return materialScope; }
+        public void setMaterialScope(String materialScope) { this.materialScope = materialScope; }
+        public String getQualificationStatus() { return qualificationStatus; }
+        public void setQualificationStatus(String qualificationStatus) { this.qualificationStatus = qualificationStatus; }
+        public LocalDate getAuditDate() { return auditDate; }
+        public void setAuditDate(LocalDate auditDate) { this.auditDate = auditDate; }
+        public LocalDate getRequalificationDueDate() { return requalificationDueDate; }
+        public void setRequalificationDueDate(LocalDate requalificationDueDate) { this.requalificationDueDate = requalificationDueDate; }
+        public String getQaApproverId() { return qaApproverId; }
+        public void setQaApproverId(String qaApproverId) { this.qaApproverId = qaApproverId; }
+        public String getApprovalSigSha256() { return approvalSigSha256; }
+        public void setApprovalSigSha256(String approvalSigSha256) { this.approvalSigSha256 = approvalSigSha256; }
+        public Instant getCreatedAt() { return createdAt; }
+        public long getVersion() { return version; }
+    }
 }

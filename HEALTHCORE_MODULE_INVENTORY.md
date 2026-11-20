@@ -1,6 +1,6 @@
 # OPES HealthCore — Complete Module Inventory
 
-**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **58** (+ `healthcore-kmp-client` companion + 11 standalone `examples/*`).
+**Group ID**: `com.opeshealth.healthcore` | **Version**: `1.0.0` | **Runtime Baseline**: Pure Java 25, Spring Boot 4.0, Liquibase, PostgreSQL 16+ / SQL Server 2022 / MySQL 8.4+ | **Total Reactor Modules**: **58** (+ `healthcore-mobile-kmp` companion + 11 standalone `examples/*`).
 
 ## 1. Platform Core & Governance (4 Modules)
 | Artifact ID | Category | Purpose |
@@ -44,5 +44,5 @@
 
 ## 7. Reference Host, Mobile Client & Standalone Examples
 - `healthcore-quickstart-host` — Full reference hospital workstation host (17 Pure Java Thymeleaf consoles).
-- `healthcore-kmp-client` — Kotlin Multiplatform offline-first Android/iOS client SDK.
+- `healthcore-mobile-kmp` — Kotlin Multiplatform offline-first Android/iOS client SDK.
 - `examples/*` (11 projects) — Independently runnable minimal Spring Boot 4 consumer apps proving true module isolation.

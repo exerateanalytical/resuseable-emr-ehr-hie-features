@@ -1,0 +1,14 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000008",
+  "patients": [
+    {
+      "mrn": "SYN-EMR-0001",
+      "familyName": "Synthetique",
+      "givenName": "Amina",
+      "birthDate": "1991-04-12",
+      "sex": "F"
+    }
+  ],
+  "specialtyTemplate": "PEDIATRICS"
+}

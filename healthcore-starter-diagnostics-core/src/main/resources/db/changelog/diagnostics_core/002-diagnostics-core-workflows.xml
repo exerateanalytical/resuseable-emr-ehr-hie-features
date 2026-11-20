@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="diagcore-004-catalog-and-critical-readback" author="opeshealth">
+        <createTable tableName="hc_diag_catalog_items">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="catalog_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(160)"><constraints nullable="false"/></column>
+            <column name="modality_domain" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="package_panel" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="unit_ucum" type="varchar(32)"/>
+            <column name="ref_low" type="decimal(12,4)"/>
+            <column name="ref_high" type="decimal(12,4)"/>
+            <column name="critical_low" type="decimal(12,4)"/>
+            <column name="critical_high" type="decimal(12,4)"/>
+            <column name="tat_sla_minutes" type="integer" defaultValueNumeric="180"><constraints nullable="false"/></column>
+            <column name="send_out_partner" type="varchar(120)"/>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="hc_diag_critical_notifications">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="accession_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="critical_value_summary" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="notified_clinician" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="read_back_verified" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="acknowledged_by" type="varchar(120)"/>
+            <column name="acknowledged_at" type="${timestamp_type}"/>
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="created_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="hc_diag_result_amendments">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="order_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="prior_result_summary" type="clob"><constraints nullable="false"/></column>
+            <column name="amended_result_summary" type="clob"><constraints nullable="false"/></column>
+            <column name="amendment_reason" type="varchar(240)"><constraints nullable="false"/></column>
+            <column name="amended_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="amended_at" type="${timestamp_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="pharma-qms-002-equipment-stability-supplier" author="opes-healthcore">
+        <createTable tableName="hc_pqms_equipment_qual">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="asset_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="equipment_name" type="varchar(180)"><constraints nullable="false"/></column>
+            <column name="qualification_stage" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="calibration_status" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="last_calibrated_date" type="date"><constraints nullable="false"/></column>
+            <column name="calibration_due_date" type="date"><constraints nullable="false"/></column>
+            <column name="calibrated_by" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="qa_verified_by" type="varchar(120)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pqms_equipment_qual" columnNames="facility_id,asset_code" constraintName="uq_pqms_equip_asset"/>
+
+        <createTable tableName="hc_pqms_stability_samples">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="study_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="product_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="batch_number" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="sample_kind" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="storage_condition" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="timepoint_months" type="integer"><constraints nullable="false"/></column>
+            <column name="scheduled_pull_date" type="date"><constraints nullable="false"/></column>
+            <column name="actual_pull_date" type="date"/>
+            <column name="assay_summary_json" type="${clob_type}"/>
+            <column name="disposition" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="analyst_id" type="varchar(120)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="hc_pqms_stability_samples" indexName="idx_pqms_stab_fac_prod">
+            <column name="facility_id"/>
+            <column name="product_code"/>
+        </createIndex>
+
+        <createTable tableName="hc_pqms_supplier_qual">
+            <column name="id" type="${uuid_type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="facility_id" type="${uuid_type}"><constraints nullable="false"/></column>
+            <column name="supplier_code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="supplier_name" type="varchar(180)"><constraints nullable="false"/></column>
+            <column name="material_scope" type="varchar(180)"><constraints nullable="false"/></column>
+            <column name="qualification_status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="audit_date" type="date"><constraints nullable="false"/></column>
+            <column name="requalification_due_date" type="date"><constraints nullable="false"/></column>
+            <column name="qa_approver_id" type="varchar(120)"/>
+            <column name="approval_sig_sha256" type="varchar(64)"/>
+            <column name="created_at" type="${ts_type}"><constraints nullable="false"/></column>
+            <column name="version" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="hc_pqms_supplier_qual" columnNames="facility_id,supplier_code" constraintName="uq_pqms_supp_code"/>
+    </changeSet>
+</databaseChangeLog>

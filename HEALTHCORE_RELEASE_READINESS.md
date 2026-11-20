@@ -6,7 +6,7 @@
 
 | Readiness Dimension | Status | Evidence / Notes |
 |---|---|---|
-| **Modular Architecture & 8 Industry Packs** | **IMPLEMENTED & STATICALLY VERIFIED** | 58 Maven reactor modules (BOM, 2 core libs, 46 domain starters, 8 composable packs under `packs/`, 1 reference host) + `healthcore-kmp-client` |
+| **Modular Architecture & 8 Industry Packs** | **IMPLEMENTED & STATICALLY VERIFIED** | 58 Maven reactor modules (BOM, 2 core libs, 46 domain starters, 8 composable packs under `packs/`, 1 reference host) + `healthcore-mobile-kmp` |
 | **Strict Cross-Industry Isolation** | **VERIFIED (0 VIOLATIONS)** | Transitive POM graph check across all 8 packs confirms Pharmacy has zero EMR/LIS/HIS; Pharma Mfg & Life Sciences have zero MPI/EMR/HIS; Lab-only & Radiology-only are mutually independent; HIE has zero inpatient/billing/pharmacy |
 | **Independent Database Schemas (Liquibase)** | **IMPLEMENTED & XML-VERIFIED** | Every new starter owns its dedicated changelog; every pack ships `db/changelog/packs/pack-*-master.xml` with PostgreSQL/MSSQL/MySQL/H2 type portability |
 | **11 Standalone Consumer Examples** | **IMPLEMENTED** | All 11 `examples/*` projects built with minimal BOM + pack/starter POMs, `application.yml`, `docker-compose.yml`, `.env.example`, smoke test, and `README.md` |

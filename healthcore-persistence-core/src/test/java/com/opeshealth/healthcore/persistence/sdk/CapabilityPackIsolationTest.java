@@ -58,11 +58,25 @@ class CapabilityPackIsolationTest {
             }
         }
 
+        List<String> requiredManifestKeys = List.of(
+                "packId", "version", "description", "intendedDeveloperAudience",
+                "requiredModules", "optionalModules", "dependencyConstraints",
+                "forbiddenTransitiveModules", "supportedDatabasePlatforms",
+                "providedCapabilities", "exposedApisAndEvents", "requiredConfiguration",
+                "defaultRolesAndPermissions", "relevantStandardsAndApplicability",
+                "referenceIntegrations", "installationExamples", "knownLimitations"
+        );
+
         for (String pack : ALL_EIGHT_PACKS) {
             Path manifestPath = repoRoot.resolve("packs").resolve(pack)
                     .resolve("src/main/resources/META-INF/healthcore/pack-manifest.json");
             assertTrue(Files.exists(manifestPath), "Missing pack-manifest.json for " + pack);
             String json = Files.readString(manifestPath);
+
+            for (String key : requiredManifestKeys) {
+                assertTrue(json.contains("\"" + key + "\""),
+                        "Pack manifest " + pack + " missing mandatory Section 5 field: " + key);
+            }
 
             List<String> required = extractJsonStringArray(json, "requiredModules");
             Set<String> forbidden = new HashSet<>(extractJsonStringArray(json, "forbiddenTransitiveModules"));

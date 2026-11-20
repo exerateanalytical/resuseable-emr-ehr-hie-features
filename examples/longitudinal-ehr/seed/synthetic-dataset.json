@@ -1,0 +1,12 @@
+{
+  "syntheticOnly": true,
+  "facilityId": "01950000-0000-7000-8000-000000000009",
+  "longitudinalRecords": [
+    {
+      "patientRef": "SYN-EHR-0001",
+      "sourceFacilityCode": "CLINIC-YDE-01",
+      "resourceType": "MedicationStatement",
+      "sensitivitySegment": "GENERAL_CLINICAL"
+    }
+  ]
+}
