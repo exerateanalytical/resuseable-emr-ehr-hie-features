@@ -32,7 +32,7 @@ jobs:
       - name: Verify Maven build, dependency convergence, and unit/regression test suite
         run: |
           mvn -B -ntp dependency:tree -DoutputFile=target/dependency-tree.txt
-          mvn -B -ntp clean verify -DskipITs=true
+          mvn -B -ntp -fae clean verify -DskipITs=true
 
       - name: Generate release SHA-256 checksums and optional artifact signature
         run: bash scripts/ci-verify-docs-and-sign.sh target/release-attestation
@@ -322,11 +322,11 @@ jobs:
           )
           MODULE_LIST=$(IFS=,; echo "${MODULES[*]}")
           TEST_LIST=$(IFS=,; echo "${TESTS[*]}")
-          mvn -B -ntp test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
+          mvn -B -ntp -fae test jacoco:report -pl "${MODULE_LIST}" -am -Dtest="${TEST_LIST}" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Run Queue Management, Patient Journey (Tests A-J), HealthCoreDataFixture & WorkflowVerificationService suites
         run: |
-          mvn -B -ntp test jacoco:report \
+          mvn -B -ntp -fae test jacoco:report \
             -pl healthcore-persistence-core,healthcore-starter-integration-ops,healthcore-starter-revenue-coding-claims,healthcore-starter-queue-management,healthcore-testing \
             -am \
             -Dtest="CapabilityPackIsolationTest,IntegrationOpsServiceTest,RevenueCodingClaimsServiceTest,QueueManagementServiceTest,HealthCoreDataFixtureTest,WorkflowVerificationServiceTest,PatientJourneyEndToEndAcceptanceTest" \
