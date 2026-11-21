@@ -681,8 +681,29 @@ public class EmrClinicalWorkflowService {
         return r;
     }
 
+    /** A nursing/medication record must reference the same active admission and patient. */
+    private AdmissionEntity requireActiveAdmission(UUID admissionId, UUID patientId) {
+        if (admissionId == null) {
+            throw new IllegalArgumentException("Admission ID is required");
+        }
+        AdmissionEntity admission = admissionRepo.findById(admissionId)
+                .orElseThrow(() -> new SecurityException("Active admission is not accessible"));
+        assertActiveFacility(admission.getFacilityId());
+        requireEncounterInActiveFacility(admission.getEncounterId(), admission.getPatientId());
+        if (patientId != null && !patientId.equals(admission.getPatientId())) {
+            throw new SecurityException("Nursing record patient does not match the active admission");
+        }
+        if (admission.getDischargedAt() != null) {
+            throw new IllegalStateException("Cannot document inpatient care after discharge");
+        }
+        return admission;
+    }
+
     @Transactional
     public FluidBalanceEntity recordFluidBalance(FluidBalanceEntity entry) {
+        Objects.requireNonNull(entry, "Fluid balance entry required");
+        assertActiveFacility(entry.getFacilityId());
+        requireActiveAdmission(entry.getAdmissionId(), entry.getPatientId());
         if (entry.getVolumeMl() <= 0) {
             throw new IllegalArgumentException("Fluid volume must be > 0 mL");
         }
@@ -691,11 +712,26 @@ public class EmrClinicalWorkflowService {
 
     @Transactional
     public ShiftHandoverEntity recordShiftHandover(ShiftHandoverEntity handover) {
+        Objects.requireNonNull(handover, "Shift handover required");
+        assertActiveFacility(handover.getFacilityId());
+        requireActiveAdmission(handover.getAdmissionId(), null);
+        if (handover.getSituation() == null || handover.getSituation().isBlank()
+                || handover.getHandedBy() == null || handover.getHandedBy().isBlank()
+                || handover.getReceivedBy() == null || handover.getReceivedBy().isBlank()) {
+            throw new IllegalArgumentException("SBAR situation, sender and receiver are required");
+        }
         return handoverRepo.save(handover);
     }
 
     @Transactional
     public MedReconciliationEntity reconcileMedication(MedReconciliationEntity medRec) {
+        Objects.requireNonNull(medRec, "Medication reconciliation required");
+        assertActiveFacility(medRec.getFacilityId());
+        requireActiveAdmission(medRec.getAdmissionId(), medRec.getPatientId());
+        if (medRec.getReconciledBy() == null || medRec.getReconciledBy().isBlank()
+                || medRec.getReconciliationAction() == null || medRec.getReconciliationAction().isBlank()) {
+            throw new IllegalArgumentException("Medication reconciliation action and author are required");
+        }
         return medRecRepo.save(medRec);
     }
 
