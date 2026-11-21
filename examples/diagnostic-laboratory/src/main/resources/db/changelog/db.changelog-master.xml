@@ -27,6 +27,7 @@
     <include file="classpath:db/changelog/terminology/001-terminology-cdss.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/001-diagnostics-core.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/002-diagnostics-core-workflows.xml"/>
+    <include file="classpath:db/changelog/diagnostics_core/003-diagnostics-accession-uniqueness.xml"/>
     <!-- Transitional compatibility: the LIS starter currently depends on legacy combined
          pharmacy/LIS entities. Remove only after extracting a LIS-only persistence pack. -->
     <include file="classpath:db/changelog/pharmacy_lis/001-pharmacy-lis.xml"/>
