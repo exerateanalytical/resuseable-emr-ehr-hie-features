@@ -8,6 +8,12 @@ The `IndependentWorkflowIT` source now exercises a real Spring application conte
 
 **Important module-isolation limitation:** the `healthcore-pack-emr` POM excludes an explicit hospital-ops or mortuary dependency, but the underlying `healthcore-starter-emr-clinical` currently also scans inpatient/ward, medication-administration and referral entities. The pack master now includes both `emr/001` and `emr/002` migrations to avoid a Hibernate schema-validation failure. Therefore **do not claim zero inpatient tables** or strict outpatient entity isolation. A future separate outpatient-domain starter must extract this shared model safely.
 
+## Automatically linked clinical order worklists
+
+The outpatient capability pack now pulls in the optional `healthcore-starter-journey-queue-bridge` and reusable queue starter. Each invoked `routeSignedOrder` creates an idempotent internal lab/radiology/pharmacy/procedure/referral queue entry, persisting its `queueEntryId`. Routine work can wait for `PAID`, `INSURANCE_AUTHORIZED`, or another configured clearance; emergency cases can be prioritized `STAT`. Payment confirmation activates the existing task, and order completion requires actual queue completion by its assigned worker.
+
+The `IndependentWorkflowIT` now includes a PostgreSQL queue transaction scenario: synthetic lab order, no-prepayment hold, payment activation, scientist claiming, accountable completion, same-transaction idempotency and cross-patient mismatch rejection. **This test source has not been executed successfully on Java 25 CI**. Signed CPOE event subscription, electronic claims, actual LIS/RIS/pharmacy execution, printables and provider acknowledgments remain incomplete.
+
 ## Developer prerequisites and independent test
 
 JDK 25, Maven 3.9+, Docker/Testcontainers and PostgreSQL 16 image access. Use **only synthetic records**.
