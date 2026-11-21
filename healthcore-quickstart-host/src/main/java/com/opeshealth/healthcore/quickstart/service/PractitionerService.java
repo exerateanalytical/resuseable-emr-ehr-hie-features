@@ -646,14 +646,14 @@ public class PractitionerService {
         }
         if (!incoming.getName().isEmpty()) {
             HumanName hn = incoming.getNameFirstRep();
-            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(hn.getPrefixAsSingleText());
+            if (!hn.getPrefix().isEmpty()) entity.setNamePrefix(String.join(" ", hn.getPrefix().stream().map(StringType::getValue).filter(Objects::nonNull).toList()));
             if (hn.hasFamily()) entity.setFamilyName(hn.getFamily());
             if (!hn.getGiven().isEmpty()) {
                 entity.setGivenName(String.join(" ", hn.getGiven().stream().map(StringType::getValue).toList()));
             } else if (hn.hasText() && isBlank(entity.getGivenName())) {
                 entity.setGivenName(hn.getText());
             }
-            if (!hn.getSuffix().isEmpty()) entity.setNameSuffix(hn.getSuffixAsSingleText());
+            if (!hn.getSuffix().isEmpty()) entity.setNameSuffix(String.join(" ", hn.getSuffix().stream().map(StringType::getValue).filter(Objects::nonNull).toList()));
         }
         if (incoming.hasActive()) entity.setActive(incoming.getActive());
         if (incoming.hasGender()) entity.setGender(incoming.getGender().toCode().toUpperCase(Locale.ROOT));
