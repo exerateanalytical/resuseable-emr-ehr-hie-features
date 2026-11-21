@@ -411,13 +411,28 @@ public class PatientJourneyOrchestratorService {
     public DepartmentOrderRoutingEntity confirmPaymentAndReleaseOrder(
             UUID facilityId, UUID orderId, PaymentClearanceOutcome confirmedOutcome,
             String paymentIdempotencyKey, String actorId) {
+        if (facilityId == null || orderId == null || confirmedOutcome == null
+                || !confirmedOutcome.permitsFulfillmentActivation()
+                || paymentIdempotencyKey == null || paymentIdempotencyKey.isBlank()
+                || actorId == null || actorId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Verified eligible clearance, signed order, actor and stable payment event key required");
+        }
         DepartmentOrderRoutingEntity routing = routingRepo.findByFacilityIdAndOrderId(facilityId, orderId)
                 .orElseThrow(() -> new NoSuchElementException("Order routing task not found for order " + orderId));
         if (!facilityId.equals(routing.getFacilityId())) {
             throw new SecurityException("Cross-facility payment release denied");
         }
+        if (routing.getRoutingStatus() == OrderRoutingStatus.COMPLETED
+                || routing.getRoutingStatus() == OrderRoutingStatus.CANCELLED) {
+            throw new IllegalStateException("Completed or cancelled work cannot receive another payment release");
+        }
         if (processedEventRepo.findByFacilityIdAndIdempotencyKey(facilityId, paymentIdempotencyKey).isPresent()) {
-            return routing; // Idempotent replay: no duplicate state transition or event emission
+            if (routing.getFinancialClearance() != confirmedOutcome
+                    || routing.getRoutingStatus() == OrderRoutingStatus.ROUTED_AWAITING_CLEARANCE) {
+                throw new SecurityException("Payment replay key does not match the original cleared order state");
+            }
+            return routing; // Idempotent replay: no duplicate state transition or event emission.
         }
 
         DurableProcessedEventEntity proc = new DurableProcessedEventEntity();
