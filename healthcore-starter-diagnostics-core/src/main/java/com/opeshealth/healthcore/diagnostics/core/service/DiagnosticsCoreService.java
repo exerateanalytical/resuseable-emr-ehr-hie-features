@@ -151,7 +151,8 @@ public class DiagnosticsCoreService {
     }
 
     private static boolean defaultCriticalCheck(DiagnosticCatalogItemEntity item, BigDecimal val) {
-        if (item == null || val == null) return true;
+        // Unknown test or missing measurement cannot establish a critical threshold.
+        if (item == null || val == null) return false;
         if (item.getCriticalLow() != null && val.compareTo(item.getCriticalLow()) <= 0) return true;
         return item.getCriticalHigh() != null && val.compareTo(item.getCriticalHigh()) >= 0;
     }
@@ -214,6 +215,12 @@ public class DiagnosticsCoreService {
         }
         DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(orderId, facId)
                 .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + orderId));
+        if ("VERIFIED_RELEASED".equals(order.getStatus()) || "AMENDED".equals(order.getStatus())) {
+            throw new IllegalStateException("Released diagnostic reports require an audited amendment, not specimen rejection");
+        }
+        if ("REJECTED_RECOLLECT".equals(order.getStatus()) && reason.trim().equals(order.getRejectionReason())) {
+            return order; // Repeat request does not overwrite rejection evidence.
+        }
         order.setRejectionReason(reason.trim());
         order.setRecollectionRequested(true);
         order.setStatus("REJECTED_RECOLLECT");
@@ -226,9 +233,21 @@ public class DiagnosticsCoreService {
         UUID facId = requireFacility();
         DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(req.orderId(), facId)
                 .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + req.orderId()));
-        DiagnosticCatalogItemEntity item = catalogRepo.findByFacilityIdAndCatalogCode(facId, order.getCatalogCode()).orElse(null);
-        if (item != null && req.numericValue() != null && !criticalSpi.isCritical(item, req.numericValue())) {
-            throw new IllegalArgumentException("Numeric value " + req.numericValue() + " is within non-critical threshold for " + item.getCatalogCode());
+        if (req.numericValue() == null || req.criticalValueSummary() == null
+                || req.criticalValueSummary().isBlank() || req.notifiedClinician() == null
+                || req.notifiedClinician().isBlank()) {
+            throw new IllegalArgumentException("Measured critical value, summary, and responsible clinician are required");
+        }
+        if ("REJECTED_RECOLLECT".equals(order.getStatus())) {
+            throw new IllegalStateException("Cannot escalate an invalid or rejected specimen result");
+        }
+        DiagnosticCatalogItemEntity item = catalogRepo.findByFacilityIdAndCatalogCode(facId, order.getCatalogCode())
+                .orElseThrow(() -> new IllegalStateException("No authorized diagnostic catalog thresholds for order"));
+        if (item.getCriticalLow() == null && item.getCriticalHigh() == null) {
+            throw new IllegalStateException("Critical notification requires a configured low/high threshold");
+        }
+        if (!criticalSpi.isCritical(item, req.numericValue())) {
+            throw new IllegalArgumentException("Numeric value " + req.numericValue() + " is outside configured critical threshold conditions for " + item.getCatalogCode());
         }
         CriticalValueNotificationEntity notif = new CriticalValueNotificationEntity();
         notif.setFacilityId(facId);
@@ -245,12 +264,27 @@ public class DiagnosticsCoreService {
     public CriticalValueNotificationEntity acknowledgeCriticalReadBack(UUID notificationId, String acknowledgedBy, boolean readBackVerified) {
         UUID facId = requireFacility();
         if (!readBackVerified) {
-            throw new IllegalStateException("ISO 15189 patient-safety rule: clinician read-back verification is mandatory to close a critical value alert.");
+            throw new IllegalStateException("Clinician read-back verification is mandatory to close a critical value alert.");
+        }
+        if (notificationId == null || acknowledgedBy == null || acknowledgedBy.isBlank()) {
+            throw new IllegalArgumentException("Critical notification ID and accountable clinician are required");
         }
         CriticalValueNotificationEntity notif = criticalRepo.findByIdAndFacilityId(notificationId, facId)
                 .orElseThrow(() -> new NoSuchElementException("Critical notification not found: " + notificationId));
+        String clinician = acknowledgedBy.trim();
+        if ("ACKNOWLEDGED_READBACK".equals(notif.getStatus())) {
+            if (notif.isReadBackVerified() && clinician.equals(notif.getAcknowledgedBy())
+                    && notif.getAcknowledgedAt() != null) {
+                return notif; // At-least-once callback is safe: preserve first acknowledgment evidence.
+            }
+            throw new IllegalStateException("Critical read-back has already been closed by another actor");
+        }
+        if (!"ESCALATED".equals(notif.getStatus())
+                || !clinician.equals(notif.getNotifiedClinician())) {
+            throw new IllegalStateException("Only the notified responsible clinician may close an active critical alert");
+        }
         notif.setReadBackVerified(true);
-        notif.setAcknowledgedBy(acknowledgedBy.trim());
+        notif.setAcknowledgedBy(clinician);
         notif.setAcknowledgedAt(Instant.now());
         notif.setStatus("ACKNOWLEDGED_READBACK");
         return criticalRepo.save(notif);
@@ -262,10 +296,16 @@ public class DiagnosticsCoreService {
         UUID facId = requireFacility();
         DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(orderId, facId)
                 .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + orderId));
-        if (!qcPolicySpi.isReleasePermitted(order)) {
-            throw new IllegalStateException("Diagnostics QC release gate blocked order " + order.getAccessionNumber()
+        if ("VERIFIED_RELEASED".equals(order.getStatus())) {
+            return order; // A retry cannot reset the original verification timestamp.
+        }
+        if (!("REGISTERED".equals(order.getStatus()) || "IN_PROGRESS".equals(order.getStatus()))
+                || !qcPolicySpi.isReleasePermitted(order)) {
+            throw new IllegalStateException("Diagnostics QC/state release gate blocked order " + order.getAccessionNumber()
                     + " (status=" + order.getStatus() + ").");
         }
+        // This starter does not itself prove physical specimen QC or a signed patient report.
+        // Production consumers MUST register a fail-closed QC policy backed by verified result evidence.
         Instant now = Instant.now();
         order.setVerifiedAt(now);
         long elapsedMinutes = Duration.between(order.getOrderedAt(), now).toMinutes();
@@ -278,11 +318,19 @@ public class DiagnosticsCoreService {
     @ClinicalAudit(action = "DIAG_RESULT_AMEND", resourceType = "ResultAmendment")
     public ResultAmendmentEntity amendVerifiedResult(AmendResultRequest req) {
         UUID facId = requireFacility();
-        if (req.amendmentReason() == null || req.amendmentReason().isBlank()) {
-            throw new IllegalArgumentException("ISO 15189 rule: documented amendment reason is required.");
+        if (req == null || req.orderId() == null || req.amendmentReason() == null
+                || req.amendmentReason().isBlank() || req.priorResultSummary() == null
+                || req.priorResultSummary().isBlank() || req.amendedResultSummary() == null
+                || req.amendedResultSummary().isBlank() || req.amendedBy() == null
+                || req.amendedBy().isBlank()) {
+            throw new IllegalArgumentException("Signed result, previous and amended values, author, and amendment reason are required");
         }
         DiagnosticServiceOrderEntity order = orderRepo.findByIdAndFacilityId(req.orderId(), facId)
                 .orElseThrow(() -> new NoSuchElementException("Diagnostic order not found: " + req.orderId()));
+        if (order.getVerifiedAt() == null
+                || !("VERIFIED_RELEASED".equals(order.getStatus()) || "AMENDED".equals(order.getStatus()))) {
+            throw new IllegalStateException("Only a verified/released diagnostic report can be amended");
+        }
         order.setStatus("AMENDED");
         orderRepo.save(order);
 
