@@ -71,6 +71,11 @@ public class CdsHooksEngine {
         this.ddiRepository = ddiRepository;
     }
 
+    /** Optional recommendation text is not guaranteed even for a valid safety rule. */
+    private static List<String> safeSuggestions(String action) {
+        return action == null || action.isBlank() ? List.of() : List.of(action);
+    }
+
     /** Evaluates CPOE / e-Prescribing order safety prior to signature. */
     public List<CdsCard> evaluateOrderSafety(OrderSafetyRequest req) {
         List<CdsCard> cards = new ArrayList<>();
@@ -87,7 +92,7 @@ public class CdsHooksEngine {
                         rule.getClinicalMessage(),
                         rule.getSeverity().toLowerCase(Locale.ROOT),
                         "Opes HealthCore CDSS",
-                        rule.getRecommendedAction() != null ? List.of(rule.getRecommendedAction()) : List.of(),
+                        safeSuggestions(rule.getRecommendedAction()),
                         "CRITICAL".equals(rule.getSeverity())));
             }
 
@@ -100,7 +105,7 @@ public class CdsHooksEngine {
                                 rule.getClinicalMessage(),
                                 "critical",
                                 "Opes HealthCore CDSS",
-                                List.of(rule.getRecommendedAction()),
+                                safeSuggestions(rule.getRecommendedAction()),
                                 true));
                     }
                 }
@@ -114,7 +119,7 @@ public class CdsHooksEngine {
                         rule.getClinicalMessage(),
                         "critical",
                         "Opes HealthCore CDSS",
-                        List.of(rule.getRecommendedAction()),
+                        safeSuggestions(rule.getRecommendedAction()),
                         true));
             }
         }
