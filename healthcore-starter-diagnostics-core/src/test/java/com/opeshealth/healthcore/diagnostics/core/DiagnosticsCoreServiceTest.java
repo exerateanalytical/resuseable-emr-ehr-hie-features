@@ -4,6 +4,7 @@ import com.opeshealth.healthcore.diagnostics.core.domain.DiagnosticsCoreEntities
 import com.opeshealth.healthcore.diagnostics.core.service.DiagnosticsCoreService;
 import com.opeshealth.healthcore.diagnostics.core.service.DiagnosticsCoreService.*;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -42,8 +43,12 @@ class DiagnosticsCoreServiceTest {
         when(amendRepo.save(any())).thenAnswer(i -> i.getArgument(0));
         when(incidentRepo.save(any())).thenAnswer(i -> i.getArgument(0));
 
+        @SuppressWarnings("unchecked")
+        ObjectProvider<DiagnosticsQcPolicySpi> qcPolicyProvider = mock(ObjectProvider.class);
+        // Unit fixture: explicitly supply a synthetic approved QC policy; production defaults fail closed.
+        when(qcPolicyProvider.getIfAvailable(any())).thenReturn(order -> true);
         DiagnosticsCoreService service = new DiagnosticsCoreService(
-                partnerRepo, catalogRepo, orderRepo, critRepo, amendRepo, incidentRepo, null, null);
+                partnerRepo, catalogRepo, orderRepo, critRepo, amendRepo, incidentRepo, qcPolicyProvider, null);
 
         ReferringPartnerEntity clinic = service.registerReferringPartner(new RegisterReferringPartnerRequest(
                 "CLIN-01", "Bonanjo Family Clinic", "CLINIC", "FHIR_API"));
@@ -89,6 +94,28 @@ class DiagnosticsCoreServiceTest {
         assertEquals("OPEN", inc.getStatus());
     }
 
+
+    @Test
+    void unconfiguredQcMustNotReleaseEvenAnOtherwiseValidOrder() {
+        UUID facility = UUID.randomUUID();
+        FacilityContext.setFacilityId(facility);
+        DiagnosticServiceOrderRepository orders = mock(DiagnosticServiceOrderRepository.class);
+        DiagnosticServiceOrderEntity registered = new DiagnosticServiceOrderEntity();
+        registered.setFacilityId(facility);
+        registered.setAccessionNumber("QC-UNAVAILABLE-001");
+        registered.setStatus("REGISTERED");
+        when(orders.findByIdAndFacilityId(registered.getId(), facility)).thenReturn(Optional.of(registered));
+
+        DiagnosticsCoreService service = new DiagnosticsCoreService(
+                mock(ReferringPartnerRepository.class), mock(DiagnosticCatalogRepository.class),
+                orders, mock(CriticalNotificationRepository.class),
+                mock(ResultAmendmentRepository.class), mock(QualityIncidentRepository.class),
+                null, null);
+        assertThrows(IllegalStateException.class,
+                () -> service.verifyAndReleaseReport(registered.getId()));
+        assertNull(registered.getVerifiedAt());
+        verify(orders, never()).save(any());
+    }
 
     @Test
     void blocksUnconfiguredOrNoncriticalEscalationAndUnreleasedAmendment() {
