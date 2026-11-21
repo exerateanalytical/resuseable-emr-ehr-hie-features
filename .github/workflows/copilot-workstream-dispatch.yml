@@ -1,0 +1,34 @@
+name: HealthCore — assign 20 workstream issues to Copilot cloud agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview assignments without starting paid agent sessions"
+        required: true
+        default: true
+        type: boolean
+      max_issues:
+        description: "Number of unassigned issues to attempt (1–20)"
+        required: true
+        default: '20'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      TARGET_BRANCH: fix/healthcore-java25-full-verification-20261120
+      DRY_RUN: ${{ inputs.dry_run }}
+      MAX_ISSUES: ${{ inputs.max_issues }}
+    steps:
+      - name: Checkout workstream files
+        uses: actions/checkout@v4
+      - name: Verify dispatch preconditions and invoke Copilot REST issue assignments
+        run: bash scripts/dispatch_healthcore_agents.sh
