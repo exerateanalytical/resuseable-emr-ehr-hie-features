@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <!-- Null means the oxygen/ACVPU status was not documented; it must not be treated
+         as room air / alert or silently scored NEWS2 = 0. No default values. -->
+    <changeSet id="003-emr-news2-observation-context" author="opeshealth">
+        <addColumn tableName="hc_vital_signs">
+            <column name="supplemental_oxygen" type="${bool_type}"/>
+            <column name="consciousness_acvpu" type="VARCHAR(12)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="hc_vital_signs" columnName="consciousness_acvpu"/>
+            <dropColumn tableName="hc_vital_signs" columnName="supplemental_oxygen"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
