@@ -367,6 +367,7 @@ public class EmrClinicalWorkflowService {
         if (order.getPatientId() == null || order.getEncounterId() == null) {
             throw new IllegalArgumentException("Clinical order must identify the patient and encounter");
         }
+        requireEncounterInActiveFacility(order.getEncounterId(), order.getPatientId());
 
         boolean isMedication = "MEDICATION".equalsIgnoreCase(order.getOrderCategory());
         boolean allergyProfileProvided = request.allergyCodes() != null && !request.allergyCodes().isEmpty();
@@ -442,6 +443,9 @@ public class EmrClinicalWorkflowService {
         if (order.getPatientId() == null || order.getEncounterId() == null) {
             throw new IllegalArgumentException("Clinical order patient and encounter are mandatory");
         }
+        // Validate the persisted encounter and patient together. A valid JWT facility alone
+        // must not permit attaching prescriptions to another patient's visit.
+        requireEncounterInActiveFacility(order.getEncounterId(), order.getPatientId());
         enforceActivePractitionerLicense(order.getFacilityId(), order.getOrderedBy());
 
         List<CdsHooksEngine.CdsCard> cards = cdsHooksEngine.evaluateOrderSafety(
@@ -630,15 +634,19 @@ public class EmrClinicalWorkflowService {
                 && mar.getAdministeredAt().isBefore(order.getOrderedAt())) {
             throw new IllegalStateException("5-Rights Check FAILED (Right Time): Administration timestamp precedes order creation");
         }
-        if (admissionRepo != null) {
-            admissionRepo.findById(mar.getAdmissionId()).ifPresent(adm -> {
-                if (!adm.getPatientId().equals(mar.getPatientId())) {
-                    throw new SecurityException("5-Rights Check FAILED (Right Patient): Admission belongs to a different patient");
-                }
-                if (adm.getDischargedAt() != null) {
-                    throw new IllegalStateException("5-Rights Check FAILED (Right Time): Cannot administer inpatient eMAR after discharge");
-                }
-            });
+        // A missing or foreign admission must never be treated as a successful 5-Rights check.
+        AdmissionEntity admission = admissionRepo.findById(mar.getAdmissionId())
+                .orElseThrow(() -> new SecurityException(
+                        "5-Rights Check FAILED: Active inpatient admission is required"));
+        assertActiveFacility(admission.getFacilityId());
+        if (!mar.getPatientId().equals(admission.getPatientId())
+                || !order.getEncounterId().equals(admission.getEncounterId())) {
+            throw new SecurityException(
+                    "5-Rights Check FAILED (Right Patient): Order, encounter and admission do not match");
+        }
+        if (admission.getDischargedAt() != null) {
+            throw new IllegalStateException(
+                    "5-Rights Check FAILED (Right Time): Cannot administer medication after discharge");
         }
 
         return emarRepo.save(mar);
