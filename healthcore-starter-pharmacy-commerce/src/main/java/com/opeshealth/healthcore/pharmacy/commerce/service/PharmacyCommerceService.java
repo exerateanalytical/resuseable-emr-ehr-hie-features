@@ -250,6 +250,13 @@ public class PharmacyCommerceService {
     @ClinicalAudit(action = "PHCOM_GOODS_RECEIPT", resourceType = "PharmacyLot")
     public PharmacyLotEntity receiveGoods(GoodsReceiptRequest req) {
         UUID facId = requireFacility();
+        if (req == null || req.productId() == null || req.quantityReceived() <= 0
+                || req.purchaseOrderRef() == null || req.purchaseOrderRef().isBlank()
+                || req.supplierName() == null || req.supplierName().isBlank()
+                || req.batchNumber() == null || req.batchNumber().isBlank()
+                || req.expiryDate() == null) {
+            throw new IllegalArgumentException("A positive receipt, named qualified supplier, valid lot and purchase order are required");
+        }
         productRepo.findByIdAndFacilityId(req.productId(), facId)
                 .orElseThrow(() -> new NoSuchElementException("Pharmacy product not found: " + req.productId()));
         TraceableLotPrimitive lotCheck = new TraceableLotPrimitive(
@@ -258,11 +265,29 @@ public class PharmacyCommerceService {
             throw new IllegalStateException("Goods receipt rejected: incoming batch '" + req.batchNumber() + "' is already expired.");
         }
         String poRef = req.purchaseOrderRef().trim().toUpperCase(Locale.ROOT);
-        poRepo.findByFacilityIdAndPoNumber(facId, poRef).ifPresent(po -> {
-            po.setReceivedQuantity(po.getReceivedQuantity() + req.quantityReceived());
-            po.setStatus(po.getReceivedQuantity() >= po.getOrderedQuantity() ? "RECEIVED" : "PARTIALLY_RECEIVED");
-            poRepo.save(po);
-        });
+        PurchaseOrderEntity po = poRepo.findByFacilityIdAndPoNumber(facId, poRef)
+                .orElseThrow(() -> new IllegalStateException("Goods receipt requires an authorized open purchase order"));
+        if (!req.productId().equals(po.getProductId())
+                || !("OPEN".equals(po.getStatus()) || "PARTIALLY_RECEIVED".equals(po.getStatus()))) {
+            throw new IllegalStateException("Goods receipt must match the ordered product and an open purchase order");
+        }
+        SupplierEntity supplier = supplierRepo.findByIdAndFacilityId(po.getSupplierId(), facId)
+                .orElseThrow(() -> new SecurityException("Purchase order supplier is inaccessible"));
+        if (!supplier.isQualified()
+                || !supplier.getSupplierName().trim().equalsIgnoreCase(req.supplierName().trim())) {
+            throw new SecurityException("Goods receipt supplier is not qualified or does not match the purchase order");
+        }
+        if (req.quantityReceived() > po.getOrderedQuantity() - po.getReceivedQuantity()) {
+            throw new IllegalStateException("Goods receipt exceeds the outstanding authorized purchase order quantity");
+        }
+        if (!lotRepo.findByFacilityIdAndBatchNumber(facId, lotCheck.lotOrBatchNumber()).isEmpty()) {
+            throw new IllegalStateException("Lot batch already registered; reconcile split deliveries against the original lot");
+        }
+        // Persist PO receipt and new inventory lot inside one transaction. @Version
+        // protects competing writers and the schema's unique lot key prevents races.
+        po.setReceivedQuantity(po.getReceivedQuantity() + req.quantityReceived());
+        po.setStatus(po.getReceivedQuantity() == po.getOrderedQuantity() ? "RECEIVED" : "PARTIALLY_RECEIVED");
+        poRepo.save(po);
 
         PharmacyLotEntity lot = new PharmacyLotEntity();
         lot.setFacilityId(facId);
