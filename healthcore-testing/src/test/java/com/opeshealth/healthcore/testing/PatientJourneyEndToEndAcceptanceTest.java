@@ -903,6 +903,8 @@ class PatientJourneyEndToEndAcceptanceTest {
                         "en", "+237699112233", Map.of(), false, false, false, "NO-RECEIPT"));
         assertEquals(NotificationDeliveryState.RETRYING, missingProviderProof.getDeliveryState());
         assertNull(missingProviderProof.getSubmittedAt());
+        when(repo.findById(missingProviderProof.getId()))
+                .thenReturn(Optional.of(missingProviderProof));
         assertThrows(IllegalStateException.class, () -> withoutReceipt.confirmNotificationDeliveryReceipt(
                 facility, missingProviderProof.getId(), "FORGED-DELIVERY"));
 
