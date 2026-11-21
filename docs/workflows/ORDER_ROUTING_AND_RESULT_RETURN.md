@@ -13,7 +13,8 @@ When a clinician signs orders during an encounter, `PatientJourneyOrchestratorSe
 | `REFERRAL` | `CLOSED_LOOP_REFERRAL_FLOW` | Care coordination / HIE | `ClinicalOrderSigned` |
 
 ### Idempotency & Parent–Child Linking
-- `hc_order_routing_tasks` enforces `UNIQUE(facility_id, idempotency_key)` so replaying `ClinicalOrderSigned` never creates duplicate active fulfillment tasks.
+- `hc_order_routing_tasks` enforces `UNIQUE(facility_id, idempotency_key)` and, after the additive `workflow/003-one-routing-per-order.xml` migration passes duplicate-data preflight, **`UNIQUE(facility_id, order_id)`**. The same signed order cannot produce multiple departmental task rows even when a replay supplies a new idempotency key. A replay whose patient, encounter, target department or external pharmacy differs from the original is rejected instead of treated as a valid retry.
+- The migration intentionally **halts** if duplicate order-routing rows already exist; reconcile them with patient/financial/clinical audit review, never delete or silently merge them. Database uniqueness handles simultaneous first-write races; the caller must recover and re-query the original order after a conflict.
 - `hc_workflow_subflow_links` enforces `UNIQUE(facility_id, parent_workflow_id, child_workflow_id)` to track all parallel child subworkflows belonging to one `OPD_CONSULTATION_FLOW` parent.
 - `verifyCanFinalizeEncounter(facilityId, encounterId)` blocks premature encounter closure whenever any routed order is still `ROUTED_AWAITING_CLEARANCE` or `ACTIVE_IN_DEPARTMENT`, or any critical/amended clinician inbox entry remains unacknowledged.
 
@@ -21,7 +22,12 @@ When a clinician signs orders during an encounter, `PatientJourneyOrchestratorSe
 When a laboratory result is verified (`LaboratoryResultVerified`) or a radiology report is signed (`RadiologyReportSigned`), `deliverVerifiedResultToClinicianInbox` creates or updates a durable `ClinicianResultInboxEntity`:
 - Standard verified results enter `AWAITING_REVIEW`.
 - Critical panic-value findings immediately enter `CRITICAL_ESCALATION_PENDING` with an escalation SLA deadline (`escalationDeadlineAt`).
-- **Late / Amended Results:** Delivering an amended result (`amendedResult = true`) on a previously acknowledged `resultId` resets `acknowledgedAt = null`, clears `acknowledgedBy`, sets `inboxStatus = ACTION_REQUIRED`, and automatically blocks encounter finalization until the clinician re-acknowledges the amended report.
+- **Late / Amended Results:** An amended result (`amendedResult = true`) clears `acknowledgedAt`, `acknowledgedBy` and prior review notes. **Noncritical** amendments enter `ACTION_REQUIRED`; **critical** amendments enter `CRITICAL_ESCALATION_PENDING` and receive a fresh SLA. Neither may inherit an earlier clinician acknowledgment. Conflicting patient/encounter/order identities are rejected before a task is updated.
+- **Clinical acknowledgment:** Only the currently responsible clinician ID may acknowledge; critical values require documented review/read-back notes. An identical retry does not refresh the timestamp or emit another acknowledgment event. A clinician-ID string alone is not proof of authenticated human identity; consumers must bind it to the verified principal and implement signed evidence.
+- **Fulfillment completion:** A task can be completed only from `ACTIVE_IN_DEPARTMENT` or `IN_PROGRESS` with a fulfillment-eligible clearance. `CANCELLED` and financial-hold states cannot be completed; a retry of an already completed task leaves the original completion timestamp unchanged.
+
+### Verification boundaries (not complete app certification)
+The SDK contract can create routing tasks and clinician inbox entries, but automatically consuming signed clinical order events and specialty result/queue events across *every standalone application* still requires actual integration wiring, provider-specific adapters and PostgreSQL/Testcontainers evidence. The orchestration acceptance suite uses synthetic/in-memory backing stores and is not proof of transactional broker delivery or clinical deployment. Emergency stabilization and critical-result communication remain independent of routine prepayment.
 
 ## 3. All 28 Canonical Durable Domain Events (Section 10)
 Published through `TransactionalOutboxEntity` using `CanonicalDomainEventEnvelope` (`eventId`, `eventType`, `eventVersion`, `facilityId`, `patientId`, `encounterId`, `orderId`, `correlationId`, `causationId`, `occurredAt`, `originatingService`, `actorId`, `idempotencyKey`, `payload`):
