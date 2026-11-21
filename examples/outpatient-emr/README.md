@@ -28,10 +28,16 @@ The active facility is derived from verified authentication context in productio
 
 1. Start an ambulatory encounter for a patient and authenticated facility.
 2. Triage with a valid ESI 1–5 level, complaint and accountable clinician.
-3. Record actual measured vital signs. Missing essential measurements **must not** save a fabricated NEWS2 score of zero; the clinician receives an incomplete-observation alert.
+3. Record actual measured vital signs **plus supplemental-oxygen status (true/false, nullable before assessment) and ACVPU consciousness (A, C, V, P or U)**. The migration `emr/003-emr-news2-observation-context.xml` adds these nullable columns without defaulting unknown observations to normal. Missing essential measurements, oxygen status or ACVPU **must not** save a fabricated NEWS2 score of zero; the clinician receives an incomplete-observation alert.
 4. Sign a SOAP note with an approved practitioner credential. A signed note cannot be overwritten; addenda retain parent and version history.
 5. Create another encounter for a returning patient without changing their patient identifier.
 6. Verify encounter, triage, vitals and signed-note state across fresh PostgreSQL connections, including foreign-facility and invalid-data rejections.
+
+## NEWS2 clinical boundaries
+
+This starter currently applies **adult NEWS2 Scale 1** as a preliminary clinical decision-support calculation. Both room-air status and alert consciousness must be **explicitly recorded**; missing values leave `news2_score` as `null`, never normal zero. The service rejects unsupported ACVPU codes rather than scoring them as confusion.
+
+A value of zero means the **documented** inputs meet the modeled score thresholds; it does not certify medical stability. Adult Scale 2 (prescribed 88–92% oxygen target), pediatric PEWS, obstetric scoring, clinical escalation policies, calibrated devices and bedside validation are **not complete** and need physician/nurse clinical approval before care use.
 
 ## Still required before the app can be called complete
 
