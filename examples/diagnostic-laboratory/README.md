@@ -1,24 +1,41 @@
 # Standalone Diagnostic Laboratory Example (ISO 15189-Aligned, Zero Radiology)
 
-Minimal standalone Spring Boot 4 + Java 25 consumer proving that OPES HealthCore modules run independently without pulling unrelated industries.
+> **PRE-PRODUCTION SDK reference consumer.** The existing `WorkflowSmokeTest` checks class availability only, not an end-to-end Standalone diagnostic laboratory workflow. **No full independent workflow IT has been verified.**
 
-- **Installed Dependencies**: `healthcore-starter-diagnostics-core, healthcore-starter-lis-diagnostics`
-- **Excluded / Never Installed**: Radiology/PACS, EMR, Inpatient, HIS
-- **Liquibase Changelog**: `classpath:db/changelog/diagnostics_core/001-diagnostics-core.xml`
+## Product scope
+An independent Standalone diagnostic laboratory application must install only its selected HealthCore pack and mandatory core dependencies. Do not require a complete hospital system to launch.
 
-## Quick Start
+## Mandatory persisted workflow
+1. Referral.
+2. order.
+3. specimen accession.
+4. Westgard QC.
+5. authorized report.
+6. critical-result acknowledgment.
+
+## Failure and authorization cases
+- Specimen rejection.
+- failing QC.
+- missing critical result acknowledgment.
+- Test cross-tenant access denied, replay/idempotency, recovery, audit, and relevant consent/clinical role requirements.
+- Use synthetic data; regulatory and clinical review are separate acceptance gates.
+
+## Local development & verification
+Install JDK 25, Maven 3.9+, Docker and PostgreSQL 16; or use the development container in [repair PR #2](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/pull/2).
+
 ```bash
-# 1. Publish HealthCore BOM & starters locally (once from repository root)
-mvn install -DskipTests
-
-# 2. Start PostgreSQL
-docker compose up -d
-
-# 3. Run this standalone example
-mvn spring-boot:run
+# Run from repository root once the full SDK reactor compiles
+mvn -B -ntp -fae -DskipTests install
+# Run from this example folder; Failsafe must run the actual *IT.java tests
+mvn -B -ntp verify -DskipITs=false
+# Launch an application after its dependencies, migrations and security are configured
+mvn -B -ntp spring-boot:run
 ```
 
-## Smoke Test
-```bash
-curl -X POST http://localhost:8082/api/v1/diagnostics-core/orders -H "Content-Type: application/json" -H "X-Facility-Id: 00000000-0000-0000-0000-000000000001" -d '{"accessionNumber":"LAB-001","modalityDomain":"LABORATORY","catalogCode":"LOINC-2345-7","subjectRef":"CLIENT-1","tatSlaMinutes":120}'
-```
+The POM provides JUnit 5/Surefire, Failsafe integration tests and PostgreSQL Testcontainers. **Having dependencies does not prove the workflow is implemented.** The assigned engineer must implement `IndependentWorkflowIT.java` with `@Tag("workflow-it")`, real application context, migrations, persisted domain state, public API or service operations and negative cases. Class-only or mocked domain-service checks do not count.
+
+**Authentication:** A verified JWT and authorized facility membership are required. `X-Facility-Id` alone is not trusted identity. No real patient data in fixtures.
+
+**Release evidence:** successful database migration, domain transition receipts, relevant forms and reports, Testcontainers, Surefire/Failsafe XML, CI run URL and independent clinical review when applicable.
+
+See [the 11-example acceptance matrix](../../docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md) and [20 workstreams](../../docs/agents/HEALTHCORE_20_WORKSTREAMS.md).
