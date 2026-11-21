@@ -350,11 +350,12 @@ public class EmrClinicalWorkflowService {
     public ClinicalNoteRevisionEntity cosignNote(UUID noteId, String attendingId) {
         ClinicalNoteRevisionEntity note = noteRepo.findById(noteId)
                 .orElseThrow(() -> new NoSuchElementException("Clinical note not found: " + noteId));
-        UUID facId = encounterRepo.findById(note.getEncounterId())
-                .map(EncounterEntity::getFacilityId)
-                .or(FacilityContext::getFacilityId)
-                .orElse(null);
-        enforceActivePractitionerLicense(facId, attendingId);
+        EncounterEntity encounter = requireEncounterInActiveFacility(
+                note.getEncounterId(), note.getPatientId());
+        if (!"PENDING_COSIGN".equals(note.getStatus())) {
+            throw new IllegalStateException("Only a note pending co-signature may be co-signed");
+        }
+        enforceActivePractitionerLicense(encounter.getFacilityId(), attendingId);
         note.setCosignedBy(attendingId);
         note.setStatus("SIGNED");
         note.setSignedAt(Instant.now());
@@ -680,8 +681,29 @@ public class EmrClinicalWorkflowService {
         return r;
     }
 
+    /** A nursing/medication record must reference the same active admission and patient. */
+    private AdmissionEntity requireActiveAdmission(UUID admissionId, UUID patientId) {
+        if (admissionId == null) {
+            throw new IllegalArgumentException("Admission ID is required");
+        }
+        AdmissionEntity admission = admissionRepo.findById(admissionId)
+                .orElseThrow(() -> new SecurityException("Active admission is not accessible"));
+        assertActiveFacility(admission.getFacilityId());
+        requireEncounterInActiveFacility(admission.getEncounterId(), admission.getPatientId());
+        if (patientId != null && !patientId.equals(admission.getPatientId())) {
+            throw new SecurityException("Nursing record patient does not match the active admission");
+        }
+        if (admission.getDischargedAt() != null) {
+            throw new IllegalStateException("Cannot document inpatient care after discharge");
+        }
+        return admission;
+    }
+
     @Transactional
     public FluidBalanceEntity recordFluidBalance(FluidBalanceEntity entry) {
+        Objects.requireNonNull(entry, "Fluid balance entry required");
+        assertActiveFacility(entry.getFacilityId());
+        requireActiveAdmission(entry.getAdmissionId(), entry.getPatientId());
         if (entry.getVolumeMl() <= 0) {
             throw new IllegalArgumentException("Fluid volume must be > 0 mL");
         }
@@ -690,16 +712,39 @@ public class EmrClinicalWorkflowService {
 
     @Transactional
     public ShiftHandoverEntity recordShiftHandover(ShiftHandoverEntity handover) {
+        Objects.requireNonNull(handover, "Shift handover required");
+        assertActiveFacility(handover.getFacilityId());
+        requireActiveAdmission(handover.getAdmissionId(), null);
+        if (handover.getSituation() == null || handover.getSituation().isBlank()
+                || handover.getHandedBy() == null || handover.getHandedBy().isBlank()
+                || handover.getReceivedBy() == null || handover.getReceivedBy().isBlank()) {
+            throw new IllegalArgumentException("SBAR situation, sender and receiver are required");
+        }
         return handoverRepo.save(handover);
     }
 
     @Transactional
     public MedReconciliationEntity reconcileMedication(MedReconciliationEntity medRec) {
+        Objects.requireNonNull(medRec, "Medication reconciliation required");
+        assertActiveFacility(medRec.getFacilityId());
+        requireActiveAdmission(medRec.getAdmissionId(), medRec.getPatientId());
+        if (medRec.getReconciledBy() == null || medRec.getReconciledBy().isBlank()
+                || medRec.getReconciliationAction() == null || medRec.getReconciliationAction().isBlank()) {
+            throw new IllegalArgumentException("Medication reconciliation action and author are required");
+        }
         return medRecRepo.save(medRec);
     }
 
     @Transactional
     public ClinicalReferralEntity createReferral(ClinicalReferralEntity referral) {
+        Objects.requireNonNull(referral, "Referral is required");
+        assertActiveFacility(referral.getFacilityId());
+        requireEncounterInActiveFacility(referral.getEncounterId(), referral.getPatientId());
+        if (referral.getTargetFacility() == null || referral.getTargetFacility().isBlank()
+                || referral.getSpecialty() == null || referral.getSpecialty().isBlank()
+                || referral.getReason() == null || referral.getReason().isBlank()) {
+            throw new IllegalArgumentException("Receiving facility, specialty and clinical reason are required");
+        }
         ClinicalReferralEntity saved = referralRepo.save(referral);
         emitOutbox("ClinicalReferral", saved.getId(), "ServiceRequestCreatedEvent",
                 "{\"referralId\":\"" + saved.getId() + "\",\"targetFacility\":\"" + saved.getTargetFacility() + "\"}");
@@ -708,10 +753,24 @@ public class EmrClinicalWorkflowService {
 
     @Transactional
     public ClinicalReferralEntity completeReferral(UUID referralId, String outcomeNotes) {
+        if (outcomeNotes == null || outcomeNotes.isBlank()) {
+            throw new IllegalArgumentException("A receiving-clinician outcome is required");
+        }
         ClinicalReferralEntity ref = referralRepo.findById(referralId)
                 .orElseThrow(() -> new NoSuchElementException("Referral not found: " + referralId));
+        assertActiveFacility(ref.getFacilityId());
+        requireEncounterInActiveFacility(ref.getEncounterId(), ref.getPatientId());
+        if ("COMPLETED".equals(ref.getStatus())) {
+            if (outcomeNotes.trim().equals(ref.getOutcomeNotes()) && ref.getCompletedAt() != null) {
+                return ref; // Retry must not rewrite a previously signed outcome timestamp.
+            }
+            throw new IllegalStateException("Referral already closed with a different outcome");
+        }
+        if (!"SENT".equals(ref.getStatus()) && !"ACCEPTED".equals(ref.getStatus())) {
+            throw new IllegalStateException("Referral is not in a completable state");
+        }
         ref.setStatus("COMPLETED");
-        ref.setOutcomeNotes(outcomeNotes);
+        ref.setOutcomeNotes(outcomeNotes.trim());
         ref.setCompletedAt(Instant.now());
         return referralRepo.save(ref);
     }
@@ -721,16 +780,30 @@ public class EmrClinicalWorkflowService {
     public AdmissionEntity dischargePatient(UUID admissionId, String disposition, String summary, LocalDate followUpDate) {
         AdmissionEntity adm = admissionRepo.findById(admissionId)
                 .orElseThrow(() -> new NoSuchElementException("Admission not found"));
+        assertActiveFacility(adm.getFacilityId());
+        requireEncounterInActiveFacility(adm.getEncounterId(), adm.getPatientId());
+        if (adm.getDischargedAt() != null) {
+            // Idempotent repeat: never free a bed now assigned to another patient,
+            // post a second follow-up plan, or duplicate discharge events.
+            return adm;
+        }
+        if (disposition == null || disposition.isBlank() || summary == null || summary.isBlank()) {
+            throw new IllegalArgumentException("Discharge disposition and clinical summary are required");
+        }
+        WardBedEntity bed = bedRepo.findById(adm.getWardBedId())
+                .orElseThrow(() -> new IllegalStateException("Assigned discharge bed cannot be located"));
+        if (!adm.getFacilityId().equals(bed.getFacilityId())
+                || !adm.getId().equals(bed.getActiveAdmissionId()) || !bed.isOccupied()) {
+            throw new SecurityException("Ward bed ownership mismatch: discharge cannot alter another admission");
+        }
         adm.setDischargedAt(Instant.now());
-        adm.setDischargeDisposition(disposition);
-        adm.setDischargeSummary(summary);
+        adm.setDischargeDisposition(disposition.trim());
+        adm.setDischargeSummary(summary.trim());
         admissionRepo.save(adm);
 
-        bedRepo.findById(adm.getWardBedId()).ifPresent(bed -> {
-            bed.setOccupied(false);
-            bed.setActiveAdmissionId(null);
-            bedRepo.save(bed);
-        });
+        bed.setOccupied(false);
+        bed.setActiveAdmissionId(null);
+        bedRepo.save(bed);
 
         CarePlanEntity followUp = new CarePlanEntity();
         followUp.setFacilityId(adm.getFacilityId());
