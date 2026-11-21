@@ -92,8 +92,10 @@ class IndependentWorkflowIT {
         PharmacyLotEntity laterExpiry = pharmacy.receiveGoods(new GoodsReceiptRequest(
                 product.getId(), "Synthetic Licensed Supplier", "PO-SYN-001",
                 "03400930000012", "LOT-PARA-LATE", LocalDate.now().plusDays(180), 60));
-        assertEquals("RECEIVED", purchaseOrder.getStatus());
-        assertEquals(100, purchaseOrder.getReceivedQuantity());
+        // A transaction from a previous service call may hold a detached snapshot.
+        // Inspect durable state from a fresh JDBC connection instead.
+        assertEquals("RECEIVED", persistedPoStatus(purchaseOrder.getId(), facility));
+        assertEquals(100, persistedPoReceivedCount(purchaseOrder.getId(), facility));
 
         PharmacyDispenseEntity firstDispense = pharmacy.dispenseFefo(new DispensePrescriptionRequest(
                 "RX-SYN-01", "SYNTHETIC-PATIENT-01", product.getId(),
@@ -177,6 +179,19 @@ class IndependentWorkflowIT {
 
     private String persistedPoStatus(UUID poId, UUID facility) throws Exception {
         return singleString("hc_phcom_purchase_orders", "status", poId, facility);
+    }
+
+    private int persistedPoReceivedCount(UUID poId, UUID facility) throws Exception {
+        try (Connection connection = newConnection();
+             PreparedStatement ps = connection.prepareStatement(
+                     "SELECT received_quantity FROM hc_phcom_purchase_orders WHERE id = ? AND facility_id = ?")) {
+            ps.setObject(1, poId);
+            ps.setObject(2, facility);
+            try (ResultSet result = ps.executeQuery()) {
+                assertTrue(result.next());
+                return result.getInt(1);
+            }
+        }
     }
 
     private String singleString(String table, String column, UUID id, UUID facility) throws Exception {
