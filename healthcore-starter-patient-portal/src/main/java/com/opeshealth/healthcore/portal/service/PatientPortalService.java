@@ -188,7 +188,8 @@ public class PatientPortalService {
             UUID facilityId, String callerSubject, UUID patientId) {
         assertPortalAccess(facilityId, callerSubject, patientId, PortalScope.RESULTS);
         return ordersResultsService.listPatientResults(facilityId, patientId).stream()
-                .filter(r -> r.getStatus() == ResultStatus.FINAL || r.getStatus() == ResultStatus.AMENDED)
+                .filter(r -> (r.getStatus() == ResultStatus.FINAL || r.getStatus() == ResultStatus.AMENDED)
+                        && r.getVerifiedAt() != null)
                 .map(this::toPortalResultView)
                 .toList();
     }
@@ -305,6 +306,9 @@ public class PatientPortalService {
     }
 
     private void assertPatientSelfOnly(UUID facilityId, String callerSubject, UUID targetPatientId) {
+        if (facilityId == null || isBlank(callerSubject) || targetPatientId == null) {
+            throw new AccessDeniedException("Authenticated patient identity and facility are required.");
+        }
         Optional<PatientPortalAccountEntity> self =
                 accountRepo.findByFacilityIdAndIdentitySubjectAndActiveTrue(facilityId, callerSubject.trim());
         if (self.isEmpty() || !self.get().getPatientId().equals(targetPatientId)) {
@@ -328,7 +332,8 @@ public class PatientPortalService {
                 : Objects.toString(r.getTextValue(), "");
         return new PortalReleasedResultView(
                 r.getId(), r.getResultCode(), r.getResultDisplay(), value,
-                r.getUnit(), r.getReferenceRange(), r.getAbnormalFlag().name(),
+                r.getUnit(), r.getReferenceRange(),
+                r.getAbnormalFlag() != null ? r.getAbnormalFlag().name() : "UNKNOWN",
                 r.getStatus().name(), r.getVerifiedAt());
     }
 
