@@ -354,6 +354,15 @@ class EmrClinicalSafetyTest {
         otherwiseComplete.setTempCelsius(BigDecimal.valueOf(37));
         assertThrows(IllegalArgumentException.class,
                 () -> service.computeNews2(otherwiseComplete, false, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.computeNews2(otherwiseComplete, false, "NOT_AN_ACVPU_LEVEL"));
+        // This overload requires oxygen and consciousness to be recorded, not inferred.
+        assertThrows(IllegalArgumentException.class, () -> service.computeNews2(otherwiseComplete));
+        otherwiseComplete.setSupplementalOxygen(false);
+        otherwiseComplete.setConsciousnessAcvpu("A");
+        assertEquals(0, service.computeNews2(otherwiseComplete));
+        otherwiseComplete.setConsciousnessAcvpu("INVALID");
+        assertThrows(IllegalArgumentException.class, () -> service.computeNews2(otherwiseComplete));
         assertEquals(0, service.computeNews2(otherwiseComplete, false, "A"));
     }
 
