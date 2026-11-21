@@ -64,4 +64,25 @@ class TerminologyAndCdssTest {
                 new BigDecimal("39.8"), 128, 28, 82, 88, new BigDecimal("6.9"), new BigDecimal("42.0")));
         assertFalse(panicCards.isEmpty());
     }
+    @Test
+    void emitsAllergyAlertWithoutOptionalRecommendation() {
+        DdiRuleEntity rule = new DdiRuleEntity();
+        rule.setRuleType("DRUG_ALLERGY_CLASS");
+        rule.setDrugACode("PENICILLIN");
+        rule.setDrugBOrConditionCode("PENICILLIN_ALLERGY");
+        rule.setSeverity("CRITICAL");
+        rule.setClinicalMessage("Review documented allergy before prescribing.");
+        // recommendedAction is nullable in the persistence model.
+        when(ddiRepo.findByDrugACodeIn(any())).thenReturn(List.of(rule));
+
+        List<CdsCard> cards = cdsEngine.evaluateOrderSafety(new OrderSafetyRequest(
+                UUID.randomUUID(), new BigDecimal("70"), new BigDecimal("90"), false,
+                List.of(), List.of("PENICILLIN_ALLERGY"), List.of(), "PENICILLIN", new BigDecimal("250")));
+
+        assertEquals(1, cards.size());
+        assertEquals("critical", cards.get(0).indicator());
+        assertTrue(cards.get(0).suggestions().isEmpty());
+        assertTrue(cards.get(0).overrideRequired());
+    }
+
 }

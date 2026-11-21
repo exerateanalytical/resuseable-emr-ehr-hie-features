@@ -72,6 +72,7 @@ public class PharmacyLisService {
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface DiagnosticReportRepository extends JpaRepository<DiagnosticReportEntity, UUID> {
+        Optional<DiagnosticReportEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
         @Modifying
         @Query("UPDATE DiagnosticReportEntity r SET r.patientId = :survivorId WHERE r.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);

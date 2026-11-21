@@ -16,6 +16,8 @@ import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.DiagnosticReportRepository;
 import com.opeshealth.healthcore.pharmacylis.service.PharmacyLisService.LabSpecimenRepository;
 import com.opeshealth.healthcore.security.audit.ClinicalAudit;
+import com.opeshealth.healthcore.security.tenant.FacilityContext;
+import org.springframework.security.access.AccessDeniedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -188,14 +190,35 @@ public class LisDiagnosticsStarter {
         @ClinicalAudit(action = "LIS_CRITICAL_PANIC_READBACK", resourceType = "DiagnosticReport")
         public DiagnosticReportEntity recordCriticalPanicReadBack(CriticalPanicReadBackRequest req) {
             Objects.requireNonNull(req, "CriticalPanicReadBackRequest must not be null");
-            if (req.notifiedClinicianId() == null || req.notifiedClinicianId().isBlank()
+            if (req.diagnosticReportId() == null
+                    || req.notifiedClinicianId() == null || req.notifiedClinicianId().isBlank()
                     || req.readBackConfirmedByLabScientistId() == null || req.readBackConfirmedByLabScientistId().isBlank()) {
-                throw new IllegalArgumentException("notifiedClinicianId and readBackConfirmedByLabScientistId are required for CLIA panic read-back");
+                throw new IllegalArgumentException("diagnosticReportId, notifiedClinicianId and readBackConfirmedByLabScientistId are required");
             }
-            DiagnosticReportEntity report = diagnosticReportRepository.findById(req.diagnosticReportId())
-                    .orElseThrow(() -> new NoSuchElementException("DiagnosticReport not found: " + req.diagnosticReportId()));
+            // A verified/authorized facility context is mandatory. Never dereference a client-supplied
+            // report ID across tenants or use plain findById() for clinical result acknowledgments.
+            UUID facilityId = FacilityContext.getFacilityId()
+                    .orElseThrow(() -> new AccessDeniedException("Active authenticated facility is required"));
+            DiagnosticReportEntity report = diagnosticReportRepository
+                    .findByIdAndFacilityId(req.diagnosticReportId(), facilityId)
+                    .orElseThrow(() -> new AccessDeniedException("Diagnostic report is not accessible in this facility"));
 
-            report.setPanicAcknowledgedBy(req.notifiedClinicianId().trim());
+            if (report.getVerifiedAt() == null || !report.isWestgardQcPassed()) {
+                throw new IllegalStateException("Cannot acknowledge an unverified or QC-rejected diagnostic result");
+            }
+            if (!"HH".equals(report.getAbnormalFlag()) && !"LL".equals(report.getAbnormalFlag())) {
+                throw new IllegalStateException("Critical read-back is restricted to confirmed panic-value results");
+            }
+            String clinicianId = req.notifiedClinicianId().trim();
+            if (report.getPanicAcknowledgedBy() != null) {
+                if (report.getPanicAcknowledgedBy().equals(clinicianId)) {
+                    return report; // Idempotent repeat, no change to the historical acknowledgement.
+                }
+                throw new IllegalStateException("Critical result already acknowledged by another clinician");
+            }
+            // Records the notified clinician assertion. Independent delivery and verbal read-back
+            // attestation still require a dedicated signed audit record (not represented by this field).
+            report.setPanicAcknowledgedBy(clinicianId);
             return diagnosticReportRepository.save(report);
         }
     }
