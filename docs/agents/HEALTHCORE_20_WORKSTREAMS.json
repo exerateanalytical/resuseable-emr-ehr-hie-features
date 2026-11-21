@@ -2,7 +2,7 @@
   "version": 1,
   "generated_on": "2026-11-21",
   "source_branch": "fix/healthcore-java25-full-verification-20261120",
-  "status": "PLANNED_PENDING_AGENT_ASSIGNMENT",
+  "status": "ISSUES_CREATED_CODING_AGENT_ASSIGNMENT_BLOCKED",
   "repo": "exerateanalytical/resuseable-emr-ehr-hie-features",
   "workstreams": [
     {
@@ -10,140 +10,220 @@
       "title": "Java 25 reactor build and regression failures",
       "owner": "pom.xml; existing Maven starter test source; .github/workflows",
       "flow": "Every Maven module compiles and executes tests; no skipped tests to hide failures",
-      "accept": "Green Java 25 full-reactor compile and test CI; no unresolved errors, evidence matrix per module"
+      "accept": "Green Java 25 full-reactor compile and test CI; no unresolved errors, evidence matrix per module",
+      "issue_number": 3,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/3",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 2,
       "title": "Facility isolation, OIDC roles, consent and audit",
       "owner": "healthcore-security-audit; tenant-governance; tenant repository boundaries",
       "flow": "Cross-tenant read/modify attempts denied; verified JWT facility memberships; consent/break-glass audited",
-      "accept": "Real HTTP/JWT negative tests; no trust in X-Facility-Id alone; post-transaction tenant cleanup"
+      "accept": "Real HTTP/JWT negative tests; no trust in X-Facility-Id alone; post-transaction tenant cleanup",
+      "issue_number": 4,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/4",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 3,
       "title": "Canonical patient identity and visit journey",
       "owner": "healthcore-starter-mpi; healthcore-starter-workflow-engine/journey",
       "flow": "Returning patient match→one patient ID→new encounter→triage→consultation→results→disposition",
-      "accept": "PostgreSQL integration with repeated arrival; no duplicate patient or encounter; ordered audit trail"
+      "accept": "PostgreSQL integration with repeated arrival; no duplicate patient or encounter; ordered audit trail",
+      "issue_number": 5,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/5",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 4,
       "title": "Queue management and financial activation",
       "owner": "healthcore-starter-queue-management; scheduling; uhc-billing",
       "flow": "Check-in→triage priorities→service queue→payment/insurance hold→release; emergency bypass",
-      "accept": "Parallel queue and payment concurrency, idempotent replays, restart recovery and no billing barrier to emergency stabilization"
+      "accept": "Parallel queue and payment concurrency, idempotent replays, restart recovery and no billing barrier to emergency stabilization",
+      "issue_number": 6,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/6",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 5,
       "title": "Clinical order/result/notification event orchestration",
       "owner": "healthcore-starter-orders-results; radiology; LIS; pharmacy; workflow-engine",
       "flow": "Signed lab/imaging/Rx order→automatic department task→signed result→inbox→clinical acknowledgment",
-      "accept": "Real durable event-outbox tests; no manual calls between service stages, no notification counted delivered without provider proof"
+      "accept": "Real durable event-outbox tests; no manual calls between service stages, no notification counted delivered without provider proof",
+      "issue_number": 7,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/7",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 6,
       "title": "Standalone pharmacy example — complete operational flow",
       "owner": "examples/standalone-pharmacy; pharmacy-commerce; pharmacy-inventory",
       "flow": "Supplier→PO→receipt→batch→FEFO→prescription validation→dispense→stock ledger; quarantine/recall",
-      "accept": "Real PostgreSQL Testcontainers flow, clinic/hospital module isolation, controlled drug witness and payment opt-in negative tests"
+      "accept": "Real PostgreSQL Testcontainers flow, clinic/hospital module isolation, controlled drug witness and payment opt-in negative tests",
+      "issue_number": 8,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/8",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 7,
       "title": "Standalone diagnostic laboratory example — complete LIS flow",
       "owner": "examples/diagnostic-laboratory; diagnostics-core; lis-diagnostics",
       "flow": "Referral→order→specimen barcode→QC→analyzer/result→verification→critical-result escalation→release",
-      "accept": "Persisted order-to-result workflow with failures for bad specimen/QC, clinician receipt proof, LIS-only pack isolation"
+      "accept": "Persisted order-to-result workflow with failures for bad specimen/QC, clinician receipt proof, LIS-only pack isolation",
+      "issue_number": 9,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/9",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 8,
       "title": "Standalone radiology center example — complete RIS flow",
       "owner": "examples/radiology-center; radiology; hl7-astm-dicom adapters",
       "flow": "Referral→worklist→appointment→DICOM study→acquisition→signed report→critical acknowledgment→amendment",
-      "accept": "Real DB flows, no fake PACS binary features, PACS-off 501 and tenant/consent negative tests"
+      "accept": "Real DB flows, no fake PACS binary features, PACS-off 501 and tenant/consent negative tests",
+      "issue_number": 10,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/10",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 9,
       "title": "Standalone pharmaceutical manufacturing example",
       "owner": "examples/pharma-manufacturing; pharma-manufacturing; pharma-qms; pharma-serialization",
       "flow": "Approved formula→materials quarantine/QC→weigh witness→eBMR→IPC→QC/QA release→serialization→recall",
-      "accept": "Persistence, dual approvals, deviation/CAPA, lot genealogy and release-blocking tests; zero patient/EMR dependencies"
+      "accept": "Persistence, dual approvals, deviation/CAPA, lot genealogy and release-blocking tests; zero patient/EMR dependencies",
+      "issue_number": 11,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/11",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 10,
       "title": "Standalone life-sciences LIMS/ELN example",
       "owner": "examples/life-sciences-lims; life-sciences-lims; genomics-research",
       "flow": "Research protocol approval→scientific sample accession→experiment/ELN→instrument results→review→dataset provenance",
-      "accept": "Scientific non-patient sample and instrument lineage persisted with immutable review and independent sample tests"
+      "accept": "Scientific non-patient sample and instrument lineage persisted with immutable review and independent sample tests",
+      "issue_number": 12,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/12",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 11,
       "title": "Standalone biobank example",
       "owner": "examples/biobank; biobanking; biomedical-coldchain",
       "flow": "Consent→biospecimen intake→aliquot genealogy→storage temp→approved request→release; withdrawal",
-      "accept": "Real inventory/aliquot and chain-of-custody tests, withdrawal blocks re-release, no orphan aliquots"
+      "accept": "Real inventory/aliquot and chain-of-custody tests, withdrawal blocks re-release, no orphan aliquots",
+      "issue_number": 13,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/13",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 12,
       "title": "Standalone clinical research / CRO example",
       "owner": "examples/clinical-research; clinical-research; deidentification-research",
       "flow": "Protocol→IRB/ethics→screening→eConsent→eCRF queries→AE→PI signoff→approved export",
-      "accept": "Real study participant and eCRF lifecycle, privacy review gates, no unsupported regulatory-certification claims"
+      "accept": "Real study participant and eCRF lifecycle, privacy review gates, no unsupported regulatory-certification claims",
+      "issue_number": 14,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/14",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 13,
       "title": "Standalone outpatient EMR example",
       "owner": "examples/outpatient-emr; emr-clinical; emergency-nursing; workflow-engine",
       "flow": "Existing patient→triage/vitals→consultation/SOAP→orders/Rx→results reviewed→follow-up/discharge",
-      "accept": "Real multi-visit DB test and clinically supervised safety/authorization gates; no duplicate patient IDs"
+      "accept": "Real multi-visit DB test and clinically supervised safety/authorization gates; no duplicate patient IDs",
+      "issue_number": 15,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/15",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 14,
       "title": "Standalone longitudinal EHR example",
       "owner": "examples/longitudinal-ehr; mpi; hie-interop; patient-portal",
       "flow": "Import two clinical histories→provenance→consent→reconciliation/conflict→patient access→authorized summary export",
-      "accept": "Real record versioning and provenance assertions; cross-facility source attribution and privacy segmentation tests"
+      "accept": "Real record versioning and provenance assertions; cross-facility source attribution and privacy segmentation tests",
+      "issue_number": 16,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/16",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 15,
       "title": "Standalone HIS/reference host example",
       "owner": "examples/hospital-his; healthcore-quickstart-host composition tests",
       "flow": "Registration→triage→payment policy→consultation→lab, imaging and pharmacy in parallel→clinician review→admit/discharge",
-      "accept": "PostgreSQL integration with automatic queues/events, critical result escalation, billing exceptions and restart recovery"
+      "accept": "PostgreSQL integration with automatic queues/events, critical result escalation, billing exceptions and restart recovery",
+      "issue_number": 17,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/17",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 16,
       "title": "Standalone regional HIE example",
       "owner": "examples/regional-hie; hie-interop; interoperability-ihe; fhir-hie",
       "flow": "Partner onboarding→trusted identity match→consent→HL7/FHIR→DocumentReference→ACK/DLQ→audit",
-      "accept": "Tenant-scoped R4/HL7 transaction, replay/idempotency and unauthorized export negative tests, no HIS inpatient dependencies"
+      "accept": "Tenant-scoped R4/HL7 transaction, replay/idempotency and unauthorized export negative tests, no HIS inpatient dependencies",
+      "issue_number": 18,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/18",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 17,
       "title": "Android/iOS KMP offline clinical SDK",
       "owner": "healthcore-mobile-kmp; Kotlin SDK Gradle CI",
       "flow": "Encrypted local chart→offline edit→conflict quarantine→auth renewal→sync→device revocation",
-      "accept": "Android compile + real encrypted DB tests, iOS compilation on macOS, no silent default normal vitals or partial 5-rights checks"
+      "accept": "Android compile + real encrypted DB tests, iOS compilation on macOS, no silent default normal vitals or partial 5-rights checks",
+      "issue_number": 19,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/19",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 18,
       "title": "Database migrations, pack dependency isolation and release CI",
       "owner": "Liquibase; packs/*; CI/Testcontainers; scripts/verification",
       "flow": "Install each pack alone→migrate→persist→restart→upgrade→rollback/restore→clean tenant isolation",
-      "accept": "Postgres16, SQLServer, MySQL execution evidence, all 8 packs independent, restore tests and generated evidence manifest"
+      "accept": "Postgres16, SQLServer, MySQL execution evidence, all 8 packs independent, restore tests and generated evidence manifest",
+      "issue_number": 20,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/20",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 19,
       "title": "Clinical specialty, public-health and operational safety coverage",
       "owner": "blood-bank; surgery-ot; emergency-nursing; workforce-roster; chw-homecare; disease-surveillance; public-health",
       "flow": "Credential gates, transfusion mismatch, WHO surgical checklist, NEWS2 escalation, homecare referral, IDSR alert, vaccination recall",
-      "accept": "Independent clinical rule test fixtures, exception routes, tenant guards, no clinical certification without signed reviewer"
+      "accept": "Independent clinical rule test fixtures, exception routes, tenant guards, no clinical certification without signed reviewer",
+      "issue_number": 21,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/21",
+      "assigned_agent": null,
+      "agent_running": false
     },
     {
       "n": 20,
       "title": "Documentation, README, integration and release evidence",
       "owner": "README.md; docs/integrations; docs/verification; examples/*/README.md",
       "flow": "New developer picks pack→installs deps→starts synthetic environment→runs real workflow→finds OpenAPI, forms, reports and troubleshooting",
-      "accept": "Every one of 11 examples documents executable commands and real test outputs; remove overclaims, reconcile API paths, maintain clear release matrix"
+      "accept": "Every one of 11 examples documents executable commands and real test outputs; remove overclaims, reconcile API paths, maintain clear release matrix",
+      "issue_number": 22,
+      "issue_url": "https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/22",
+      "assigned_agent": null,
+      "agent_running": false
     }
   ],
   "examples": [

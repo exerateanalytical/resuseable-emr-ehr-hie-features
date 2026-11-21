@@ -35,7 +35,7 @@
 2. Build the reactor with `mvn -B -ntp -fae clean verify`. A successful module compile does not imply a successful independent product workflow.
 3. For each consumer, run its *independent* Maven + Testcontainers integration tests; see [workflow acceptance matrix](docs/verification/EXAMPLE_WORKFLOW_ACCEPTANCE_MATRIX.md). **Existing `WorkflowSmokeTest.java` files only check class presence. They are not end-to-end tests.**
 4. Run `python3 scripts/check_example_workflow_evidence.py` to report structural workflow-test gaps. Use `--enforce` only as an additional release gate; it will fail until real tests are implemented and does not itself execute them.
-5. Review the [20 scoped engineering workstreams](docs/agents/HEALTHCORE_20_WORKSTREAMS.md). Their existence is not evidence that coding agents are running.
+5. Review the [20 scoped engineering workstreams](docs/agents/HEALTHCORE_20_WORKSTREAMS.md) and [issues #3–#22](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues). These issues are **created, but no coding agents have been confirmed running** because GitHub rejected the Copilot bot assignment.
 
 **Security:** The `X-Facility-Id` header is **not proof of authorization**. All facility-scoped work must derive trusted identity and membership from verified credentials; use explicit negative tenant tests. Clinical data exports and de-identification require governance and independent risk review. Never use identifiable patient data in examples.
 

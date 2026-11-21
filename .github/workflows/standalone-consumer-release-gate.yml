@@ -1,0 +1,37 @@
+name: HealthCore standalone consumers — release acceptance
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structural-workflow-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require workflow integration test source for all eleven examples
+        run: python3 scripts/check_example_workflow_evidence.py --enforce
+  execute-standalone-consumers:
+    needs: structural-workflow-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Check Java, Maven and Docker
+        run: java -version && mvn -version && docker info
+      - name: Compile and install reusable SDK packages
+        run: mvn -B -ntp -fae -DskipTests install
+      - name: Execute all eleven independent consumer integration suites
+        run: |
+          set -euo pipefail
+          for app in standalone-pharmacy diagnostic-laboratory radiology-center pharma-manufacturing life-sciences-lims biobank clinical-research outpatient-emr longitudinal-ehr hospital-his regional-hie; do
+            echo "::group::Validate $app"
+            mvn -B -ntp -f "examples/$app/pom.xml" verify -DskipITs=false
+            echo "::endgroup::"
+          done

@@ -3,6 +3,34 @@
 
 **Dispatch state:** These are issue-ready scopes. GitHub rejected assigning `copilot-swe-agent[bot]` with HTTP 422 on the connected account. Creating issues does **not** start agents. Once GitHub Copilot cloud agent is available for this account/repository, assign each issue through GitHub's *Assignees → Copilot* and select `fix/healthcore-java25-full-verification-20261120` as the base branch where appropriate. Verify each issue has a running session or linked Copilot PR, not merely an assignee label.
 
+## Created GitHub work items — no agent sessions confirmed
+All **20 GitHub issues #3–#22** were created on 2026-11-21. GitHub returned HTTP 422 for initial Copilot assignment and HTTP 403 when assigning afterwards. These are **not 20 active agents**.
+
+| Workstream | Issue | Assignment status |
+|---|---|---|
+| W01 | [#3](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/3) | Created, unassigned |
+| W02 | [#4](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/4) | Created, unassigned |
+| W03 | [#5](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/5) | Created, unassigned |
+| W04 | [#6](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/6) | Created, unassigned |
+| W05 | [#7](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/7) | Created, unassigned |
+| W06 | [#8](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/8) | Created, unassigned |
+| W07 | [#9](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/9) | Created, unassigned |
+| W08 | [#10](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/10) | Created, unassigned |
+| W09 | [#11](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/11) | Created, unassigned |
+| W10 | [#12](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/12) | Created, unassigned |
+| W11 | [#13](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/13) | Created, unassigned |
+| W12 | [#14](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/14) | Created, unassigned |
+| W13 | [#15](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/15) | Created, unassigned |
+| W14 | [#16](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/16) | Created, unassigned |
+| W15 | [#17](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/17) | Created, unassigned |
+| W16 | [#18](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/18) | Created, unassigned |
+| W17 | [#19](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/19) | Created, unassigned |
+| W18 | [#20](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/20) | Created, unassigned |
+| W19 | [#21](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/21) | Created, unassigned |
+| W20 | [#22](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues/22) | Created, unassigned |
+
+To start a Copilot cloud coding session manually, open the issue and use **Assignees → Copilot** when available, selecting the candidate branch `fix/healthcore-java25-full-verification-20261120` as the base. Confirm a linked Copilot draft PR or cloud session before marking agent active.
+
 ### Guardrails
 - One PR per workstream, minimal file footprint, no force pushes, no direct merge to `main`, no editing another workstream's files without coordination. Review and rebase across PR #2.
 - Never fake clinical, operational, or regulatory compliance. Use synthetic data, preserve financial consistency, RBAC, tenant isolation, consent, audit, emergency exceptions and immutable historical records.

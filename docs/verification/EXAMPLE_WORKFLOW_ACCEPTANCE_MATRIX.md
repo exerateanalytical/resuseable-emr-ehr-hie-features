@@ -1,6 +1,8 @@
 # Standalone SDK consumer apps — real workflow acceptance matrix
 **State: NOT VERIFIED / INCOMPLETE.** These are *required release acceptance tests*, not claims that the examples pass.
 
+**Observed current state: 0/11 standalone examples have a demonstrated independent end-to-end Testcontainers workflow test.**
+
 The 11 existing `WorkflowSmokeTest.java` files only assert a service `Class` is available. This proves neither application startup, schema migration, API correctness, domain workflows, clinical safety nor persistence. Such tests must never count as workflow acceptance.
 
 | Independent example | Intended product | Required end-to-end synthetic workflow | Required negative/safety scenarios |
