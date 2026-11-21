@@ -30,6 +30,12 @@ The current candidate branch adds source tests for:
 
 **Evidence warning:** These additions are source-level regression specifications and code, **not executed green tests**. The full Java 25 reactor, Testcontainers, cross-service automatic delivery and clinical sign-off remain pending. Do not count these checks as standalone consumer E2E validation.
 
+### Additional proposed notification safety regression tests
+
+The patient-journey JUnit class now also includes negative scenarios for **raw diagnosis disclosure even with an emergency override**, noncritical templates attempting to bypass consent, missing stable idempotency keys, provider adapters returning success without a receipt, provider exceptions containing patient data, and replayed delivery callbacks with conflicting receipts.
+
+The code may persist `RETRYING` for an ambiguous provider send result, but **does not yet prove verified carrier delivery**, provider-signed webhook authentication, a committed-outbox worker, retry scheduling or clinical delivery. Source edits and Java tests have not been executed on JDK 25 CI. These must not be counted as successful standalone consumer E2E evidence.
+
 ## 2. Module Unit & PostgreSQL Testcontainers Integration Suites
 - `healthcore-starter-queue-management/src/test/java/com/opeshealth/healthcore/queue/QueueManagementServiceTest.java`: Standalone unit & concurrency tests for atomic ticket allocation, double-claim protection, financial hold separation, department transfer, queue pause/resume, and privacy-minimized waiting-room status.
 - `healthcore-quickstart-host/src/test/java/com/opeshealth/healthcore/quickstart/PatientJourneyPostgresIT.java` (`@Tag("multidb-it")`): Real PostgreSQL 16 Testcontainers integration test running `db.changelog-master.xml` (clean install + idempotent upgrade), verifying all 8 new tables (`hc_workflow_subflow_links`, `hc_order_routing_tasks`, `hc_clinician_result_inbox`, `hc_durable_notifications`, `hc_workflow_processed_events`, `hc_queue_counters`, `hc_department_queue_entries`, `hc_queue_pause_controls`), verifying database `UNIQUE` idempotency constraint enforcement, and proving durable persistence across fresh JDBC connections.
