@@ -11,6 +11,12 @@
 
 **Engineering release status — pre-production.** The SDK targets Java 25 and Spring Boot 4. The current draft integration stack has **not** passed the full Java 25 Maven reactor, independent PostgreSQL/Testcontainers workflows for all 11 examples, OIDC/tenant security tests or a clinical release audit. Existing classpath smoke tests are not end-to-end verification. Do not deploy the reference examples for patient care without these gates.
 
+### Authenticated EMR CPOE outbox → departmental routing (opt-in)
+
+The `healthcore-starter-cpoe-event-router` is a **separate, EMR-specific** adapter that consumes typed `MedicationOrderedEvent` and `DiagnosticOrderedEvent` from the committed HealthCore outbox's Spring event bus. It is disabled unless `healthcore.cpoe-routing.enabled=true`. Enabling requires an application-owned `ClinicalOrderRoutingAuthorizationSpi` that validates a **real clinical signature, practitioner privileges and authoritative billing/payer decision**; no permissive default is provided and missing verification fails startup.
+
+The consumer reloads the actual persisted order, compares it against the tenant, patient, encounter and author in the event, and submits a replay-safe `CPOE-ROUTE-{orderId}` command to the workflow engine. The queue bridge then creates a held or cleared worklist task in the correct department. This does **not** mean that lab specimens, imaging acquisition, medication dispensing or results return are automatically complete; see the [CPOE integration and safety guide](healthcore-starter-cpoe-event-router/README.md).
+
 ### Automatic clinical order → departmental worklist composition
 
 The optional `healthcore-starter-journey-queue-bridge` connects reusable `healthcore-starter-workflow-engine` and `healthcore-starter-queue-management` without circular dependencies. The outpatient EMR capability pack includes the bridge. After an authorized signed order is passed to `routeSignedOrder`, a matching laboratory, radiology, in-house pharmacy, procedure or referral queue task is created, with idempotent `queueEntryId` linking, unpaid-service hold, clearance activation, and completion checks. A special **external pharmacy handoff is not an internal dispensing queue**.
