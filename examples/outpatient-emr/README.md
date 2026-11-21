@@ -39,6 +39,14 @@ This starter currently applies **adult NEWS2 Scale 1** as a preliminary clinical
 
 A value of zero means the **documented** inputs meet the modeled score thresholds; it does not certify medical stability. Adult Scale 2 (prescribed 88–92% oxygen target), pediatric PEWS, obstetric scoring, clinical escalation policies, calibrated devices and bedside validation are **not complete** and need physician/nurse clinical approval before care use.
 
+## Disposition and referral safety (shared clinical starter)
+
+The shared clinical starter now requires an authorized facility and a patient-matching encounter when creating or closing referrals. It preserves the first completed referral outcome on exact retries and rejects conflicting replacement outcomes. Inpatient discharge requires an active facility, matching encounter and owned occupied bed. A repeat discharge returns the original admission without freeing a bed that may already have been reassigned or generating another care plan and discharge event.
+
+SBAR handovers, fluid intake/output and medication-reconciliation records require the active facility and an active, matching admission. A clinical co-signature requires a **PENDING_COSIGN** note and a credentialed attending physician; signed notes cannot be co-signed a second time.
+
+**Not yet verified:** These protections have source-level JUnit regression coverage but no executed Java 25 or PostgreSQL report on this branch. Discharge readiness (unresolved critical findings, pending orders, medication reconciliation, medical decision-making, document signature) still needs cross-module E2E verification and clinical sign-off. Transactional outbox delivery and concurrent bed allocation require database/queue reliability tests before any release claim.
+
 ## Still required before the app can be called complete
 
 - MPI record search, consent, provisional emergency identity, duplicate resolution, and appointment/check-in queue as real end-to-end scenarios.
