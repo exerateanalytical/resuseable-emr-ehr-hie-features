@@ -37,6 +37,18 @@
 4. Run `python3 scripts/check_example_workflow_evidence.py` to report structural workflow-test gaps. Use `--enforce` only as an additional release gate; it will fail until real tests are implemented and does not itself execute them.
 5. Review the [20 scoped engineering workstreams](docs/agents/HEALTHCORE_20_WORKSTREAMS.md) and [issues #3–#22](https://github.com/exerateanalytical/resuseable-emr-ehr-hie-features/issues). These issues are **created, but no coding agents have been confirmed running** because GitHub rejected the Copilot bot assignment.
 
+### Running a real clinical and standalone workflow verification
+
+A classpath-only smoke test is **not** a working clinical application. The full [clinical and standalone execution playbook](docs/verification/CLINICAL_STANDALONE_EXECUTION_PLAYBOOK.md) defines the patient journey (MPI → triage → financial policy → consultation → parallel lab/imaging/pharmacy → clinician result acknowledgment → safe disposition), plus role/tenant, duplicate-delivery, critical-result, persistence and restart failure cases.
+
+To verify all 11 independently composable examples, rather than count the shared hospital host or mock tests:
+
+```bash
+bash scripts/run_standalone_workflow_verification.sh
+```
+
+This **fails closed today** because the independent application workflow ITs have not been completed. When implemented, the runner must build the SDK, execute each real PostgreSQL workflow IT, and inspect fresh Maven Failsafe XML to reject zero-test or skipped-test results. A green structural check or a mere compile does **not** confer clinical or regulatory certification. The [standalone release Actions workflow](.github/workflows/standalone-consumer-release-gate.yml) applies the same gate. Use only synthetic data and keep clinical review separate from automated verification.
+
 **Security:** The `X-Facility-Id` header is **not proof of authorization**. All facility-scoped work must derive trusted identity and membership from verified credentials; use explicit negative tenant tests. Clinical data exports and de-identification require governance and independent risk review. Never use identifiable patient data in examples.
 
 **Acceptance before publishing any SDK starter:** isolated consumer startup, deterministic schema migrations, authenticated domain transaction, real operational/clinical lifecycle, negative safety checks, event/idempotency/restart behavior, documentation linked to a green CI run, and appropriate clinical/regulatory signoff when applicable.

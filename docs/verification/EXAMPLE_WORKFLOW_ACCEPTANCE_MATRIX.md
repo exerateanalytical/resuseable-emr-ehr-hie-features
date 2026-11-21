@@ -19,6 +19,8 @@ The 11 existing `WorkflowSmokeTest.java` files only assert a service `Class` is 
 | [`examples/hospital-his`](../../examples/hospital-his/) | Hospital HIS | Arrival → triage → consultation/payment → parallel lab/RIS/pharmacy → clinician review → discharge | Financial hold exceptions; queue ordering; lost events; concurrent fulfillment |
 | [`examples/regional-hie`](../../examples/regional-hie/) | Regional HIE | Partner trust → patient discover → consent → HL7/FHIR → ACK/DLQ → audit | Wrong patient/facility; duplicate replay; unavailable partner; revoked consent |
 
+For a stage-by-stage patient journey, individual application failure/retry flows, persistence assertions, and an actual local runner, see the [clinical and standalone execution playbook](CLINICAL_STANDALONE_EXECUTION_PLAYBOOK.md). It does not claim that any example currently passes.
+
 ## Mandatory test contract per example
 1. Build as a **separate consumer** with `healthcore-bom` and only the selected starter/pack dependencies. Prove prohibited modules absent from effective dependency tree (not only from POM text).
 2. Start a real application with synthetic facility, RBAC/OIDC test principal, PostgreSQL 16 Testcontainers and real Liquibase migrations; use any other DB **only after** its compatibility is verified. The quickstart host is **not** a substitute.
