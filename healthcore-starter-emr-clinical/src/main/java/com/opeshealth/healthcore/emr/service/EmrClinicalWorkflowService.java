@@ -789,8 +789,13 @@ public class EmrClinicalWorkflowService {
      * and ACVPU consciousness level (C/V/P/U = +3).
      */
     public int computeNews2(VitalSignsEntity v, boolean supplementalOxygen, String consciousnessAcvpu) {
-        if (v == null) {
-            return 0;
+        if (v == null || v.getRespRatePerMin() == null || v.getSpo2Percent() == null
+                || v.getSystolicBp() == null || v.getHeartRateBpm() == null
+                || v.getTempCelsius() == null) {
+            throw new IllegalArgumentException("NEWS2 cannot be scored without all core measured vital signs");
+        }
+        if (consciousnessAcvpu == null || consciousnessAcvpu.isBlank()) {
+            throw new IllegalArgumentException("NEWS2 requires documented ACVPU consciousness status");
         }
         int score = 0;
 
