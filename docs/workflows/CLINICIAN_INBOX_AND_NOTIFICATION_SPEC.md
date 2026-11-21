@@ -43,9 +43,17 @@ Persisted in `hc_durable_notifications` (`DurableNotificationEntity`) with `UNIQ
 ### Channels (`NotificationChannel`)
 `SMS`, `WHATSAPP`, `EMAIL`, `PUSH`, `IN_APP`
 
+### Provider submission and emergency-override safeguards
+
+- **Stable idempotency required:** A notification request must identify its facility, patient, encounter, template and caller-supplied stable idempotency key. The engine does not fabricate random keys for clinical notification retries.
+- **Emergency privacy:** The `emergencyOverride` flag can only accompany `CRITICAL_FOLLOWUP`. It may bypass routine opt-out suppression for urgent follow-up, but **never authorizes sending raw diagnosis details**. Real legal basis, opt-out governance and emergency-use audit still need site-specific approval.
+- **Submission evidence:** A provider adapter must return an accepted result and a nonblank provider submission receipt before the state becomes `SUBMITTED_TO_PROVIDER`. A null response, missing receipt, rejected submission or thrown provider exception leaves the request in `RETRYING`. Provider exception details are never stored verbatim because they may contain PHI.
+- **Delivery receipt replay:** A callback on an already-delivered notification may only repeat the same confirmed delivery receipt; changing it is rejected without rewriting the original delivered time. A submitted message is not proof of delivery.
+- **Not yet solved by this SDK service:** The delivery receipt callback still needs authenticated provider-origin verification (webhook signature/token/allowlist), durable provider correlation, a committed transactional outbox, retry worker, DLQ, and handling of ambiguous external send outcomes. A `receiptId` string supplied to the service is not independently authenticated proof.
+
 ### Privacy, Consent & Anti-Placeholder Rules
 1. **Zero Placeholder Recipients:** Blank addresses and known placeholder addresses (`+237670000000`, `+0000000000`, `0000000000`, `placeholder@example.com`, `test@test.com`) are strictly rejected with `IllegalArgumentException`.
 2. **No Premature `DELIVERED` Status:** Submitting to `NotificationProviderAdapterSpi` moves a notification only to `SUBMITTED_TO_PROVIDER` (or `RETRYING` on transient failure). Only `confirmNotificationDeliveryReceipt(facilityId, notificationId, receiptId)` marks `DELIVERED` upon authentic carrier/provider delivery receipt.
 3. **Consent & Opt-Out Enforcement:** If `patientOptedOut == true` and `emergencyOverride == false`, the notification is durably logged as `SUPPRESSED_BY_POLICY` without invoking external adapters.
-4. **Privacy-Minimized EN/FR Templates:** Routine notifications reject raw clinical diagnoses (`containsRawClinicalDiagnosis == true` -> `IllegalArgumentException`) and render privacy-minimized English (`en`) or French (`fr`) templates (`RESULT_READY`, `MEDICATION_READY`, `CRITICAL_FOLLOWUP`).
+4. **Privacy-Minimized EN/FR Templates:** All patient-facing notifications reject raw clinical diagnoses (`containsRawClinicalDiagnosis == true` -> `IllegalArgumentException`), including emergency messages. Only privacy-minimized English (`en`) or French (`fr`) templates (`RESULT_READY`, `MEDICATION_READY`, `CRITICAL_FOLLOWUP`) are rendered.
 5. **Legacy Quickstart Preservation:** The existing in-memory `PatientMessagingService` in `healthcore-quickstart-host` remains untouched for backwards compatibility with existing quickstart demos, while all SDK consumers use `PatientJourneyOrchestratorService.dispatchDurableNotification`.
