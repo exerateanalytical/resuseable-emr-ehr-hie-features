@@ -359,7 +359,7 @@ public class DigitalHealthCertificateService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    (facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID).toString(),
+                    (com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId)).toString(),
                     "DIGITAL_HEALTH_CERT_AUTHORITY",
                     "CERTIFIER",
                     "DIGITAL_HEALTH_CERTIFICATE_ISSUED",

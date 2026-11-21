@@ -181,7 +181,7 @@ public class BcmaMedicationSafetyService {
         }
 
         UUID orderId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String wristband = (request.patientWristbandBarcode() != null && !request.patientWristbandBarcode().isBlank())
                 ? request.patientWristbandBarcode().trim()
                 : "WB-" + request.patientId();

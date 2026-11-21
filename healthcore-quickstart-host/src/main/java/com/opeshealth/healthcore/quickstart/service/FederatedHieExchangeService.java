@@ -398,7 +398,7 @@ public class FederatedHieExchangeService {
     private void auditHie(String action, String resourceId, UUID patientId, String detail) {
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     "FEDERATED_HIE_GATEWAY",
                     "ROLE_HIE_ADMIN",
                     action,
