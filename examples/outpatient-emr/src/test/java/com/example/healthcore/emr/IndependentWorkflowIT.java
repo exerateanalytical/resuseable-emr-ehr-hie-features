@@ -118,13 +118,26 @@ class IndependentWorkflowIT {
         ClinicalNoteRevisionEntity signed = clinical.signOrAmendNote(soap, true);
         assertEquals("SIGNED", signed.getStatus());
         assertNotNull(signed.getSignedAt());
+        signed.setPlanText("Unsafe attempted edit of signed note");
+        assertThrows(IllegalStateException.class, () -> clinical.signOrAmendNote(signed, false));
+
+        ClinicalNoteRevisionEntity addendum = new ClinicalNoteRevisionEntity();
+        addendum.setEncounterId(first.getId());
+        addendum.setPatientId(patient);
+        addendum.setAuthorId("dr-synthetic-licensed");
+        addendum.setNoteType("SOAP");
+        addendum.setParentNoteId(signed.getId());
+        addendum.setAssessment("Synthetic revised assessment");
+        ClinicalNoteRevisionEntity corrected = clinical.signOrAmendNote(addendum, true);
+        assertEquals("ADDENDUM", corrected.getNoteType());
+        assertEquals(2, corrected.getRevisionNumber());
 
         EncounterEntity revisit = clinical.startEncounter(facility, patient, "AMB", "OPD-GENERAL");
         assertNotEquals(first.getId(), revisit.getId());
         assertEquals(2L, countPatientEncounters(facility, patient));
         assertEquals(1L, countForEncounter("hc_triage_assessments", first.getId()));
         assertEquals(1L, countForEncounter("hc_vital_signs", first.getId()));
-        assertEquals(1L, countForEncounter("hc_clinical_notes", first.getId()));
+        assertEquals(2L, countForEncounter("hc_clinical_notes", first.getId()));
         assertEquals("SIGNED", readNoteStatus(facility, patient, first.getId()));
     }
 
