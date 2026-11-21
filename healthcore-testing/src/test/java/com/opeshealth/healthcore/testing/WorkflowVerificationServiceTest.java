@@ -160,8 +160,9 @@ class WorkflowVerificationServiceTest {
             return m;
         });
         when(intOps.listPartners()).thenReturn(List.of(partner1, partner2));
+        UUID partnerIdForSummary = partner1.getId(); // Resolve mock getter before stubbing another mock.
         when(intOps.getPartnerHealthSummaries()).thenReturn(List.of(
-                new PartnerHealthSummary(partner1.getId(), "ISO-NAT-HIE-FHIR", "HIE", "FHIR_R4", "CLOSED", 0, 1, 1, 0)));
+                new PartnerHealthSummary(partnerIdForSummary, "ISO-NAT-HIE-FHIR", "HIE", "FHIR_R4", "CLOSED", 0, 1, 1, 0)));
 
         // Analytics
         ClinicalQualityMeasureEntity measure = mock(ClinicalQualityMeasureEntity.class);
