@@ -120,10 +120,11 @@ class IndependentWorkflowIT {
         assertNotNull(firstAcknowledgedAt);
         assertEquals(0, radiology.listUnacknowledgedCriticalFindings().size());
         assertEquals(0L, countUnacknowledgedCritical(facility, patient));
-        assertSame(acknowledged, radiology.acknowledgeCriticalFinding(
+        RadiologyReportEntity replay = radiology.acknowledgeCriticalFinding(
                 signed.getId(), new AcknowledgeCriticalRequest(
-                        "doctor-accepting", "Synthetic two-way critical finding read-back")));
-        assertEquals(firstAcknowledgedAt, acknowledged.getAcknowledgedAt());
+                        "doctor-accepting", "Synthetic two-way critical finding read-back"));
+        assertEquals(acknowledged.getId(), replay.getId());
+        assertEquals(firstAcknowledgedAt, replay.getAcknowledgedAt());
         assertThrows(IllegalStateException.class,
                 () -> radiology.acknowledgeCriticalFinding(signed.getId(),
                         new AcknowledgeCriticalRequest("another-clinician", "Claiming another's acknowledgment")));
