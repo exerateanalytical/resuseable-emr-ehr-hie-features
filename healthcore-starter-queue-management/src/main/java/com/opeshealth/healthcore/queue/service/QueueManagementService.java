@@ -164,9 +164,21 @@ public class QueueManagementService {
                 ? req.idempotencyKey().trim()
                 : buildDefaultIdempotencyKey(dept, req.orderId(), req.encounterId(), req.taskId());
 
-        Optional<DepartmentQueueEntryEntity> existing = entryRepo.findByFacilityIdAndIdempotencyKey(facilityId, idempotencyKey);
+        Optional<DepartmentQueueEntryEntity> existing =
+                entryRepo.findByFacilityIdAndIdempotencyKey(facilityId, idempotencyKey);
         if (existing.isPresent()) {
-            return existing.get();
+            DepartmentQueueEntryEntity previous = existing.get();
+            if (!facilityId.equals(previous.getFacilityId())
+                    || !dept.equals(previous.getDepartmentCode())
+                    || !Objects.equals(previous.getPatientId(), req.patientId())
+                    || !Objects.equals(previous.getEncounterId(), req.encounterId())
+                    || !Objects.equals(previous.getOrderId(), req.orderId())
+                    || !Objects.equals(previous.getTaskId(), req.taskId())
+                    || !Objects.equals(previous.getWorkflowInstanceId(), req.workflowInstanceId())) {
+                throw new SecurityException(
+                        "Queue idempotency key conflicts with original facility, patient, encounter or task");
+            }
+            return previous;
         }
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
@@ -271,6 +283,9 @@ public class QueueManagementService {
     public DepartmentQueueEntryEntity completeEntry(UUID facilityId, UUID queueEntryId, String actorId) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
         if (entry.getQueueStatus() == QueueStatus.COMPLETED) {
+            if (actorId == null || !actorId.equals(entry.getClaimedBy())) {
+                throw new SecurityException("Only the original worker may replay completed queue work");
+            }
             return entry; // Replay preserves the original time and does not double-publish.
         }
         if (!entry.isEligibleForActivation()) {
