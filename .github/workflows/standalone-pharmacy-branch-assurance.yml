@@ -1,0 +1,67 @@
+name: Standalone Pharmacy — Java 25 & PostgreSQL Workflow Verification
+
+on:
+  push:
+    branches:
+      - 'test/healthcore-pharmacy-postgres-java25-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-pharmacy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pharmacy-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Install Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Compile pharmacy pack, prerequisites and unit tests
+        run: >-
+          mvn -B -ntp -pl healthcore-bom,packs/healthcore-pack-pharmacy
+          -am clean install -DskipITs=true
+      - name: Run standalone pharmacy PostgreSQL Testcontainers workflows
+        run: >-
+          mvn -B -ntp -f examples/standalone-pharmacy/pom.xml
+          clean verify -DskipITs=false
+      - name: Require non-skipped independent pharmacy workflow evidence
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import sys
+          reports = list(Path('examples/standalone-pharmacy/target/failsafe-reports').glob('TEST-*IndependentWorkflowIT.xml'))
+          if not reports:
+              sys.exit('No independent pharmacy workflow XML evidence')
+          total = failures = errors = skipped = 0
+          for path in reports:
+              root = ET.parse(path).getroot()
+              total += int(root.get('tests', '0'))
+              failures += int(root.get('failures', '0'))
+              errors += int(root.get('errors', '0'))
+              skipped += int(root.get('skipped', '0'))
+          print(f'Standalone pharmacy IT: tests={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          if total < 2 or failures or errors or skipped:
+              sys.exit('Standalone pharmacy workflow evidence rejected')
+          PY
+      - name: Publish Surefire and Failsafe evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-pharmacy-postgres-evidence
+          path: |
+            '**/target/surefire-reports/TEST-*.xml'
+            '**/target/failsafe-reports/TEST-*.xml'
+          if-no-files-found: warn
