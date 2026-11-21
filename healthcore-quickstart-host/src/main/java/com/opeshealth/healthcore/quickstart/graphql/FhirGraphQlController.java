@@ -120,7 +120,7 @@ public class FhirGraphQlController {
         PatientFilterInput f = filter != null
                 ? filter
                 : new PatientFilterInput(null, null, null, null, null, null, null, null, null, null, null, null, null);
-        UUID scopedFacility = f.facilityId() != null ? f.facilityId() : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(f.facilityId());
         List<StringSearchFilter> nameFilters = new ArrayList<>();
         if (f.name() != null && !f.name().isBlank()) nameFilters.add(StringSearchFilter.prefix(f.name()));
         if (f.nameContains() != null && !f.nameContains().isBlank()) nameFilters.add(StringSearchFilter.contains(f.nameContains()));
@@ -167,7 +167,7 @@ public class FhirGraphQlController {
         PractitionerFilterInput f = filter != null
                 ? filter
                 : new PractitionerFilterInput(null, null, null, null, null, null, null, null, null);
-        UUID scopedFacility = f.facilityId() != null ? f.facilityId() : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(f.facilityId());
         PractitionerSearchCriteria criteria = new PractitionerSearchCriteria(
                 f.id(),
                 scopedFacility,
@@ -204,7 +204,7 @@ public class FhirGraphQlController {
         EncounterFilterInput f = filter != null
                 ? filter
                 : new EncounterFilterInput(null, null, null, null, null, null, null, null, null, null);
-        UUID scopedFacility = f.facilityId() != null ? f.facilityId() : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(f.facilityId());
         EncounterSearchCriteria criteria = new EncounterSearchCriteria(
                 f.id(),
                 scopedFacility,
@@ -242,7 +242,7 @@ public class FhirGraphQlController {
         ObservationFilterInput f = filter != null
                 ? filter
                 : new ObservationFilterInput(null, null, null, null, null, null, null, null, null, null, null, null);
-        UUID scopedFacility = f.facilityId() != null ? f.facilityId() : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(f.facilityId());
         ObservationSearchCriteria criteria = new ObservationSearchCriteria(
                 f.id(),
                 scopedFacility,
@@ -277,9 +277,7 @@ public class FhirGraphQlController {
         if (input == null) {
             throw new IllegalArgumentException("PatientCreateInput must not be null");
         }
-        UUID scopedFacility = input.facilityId() != null
-                ? input.facilityId()
-                : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(input.facilityId());
         String json = FhirGraphQlTypes.toFhirPatientJson(input);
         Patient created = patientService.createFromFhirJson(scopedFacility, json);
         if (cdsHooksService != null) {
@@ -322,9 +320,7 @@ public class FhirGraphQlController {
         if (input == null) {
             throw new IllegalArgumentException("PractitionerCreateInput must not be null");
         }
-        UUID scopedFacility = input.facilityId() != null
-                ? input.facilityId()
-                : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(input.facilityId());
         String json = FhirGraphQlTypes.toFhirPractitionerJson(input);
         Practitioner created = practitionerService.createFromFhirJson(scopedFacility, json);
         return FhirGraphQlTypes.fromFhirPractitioner(created, scopedFacility);
@@ -348,9 +344,7 @@ public class FhirGraphQlController {
         if (input == null) {
             throw new IllegalArgumentException("EncounterCreateInput must not be null");
         }
-        UUID scopedFacility = input.facilityId() != null
-                ? input.facilityId()
-                : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(input.facilityId());
         String json = FhirGraphQlTypes.toFhirEncounterJson(input);
         Encounter created = encounterService.createFromFhirJson(scopedFacility, json);
         if (cdsHooksService != null) {
@@ -371,7 +365,7 @@ public class FhirGraphQlController {
         String json = FhirGraphQlTypes.toFhirEncounterJson(input);
         Encounter updated = encounterService.updateFromFhirJson(id, json, expectedVersion);
         if (cdsHooksService != null) {
-            cdsHooksService.triggerEncounterInteraction(updated, FacilityTenantInterceptor.currentFacility());
+            cdsHooksService.triggerEncounterInteraction(updated, com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId());
         }
         return FhirGraphQlTypes.fromFhirEncounter(updated);
     }
@@ -394,9 +388,7 @@ public class FhirGraphQlController {
         if (input == null) {
             throw new IllegalArgumentException("ObservationCreateInput must not be null");
         }
-        UUID scopedFacility = input.facilityId() != null
-                ? input.facilityId()
-                : FacilityTenantInterceptor.currentFacility();
+        UUID scopedFacility = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(input.facilityId());
         String json = FhirGraphQlTypes.toFhirObservationJson(input);
         Observation created = observationService.createFromFhirJson(scopedFacility, json);
         if (cdsHooksService != null) {
