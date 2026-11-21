@@ -31,7 +31,7 @@ jobs:
       - name: Build bridge + clinical order module with all reactor prerequisites and run unit tests
         run: >-
           mvn -B -ntp -pl
-          healthcore-starter-cpoe-event-router,packs/healthcore-pack-emr
+          healthcore-bom,healthcore-starter-cpoe-event-router,packs/healthcore-pack-emr
           -am clean install -DskipITs=true
 
       - name: Compile and run standalone outpatient PostgreSQL workflows (Docker/Testcontainers)
