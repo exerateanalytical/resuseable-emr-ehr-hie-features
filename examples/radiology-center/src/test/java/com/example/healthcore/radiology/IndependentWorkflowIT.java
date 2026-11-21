@@ -124,7 +124,10 @@ class IndependentWorkflowIT {
                 signed.getId(), new AcknowledgeCriticalRequest(
                         "doctor-accepting", "Synthetic two-way critical finding read-back"));
         assertEquals(acknowledged.getId(), replay.getId());
-        assertEquals(firstAcknowledgedAt, replay.getAcknowledgedAt());
+        // PostgreSQL TIMESTAMPTZ persists microsecond precision; Java Instant
+        // may retain nanoseconds before the first transaction commits.
+        assertEquals(firstAcknowledgedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS),
+                replay.getAcknowledgedAt());
         assertThrows(IllegalStateException.class,
                 () -> radiology.acknowledgeCriticalFinding(signed.getId(),
                         new AcknowledgeCriticalRequest("another-clinician", "Claiming another's acknowledgment")));
