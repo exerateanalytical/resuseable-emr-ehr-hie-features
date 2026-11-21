@@ -66,7 +66,7 @@ public class SchedulingService {
         List<ScheduledAppointmentEntity> findByFacilityIdAndPatientIdOrderByScheduledStartDesc(UUID facilityId, UUID patientId);
 
         @Query("""
-                SELECT a FROM ScheduledAppointmentEntity a
+                SELECT a FROM SchedulingAppointment a
                 WHERE a.facilityId = :facilityId
                   AND (a.calendarId = :calendarId OR a.roomCalendarId = :calendarId)
                   AND a.status IN :activeStatuses
@@ -81,7 +81,7 @@ public class SchedulingService {
                 @Param("windowEnd") Instant windowEnd);
 
         @Query("""
-                SELECT COALESCE(MAX(a.queueTokenNumber), 0) FROM ScheduledAppointmentEntity a
+                SELECT COALESCE(MAX(a.queueTokenNumber), 0) FROM SchedulingAppointment a
                 WHERE a.facilityId = :facilityId
                   AND a.departmentCode = :departmentCode
                   AND a.checkedInAt >= :dayStart

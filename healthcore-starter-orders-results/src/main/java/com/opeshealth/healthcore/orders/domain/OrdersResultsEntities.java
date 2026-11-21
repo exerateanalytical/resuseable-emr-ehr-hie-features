@@ -87,8 +87,7 @@ public final class OrdersResultsEntities {
         private String clinicalIndication;
 
         /** Semicolon-delimited order items in format DOMAIN|CODE|DISPLAY|PRIORITY. */
-        @Lob
-        @Column(name = "items_spec", nullable = false)
+        @Column(name = "items_spec", nullable = false, length = org.hibernate.Length.LONG32)
         private String itemsSpec;
 
         @Column(name = "active", nullable = false)

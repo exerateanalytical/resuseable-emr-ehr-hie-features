@@ -45,7 +45,7 @@ public class QueueManagementService {
 
     public interface QueueCounterRepository extends JpaRepository<QueueCounterEntity, UUID> {
         @Lock(LockModeType.PESSIMISTIC_WRITE)
-        @Query("select c from QueueCounterEntity c where c.facilityId = :facilityId and c.departmentCode = :dept and c.serviceDate = :serviceDate")
+        @Query("select c from QueueManagementCounter c where c.facilityId = :facilityId and c.departmentCode = :dept and c.serviceDate = :serviceDate")
         Optional<QueueCounterEntity> findForUpdate(
                 @Param("facilityId") UUID facilityId,
                 @Param("dept") String departmentCode,

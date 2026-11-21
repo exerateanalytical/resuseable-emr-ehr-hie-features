@@ -57,8 +57,7 @@ public final class WorkflowEntities {
         private String initialStage;
 
         /** JSON object mapping stage name -> array of valid target stage names. */
-        @Lob
-        @Column(name = "allowed_transitions_json", nullable = false)
+        @Column(name = "allowed_transitions_json", nullable = false, length = org.hibernate.Length.LONG32)
         private String allowedTransitionsJson;
 
         /** Comma-separated terminal stage names (e.g. "COMPLETED,CANCELLED"). */
@@ -138,8 +137,7 @@ public final class WorkflowEntities {
         private String status = "ACTIVE";
 
         /** JSON metadata indexed on PostgreSQL via functional GIN index for fast attribute filtering. */
-        @Lob
-        @Column(name = "context_json", nullable = false)
+        @Column(name = "context_json", nullable = false, length = org.hibernate.Length.LONG32)
         private String contextJson = "{}";
 
         @Column(name = "sla_deadline_at", nullable = false)
@@ -214,12 +212,10 @@ public final class WorkflowEntities {
         @Column(name = "actor_role", nullable = false, length = 64)
         private String actorRole;
 
-        @Lob
-        @Column(name = "notes")
+        @Column(name = "notes", length = org.hibernate.Length.LONG32)
         private String notes;
 
-        @Lob
-        @Column(name = "transition_metadata_json")
+        @Column(name = "transition_metadata_json", length = org.hibernate.Length.LONG32)
         private String transitionMetadataJson;
 
         @Column(name = "transitioned_at", nullable = false)

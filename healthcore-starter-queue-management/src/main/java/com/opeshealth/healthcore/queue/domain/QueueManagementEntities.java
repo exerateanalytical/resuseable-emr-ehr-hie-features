@@ -49,7 +49,7 @@ public final class QueueManagementEntities {
      * Concurrency-safe per-facility, per-department, per-day monotonic ticket counter.
      * Eliminates race conditions inherent in {@code MAX(ticket_number) + 1} queries.
      */
-    @Entity
+    @Entity(name = "QueueManagementCounter")
     @Table(name = "hc_queue_counters",
            uniqueConstraints = @UniqueConstraint(
                    name = "uq_hc_queue_counter_scope",

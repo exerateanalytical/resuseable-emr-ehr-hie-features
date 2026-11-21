@@ -2,6 +2,14 @@ package com.example.healthcore.emr;
 
 import com.opeshealth.healthcore.emr.domain.EmrEntities.*;
 import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService;
+import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService.ClinicalOrderRepository;
+import com.opeshealth.healthcore.cpoe.autoconfigure.CpoeOrderEventRoutingAutoConfiguration.ClinicalOrderRoutingAuthorizationSpi;
+import com.opeshealth.healthcore.cpoe.autoconfigure.CpoeOrderEventRoutingAutoConfiguration.VerifiedRoutingAuthorization;
+import com.opeshealth.healthcore.persistence.outbox.OutboxRelayService.HealthCoreDomainEvent;
+import com.opeshealth.healthcore.workflow.service.WorkflowOrchestrationService;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService.DepartmentOrderRoutingRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import com.opeshealth.healthcore.queue.service.QueueManagementService;
 import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.DepartmentQueueEntryEntity;
 import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.QueueStatus;
@@ -47,7 +55,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("workflow-it")
 @Testcontainers
 @SpringBootTest(classes = OutpatientEmrApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "healthcore.cpoe-routing.enabled=true")
 @Import(IndependentWorkflowIT.SyntheticSecurityFixture.class)
 class IndependentWorkflowIT {
 
@@ -76,6 +85,24 @@ class IndependentWorkflowIT {
             return (facility, practitioner) ->
                     facility != null && "dr-synthetic-licensed".equals(practitioner);
         }
+
+        @Bean
+        ClinicalOrderRoutingAuthorizationSpi syntheticCpoeRoutingAuthorization() {
+            // Test-only authorization; production MUST check signed clinical authority
+            // and actual institutional billing records, not static strings/amounts.
+            return order -> {
+                if (!"dr-synthetic-licensed".equals(order.getOrderedBy())) {
+                    throw new SecurityException("Synthetic test fixture rejects unsigned order");
+                }
+                return new VerifiedRoutingAuthorization(
+                        "SYNTHETIC-SIGNATURE:" + order.getId(),
+                        "SYNTHETIC-INVOICE:" + order.getId(),
+                        com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts
+                                .FacilityBillingPolicyConfig.defaultFacilityPolicy(),
+                        false, false, false, false, false,
+                        15000, 0, null);
+            };
+        }
     }
 
     @Autowired
@@ -86,6 +113,18 @@ class IndependentWorkflowIT {
 
     @Autowired
     private QueueManagementService departmentQueue;
+
+    @Autowired
+    private ClinicalOrderRepository clinicalOrders;
+
+    @Autowired
+    private WorkflowOrchestrationService workflows;
+
+    @Autowired
+    private DepartmentOrderRoutingRepository routeRepository;
+
+    @Autowired
+    private ApplicationEventPublisher events;
 
     @AfterEach
     void clearFacilityContext() {
@@ -299,6 +338,68 @@ class IndependentWorkflowIT {
                 return result.getString(1);
             }
         }
+    }
+
+    @Test
+    void consumesTrustedClinicalOrderEventIntoHeldLaboratoryQueueWithNoDuplicateRoute() throws Exception {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        FacilityContext.setFacilityId(facility);
+        EncounterEntity encounter = clinical.startEncounter(facility, patient, "AMB", "OPD-LAB");
+
+        // The real workflow engine needs the institution's definitions before it
+        // can launch an order-specific child workflow.
+        workflows.seedCatalogForFacility(facility);
+
+        ClinicalOrderEntity order = new ClinicalOrderEntity();
+        order.setFacilityId(facility);
+        order.setPatientId(patient);
+        order.setEncounterId(encounter.getId());
+        order.setOrderCategory("LAB");
+        order.setCodeSystem("LOINC");
+        order.setOrderCode("2823-3");
+        order.setOrderDisplay("Serum potassium (synthetic)");
+        order.setOrderedBy("dr-synthetic-licensed");
+        order.setStatus("ACTIVE");
+        ClinicalOrderEntity persisted = clinicalOrders.save(order);
+
+        String payload = new ObjectMapper().writeValueAsString(Map.of(
+                "orderId", persisted.getId().toString(),
+                "facilityId", facility.toString(),
+                "patientId", patient.toString(),
+                "encounterId", encounter.getId().toString(),
+                "orderCategory", "LAB", "orderedBy", "dr-synthetic-licensed"));
+        HealthCoreDomainEvent accepted = new HealthCoreDomainEvent(
+                UUID.randomUUID(), facility, "ClinicalOrder", persisted.getId(),
+                "DiagnosticOrderedEvent", payload, null);
+
+        // Delivers the same typed event emitted by the HealthCore outbox relay.
+        // Does not claim to test the scheduler, Kafka or carrier delivery.
+        events.publishEvent(accepted);
+        DepartmentOrderRoutingEntity first = routeRepository
+                .findByFacilityIdAndOrderId(facility, persisted.getId()).orElseThrow();
+        assertEquals(com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities
+                .OrderRoutingStatus.ROUTED_AWAITING_CLEARANCE, first.getRoutingStatus());
+        assertNotNull(first.getQueueEntryId());
+        assertEquals(1L, countQueueForOrder(facility, persisted.getId()));
+
+        events.publishEvent(accepted);
+        DepartmentOrderRoutingEntity retry = routeRepository
+                .findByFacilityIdAndOrderId(facility, persisted.getId()).orElseThrow();
+        assertEquals(first.getId(), retry.getId());
+        assertEquals(first.getQueueEntryId(), retry.getQueueEntryId());
+        assertEquals(1L, countQueueForOrder(facility, persisted.getId()));
+
+        String forgedPayload = new ObjectMapper().writeValueAsString(Map.of(
+                "orderId", persisted.getId().toString(),
+                "facilityId", facility.toString(),
+                "patientId", UUID.randomUUID().toString(),
+                "encounterId", encounter.getId().toString(),
+                "orderCategory", "LAB", "orderedBy", "dr-synthetic-licensed"));
+        assertThrows(SecurityException.class, () -> events.publishEvent(
+                new HealthCoreDomainEvent(UUID.randomUUID(), facility, "ClinicalOrder",
+                        persisted.getId(), "DiagnosticOrderedEvent", forgedPayload, null)));
+        assertEquals(1L, countQueueForOrder(facility, persisted.getId()));
     }
 
     private long countPatientEncounters(UUID facility, UUID patient) throws Exception {

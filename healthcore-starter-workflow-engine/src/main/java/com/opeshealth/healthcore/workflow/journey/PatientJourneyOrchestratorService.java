@@ -145,7 +145,21 @@ public class PatientJourneyOrchestratorService {
     private final WorkflowBillingClearancePolicySpi billingPolicy;
     private final List<NotificationProviderAdapterSpi> notificationAdapters;
     private final OrderRoutingQueueProvisioningSpi queueProvisioningSpi;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Spring Boot 4 may use Jackson 3 for its web stack while this SDK still
+    // uses the Jackson 2 ObjectMapper type. Register ISO-8601 Instant handling
+    // explicitly to avoid silently failing every clinical outbox transaction.
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(
+            new com.fasterxml.jackson.databind.module.SimpleModule("HealthCoreInstant")
+                    .addSerializer(Instant.class, new com.fasterxml.jackson.databind.JsonSerializer<Instant>() {
+                        @Override
+                        public void serialize(
+                                Instant value,
+                                com.fasterxml.jackson.core.JsonGenerator json,
+                                com.fasterxml.jackson.databind.SerializerProvider provider)
+                                throws java.io.IOException {
+                            json.writeString(value.toString());
+                        }
+                    }));
 
     public PatientJourneyOrchestratorService(
             WorkflowOrchestrationService workflowService,

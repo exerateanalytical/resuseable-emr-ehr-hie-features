@@ -48,13 +48,13 @@ public class EmrClinicalWorkflowService {
     public interface AppointmentRepository extends JpaRepository<AppointmentEntity, UUID> {
         List<AppointmentEntity> findByFacilityIdAndScheduledStartBetween(UUID facilityId, Instant from, Instant to);
         @Modifying
-        @Query("UPDATE AppointmentEntity a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
+        @Query("UPDATE EmrAppointment a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface EncounterRepository extends JpaRepository<EncounterEntity, UUID> {
         List<EncounterEntity> findByPatientIdOrderByStartedAtDesc(UUID patientId);
         @Modifying
-        @Query("UPDATE EncounterEntity e SET e.patientId = :survivorId WHERE e.patientId = :sourceId")
+        @Query("UPDATE EmrEncounter e SET e.patientId = :survivorId WHERE e.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface TriageRepository extends JpaRepository<TriageAssessmentEntity, UUID> {}
@@ -66,7 +66,7 @@ public class EmrClinicalWorkflowService {
         List<ClinicalOrderEntity> findByFacilityIdAndPatientIdAndOrderCategoryAndStatus(
                 UUID facilityId, UUID patientId, String orderCategory, String status);
         @Modifying
-        @Query("UPDATE ClinicalOrderEntity o SET o.patientId = :survivorId WHERE o.patientId = :sourceId")
+        @Query("UPDATE EmrClinicalOrder o SET o.patientId = :survivorId WHERE o.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 
@@ -84,7 +84,7 @@ public class EmrClinicalWorkflowService {
     public interface EmarRepository extends JpaRepository<EmarAdministrationEntity, UUID> {}
     public interface CarePlanRepository extends JpaRepository<CarePlanEntity, UUID> {
         @Modifying
-        @Query("UPDATE CarePlanEntity c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
+        @Query("UPDATE EmrCarePlan c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface SpecialtyRecordRepository extends JpaRepository<SpecialtyRecordEntity, UUID> {}
@@ -472,9 +472,12 @@ public class EmrClinicalWorkflowService {
         }
 
         ClinicalOrderEntity saved = orderRepo.save(order);
+        // The outbox payload carries the clinical identity and encounter provenance.
+        // Downstream consumers MUST also re-read the persisted order and compare it;
+        // never authorize work solely from self-asserted event JSON.
         emitOutbox("ClinicalOrder", saved.getId(),
                 "MEDICATION".equals(saved.getOrderCategory()) ? "MedicationOrderedEvent" : "DiagnosticOrderedEvent",
-                "{\"orderId\":\"" + saved.getId() + "\",\"patientId\":\"" + saved.getPatientId() + "\"}");
+                clinicalOrderEventPayload(saved));
         return Map.of("order", saved, "cdssCards", cards);
     }
 
@@ -953,8 +956,26 @@ public class EmrClinicalWorkflowService {
         return score;
     }
 
+    private String clinicalOrderEventPayload(ClinicalOrderEntity order) {
+        try {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("orderId", order.getId().toString());
+            fields.put("facilityId", order.getFacilityId().toString());
+            fields.put("patientId", order.getPatientId().toString());
+            fields.put("encounterId", order.getEncounterId().toString());
+            fields.put("orderCategory", order.getOrderCategory());
+            fields.put("orderedBy", order.getOrderedBy());
+            return objectMapper.writeValueAsString(fields);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+            throw new IllegalStateException("Clinical order outbox serialization failed", failure);
+        }
+    }
+
     private void emitOutbox(String type, UUID id, String eventType, String payload) {
         TransactionalOutboxEntity e = new TransactionalOutboxEntity();
+        // Facility is mandatory for clinical outbox records and is NOT recovered
+        // from caller-supplied payloads after event delivery.
+        e.setFacilityId(FacilityContext.requireFacilityId());
         e.setIdempotencyKey(type + ":" + eventType + ":" + id + ":" + e.getId());
         e.setAggregateType(type);
         e.setAggregateId(id);

@@ -54,8 +54,7 @@ public class TransactionalOutboxEntity {
     private String eventType;
 
     /** Portable CLOB/NVARCHAR(MAX)/TEXT JSON payload (avoids vendor-locked JSONB types). */
-    @Lob
-    @Column(name = "payload_json", nullable = false)
+    @Column(name = "payload_json", nullable = false, length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     /** Correlation ID propagated from HTTP/MLLP ingress for end-to-end distributed tracing. */
@@ -72,8 +71,7 @@ public class TransactionalOutboxEntity {
     @Column(name = "next_attempt_at", nullable = false)
     private Instant nextAttemptAt = Instant.now();
 
-    @Lob
-    @Column(name = "last_error")
+    @Column(name = "last_error", length = org.hibernate.Length.LONG32)
     private String lastError;
 
     @Column(name = "created_at", nullable = false)

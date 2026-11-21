@@ -1,0 +1,75 @@
+name: Clinical CPOE Outbox Routing Candidate — JDK 25 Verification
+
+on:
+  push:
+    branches:
+      - 'feat/healthcore-cpoe-outbox-routing-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpoe-routing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-cpoe-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact candidate commit
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build bridge + clinical order module with all reactor prerequisites and run unit tests
+        run: >-
+          mvn -B -ntp -pl
+          healthcore-bom,healthcore-starter-cpoe-event-router,packs/healthcore-pack-emr
+          -am clean install -DskipITs=true
+
+      - name: Compile and run standalone outpatient PostgreSQL workflows (Docker/Testcontainers)
+        run: >-
+          mvn -B -ntp
+          -f examples/outpatient-emr/pom.xml
+          clean verify -DskipITs=false
+
+      - name: Assert independently executed outpatient workflow IT with zero failures/skips
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import sys
+
+          reports = list(Path('examples/outpatient-emr/target/failsafe-reports').glob('TEST-*IndependentWorkflowIT.xml'))
+          if not reports:
+              sys.exit('Missing standalone outpatient Failsafe IndependentWorkflowIT XML; classpath smoke tests are not acceptance evidence')
+          total = failures = errors = skipped = 0
+          for report in reports:
+              root = ET.parse(report).getroot()
+              total += int(root.get('tests', '0'))
+              failures += int(root.get('failures', '0'))
+              errors += int(root.get('errors', '0'))
+              skipped += int(root.get('skipped', '0'))
+          print(f'Executed outpatient integration tests={total}, failed={failures}, errors={errors}, skipped={skipped}')
+          if total < 4 or failures or errors or skipped:
+              sys.exit('Outpatient workflow release gate rejected incomplete or failing evidence')
+          PY
+
+      - name: Upload Surefire and Failsafe evidence even on failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpoe-routing-jdk25-evidence
+          path: |
+            '**/target/surefire-reports/TEST-*.xml'
+            '**/target/failsafe-reports/TEST-*.xml'
+          if-no-files-found: warn

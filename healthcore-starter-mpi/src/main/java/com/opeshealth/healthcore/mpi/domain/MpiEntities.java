@@ -27,7 +27,7 @@ public final class MpiEntities {
 
     private MpiEntities() {}
 
-    @Entity
+    @Entity(name = "MpiPatientAggregate")
     @Table(name = "hc_patients")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")

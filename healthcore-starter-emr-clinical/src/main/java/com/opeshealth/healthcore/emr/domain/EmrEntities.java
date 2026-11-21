@@ -28,7 +28,7 @@ public final class EmrEntities {
 
     private EmrEntities() {}
 
-    @Entity @Table(name = "hc_appointments")
+    @Entity(name = "EmrAppointment") @Table(name = "hc_appointments")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AppointmentEntity {
@@ -61,7 +61,7 @@ public final class EmrEntities {
         public void setVisitReason(String visitReason) { this.visitReason = visitReason; }
     }
 
-    @Entity @Table(name = "hc_encounters")
+    @Entity(name = "EmrEncounter") @Table(name = "hc_encounters")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class EncounterEntity {
@@ -179,10 +179,10 @@ public final class EmrEntities {
         @Column(name = "note_type", nullable = false, length = 32) private String noteType; // SOAP, ADDENDUM, SBAR, DISCHARGE
         @Column(name = "revision_number", nullable = false) private int revisionNumber = 1;
         @Column(name = "parent_note_id") private UUID parentNoteId;
-        @Lob @Column(name = "subjective") private String subjective;
-        @Lob @Column(name = "objective") private String objective;
-        @Lob @Column(name = "assessment") private String assessment;
-        @Lob @Column(name = "plan_text") private String planText;
+        @Column(name = "subjective", length = org.hibernate.Length.LONG32) private String subjective;
+        @Column(name = "objective", length = org.hibernate.Length.LONG32) private String objective;
+        @Column(name = "assessment", length = org.hibernate.Length.LONG32) private String assessment;
+        @Column(name = "plan_text", length = org.hibernate.Length.LONG32) private String planText;
         @Column(name = "sensitivity_tag", nullable = false, length = 32) private String sensitivityTag = "GENERAL";
         @Column(name = "status", nullable = false, length = 24) private String status = "DRAFT"; // DRAFT, PENDING_COSIGN, SIGNED
         @Column(name = "author_id", nullable = false, length = 120) private String authorId;
@@ -220,7 +220,7 @@ public final class EmrEntities {
         public void setSignedAt(Instant signedAt) { this.signedAt = signedAt; }
     }
 
-    @Entity @Table(name = "hc_clinical_orders")
+    @Entity(name = "EmrClinicalOrder") @Table(name = "hc_clinical_orders")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class ClinicalOrderEntity {
@@ -302,7 +302,7 @@ public final class EmrEntities {
         @Column(name = "admitted_at", nullable = false) private Instant admittedAt = Instant.now();
         @Column(name = "discharged_at") private Instant dischargedAt;
         @Column(name = "discharge_disposition", length = 48) private String dischargeDisposition;
-        @Lob @Column(name = "discharge_summary") private String dischargeSummary;
+        @Column(name = "discharge_summary", length = org.hibernate.Length.LONG32) private String dischargeSummary;
 
         public UUID getId() { return id; }
         public UUID getFacilityId() { return facilityId; }
@@ -355,7 +355,7 @@ public final class EmrEntities {
         public Instant getAdministeredAt() { return administeredAt; }
     }
 
-    @Entity @Table(name = "hc_care_plans")
+    @Entity(name = "EmrCarePlan") @Table(name = "hc_care_plans")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class CarePlanEntity {
@@ -393,7 +393,7 @@ public final class EmrEntities {
         @Column(name = "encounter_id", nullable = false) private UUID encounterId;
         @Column(name = "patient_id", nullable = false) private UUID patientId;
         @Column(name = "specialty_code", nullable = false, length = 48) private String specialtyCode;
-        @Lob @Column(name = "structured_payload_json", nullable = false) private String structuredPayloadJson;
+        @Column(name = "structured_payload_json", nullable = false, length = org.hibernate.Length.LONG32) private String structuredPayloadJson;
         @Column(name = "recorded_by", nullable = false, length = 120) private String recordedBy;
         @Column(name = "recorded_at", nullable = false) private Instant recordedAt = Instant.now();
 
@@ -453,10 +453,10 @@ public final class EmrEntities {
         @Column(name = "facility_id", nullable = false) private UUID facilityId;
         @Column(name = "admission_id", nullable = false) private UUID admissionId;
         @Column(name = "shift_name", nullable = false, length = 32) private String shiftName;
-        @Lob @Column(name = "situation", nullable = false) private String situation;
-        @Lob @Column(name = "background") private String background;
-        @Lob @Column(name = "assessment") private String assessment;
-        @Lob @Column(name = "recommendation") private String recommendation;
+        @Column(name = "situation", nullable = false, length = org.hibernate.Length.LONG32) private String situation;
+        @Column(name = "background", length = org.hibernate.Length.LONG32) private String background;
+        @Column(name = "assessment", length = org.hibernate.Length.LONG32) private String assessment;
+        @Column(name = "recommendation", length = org.hibernate.Length.LONG32) private String recommendation;
         @Column(name = "handed_by", nullable = false, length = 120) private String handedBy;
         @Column(name = "received_by", nullable = false, length = 120) private String receivedBy;
         @Column(name = "recorded_at", nullable = false) private Instant recordedAt = Instant.now();
@@ -527,7 +527,7 @@ public final class EmrEntities {
         @Column(name = "specialty", nullable = false, length = 80) private String specialty;
         @Column(name = "reason", nullable = false, length = 500) private String reason;
         @Column(name = "status", nullable = false, length = 24) private String status = "SENT"; // SENT, ACCEPTED, COMPLETED
-        @Lob @Column(name = "outcome_notes") private String outcomeNotes;
+        @Column(name = "outcome_notes", length = org.hibernate.Length.LONG32) private String outcomeNotes;
         @Column(name = "created_at", nullable = false) private Instant createdAt = Instant.now();
         @Column(name = "completed_at") private Instant completedAt;
 
