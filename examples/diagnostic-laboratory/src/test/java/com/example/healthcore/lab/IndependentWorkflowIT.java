@@ -130,6 +130,16 @@ class IndependentWorkflowIT {
                         "LAB-PG-001", "LABORATORY", potassium.getCatalogCode(),
                         "SYNTHETIC-CLIENT-01", partner.getPartnerCode(), 60));
         assertEquals("REGISTERED", order.getStatus());
+        // Duplicate referral webhook must resolve to the original database identity.
+        DiagnosticServiceOrderEntity replay = diagnostics.createOrder(
+                new CreateDiagnosticOrderRequest("LAB-PG-001", "LABORATORY",
+                        potassium.getCatalogCode(), "SYNTHETIC-CLIENT-01", partner.getPartnerCode(), 60));
+        assertEquals(order.getId(), replay.getId());
+        assertEquals(1L, countAccessionAcrossNewConnection("LAB-PG-001", facility));
+        // Reusing an accession for a different patient must not rebind the old order.
+        assertThrows(IllegalStateException.class, () -> diagnostics.createOrder(
+                new CreateDiagnosticOrderRequest("LAB-PG-001", "LABORATORY",
+                        potassium.getCatalogCode(), "OTHER-PATIENT", partner.getPartnerCode(), 60)));
 
         CriticalValueNotificationEntity critical = diagnostics.escalateCriticalResult(
                 new EscalateCriticalResultRequest(order.getId(), new BigDecimal("6.9"),
@@ -190,6 +200,20 @@ class IndependentWorkflowIT {
         FacilityContext.clear();
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
                 () -> diagnostics.verifyAndReleaseReport(rejected.getId()));
+    }
+
+    private long countAccessionAcrossNewConnection(String accession, UUID facility) throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM hc_diag_service_orders WHERE facility_id = ? AND accession_number = ?")) {
+            statement.setObject(1, facility);
+            statement.setString(2, accession);
+            try (ResultSet results = statement.executeQuery()) {
+                assertTrue(results.next());
+                return results.getLong(1);
+            }
+        }
     }
 
     private String readOrderStatusFreshConnection(UUID id, UUID facility) throws Exception {
