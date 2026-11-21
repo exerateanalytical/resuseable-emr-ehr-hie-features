@@ -61,6 +61,7 @@
     <include file="classpath:db/changelog/api_product/001-api-product.xml"/>
     <include file="classpath:db/changelog/workflow/001-workflow-engine.xml"/>
     <include file="classpath:db/changelog/workflow/002-clinical-journey-contracts.xml"/>
+    <include file="classpath:db/changelog/workflow/003-one-routing-per-order.xml"/>
     <include file="classpath:db/changelog/queue_management/001-queue-management.xml"/>
     <include file="classpath:db/changelog/clinical_ai/001-clinical-ai-governance.xml"/>
     <include file="classpath:db/changelog/tenant_governance/001-tenant-governance.xml"/>

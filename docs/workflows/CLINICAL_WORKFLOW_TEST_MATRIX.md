@@ -17,6 +17,19 @@ Implemented in `healthcore-testing/src/test/java/com/opeshealth/healthcore/testi
 | **Test J** | Restart & recovery | Destroying and rebuilding fresh `QueueManagementService` + `PatientJourneyOrchestratorService` instances over durable backing stores preserves daily ticket sequence monotonicity (`LAB-0002` after `LAB-0001`), releases held orders, and confirms pending notification receipts. |
 | **Schema Check** | 6 Versioned JSON Definitions | Deserializes all 6 classpath JSON files under `/workflows/definitions/*.json` into `WorkflowChecklistDefinition` and verifies required Section 9 attributes. |
 
+### Additional proposed safety regressions (same JUnit acceptance class)
+
+The current candidate branch adds source tests for:
+
+- A clinical order replay with a reused idempotency key but a different patient, encounter or target department must fail; a replay using a fresh idempotency key for the *same* order must reuse its original routing task.
+- A cancelled or financially held route cannot be marked completed. A replayed completion retains the original completion timestamp.
+- Only the responsible clinician may acknowledge a critical result; nonempty review/read-back notes are required. A repeated identical acknowledgment cannot rewrite the timestamp or create a duplicate event.
+- A **critical amended result** clears prior acknowledgment and reopens escalation; a mismatched patient/order result replay is denied.
+- An overdue critical result **without a fallback clinician** retains its responsible clinician and enters `OVERDUE` rather than pretending escalation was safely reassigned.
+- The PostgreSQL journey integration test now proposes a second UNIQUE assertion: changing only the routing idempotency key must still fail when `facility_id + order_id` are duplicated.
+
+**Evidence warning:** These additions are source-level regression specifications and code, **not executed green tests**. The full Java 25 reactor, Testcontainers, cross-service automatic delivery and clinical sign-off remain pending. Do not count these checks as standalone consumer E2E validation.
+
 ## 2. Module Unit & PostgreSQL Testcontainers Integration Suites
 - `healthcore-starter-queue-management/src/test/java/com/opeshealth/healthcore/queue/QueueManagementServiceTest.java`: Standalone unit & concurrency tests for atomic ticket allocation, double-claim protection, financial hold separation, department transfer, queue pause/resume, and privacy-minimized waiting-room status.
 - `healthcore-quickstart-host/src/test/java/com/opeshealth/healthcore/quickstart/PatientJourneyPostgresIT.java` (`@Tag("multidb-it")`): Real PostgreSQL 16 Testcontainers integration test running `db.changelog-master.xml` (clean install + idempotent upgrade), verifying all 8 new tables (`hc_workflow_subflow_links`, `hc_order_routing_tasks`, `hc_clinician_result_inbox`, `hc_durable_notifications`, `hc_workflow_processed_events`, `hc_queue_counters`, `hc_department_queue_entries`, `hc_queue_pause_controls`), verifying database `UNIQUE` idempotency constraint enforcement, and proving durable persistence across fresh JDBC connections.

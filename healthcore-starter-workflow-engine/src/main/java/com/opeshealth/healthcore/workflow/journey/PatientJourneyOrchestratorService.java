@@ -234,13 +234,32 @@ public class PatientJourneyOrchestratorService {
     public DepartmentOrderRoutingEntity routeSignedOrder(
             RouteSignedOrderCommand cmd, FacilityBillingPolicyConfig facilityConfig) {
         Objects.requireNonNull(cmd, "RouteSignedOrderCommand is required");
+        if (cmd.facilityId() == null || cmd.patientId() == null || cmd.encounterId() == null
+                || cmd.orderId() == null || cmd.targetDepartment() == null
+                || cmd.actorId() == null || cmd.actorId().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Facility, patient, encounter, signed order, target department and actor are required");
+        }
+        if (cmd.billedAmountMinor() < 0 || cmd.paidAmountMinor() < 0) {
+            throw new IllegalArgumentException("Order amounts cannot be negative");
+        }
         String idempKey = (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank())
                 ? cmd.idempotencyKey()
                 : "ROUTE-" + cmd.orderId() + "-" + cmd.targetDepartment().name();
 
-        Optional<DepartmentOrderRoutingEntity> existing = routingRepo.findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
+        Optional<DepartmentOrderRoutingEntity> existing =
+                routingRepo.findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
         if (existing.isPresent()) {
+            verifySameRouteIdentity(existing.get(), cmd);
             return existing.get();
+        }
+        // The domain maps one clinical order to a single department routing.
+        // Replaying the order with a new idempotency key must not create a second task.
+        Optional<DepartmentOrderRoutingEntity> previousOrder =
+                routingRepo.findByFacilityIdAndOrderId(cmd.facilityId(), cmd.orderId());
+        if (previousOrder.isPresent()) {
+            verifySameRouteIdentity(previousOrder.get(), cmd);
+            return previousOrder.get();
         }
 
         ServiceClearanceCategory cat = switch (cmd.targetDepartment()) {
@@ -319,6 +338,19 @@ public class PatientJourneyOrchestratorService {
         return saved;
     }
 
+    private static void verifySameRouteIdentity(
+            DepartmentOrderRoutingEntity previous, RouteSignedOrderCommand command) {
+        if (!Objects.equals(previous.getFacilityId(), command.facilityId())
+                || !Objects.equals(previous.getPatientId(), command.patientId())
+                || !Objects.equals(previous.getEncounterId(), command.encounterId())
+                || !Objects.equals(previous.getOrderId(), command.orderId())
+                || previous.getTargetDepartment() != command.targetDepartment()
+                || !Objects.equals(previous.getExternalPharmacyCode(), command.externalPharmacyCode())) {
+            throw new SecurityException(
+                    "Routing replay conflicts with the original patient, encounter, order or department");
+        }
+    }
+
     /**
      * Section 5 &amp; 10 — Idempotent payment confirmation releasing a financially held clinical order
      * without duplicating orders, routing tasks, or financial postings on event replay.
@@ -360,8 +392,16 @@ public class PatientJourneyOrchestratorService {
     public DepartmentOrderRoutingEntity markRoutedOrderCompleted(UUID facilityId, UUID orderId) {
         DepartmentOrderRoutingEntity routing = routingRepo.findByFacilityIdAndOrderId(facilityId, orderId)
                 .orElseThrow(() -> new NoSuchElementException("Order routing task not found for order " + orderId));
-        if (routing.getRoutingStatus() == OrderRoutingStatus.ROUTED_AWAITING_CLEARANCE) {
-            throw new IllegalStateException("Cannot fulfill order while financial hold is active: " + routing.getFinancialClearance());
+        if (routing.getRoutingStatus() == OrderRoutingStatus.COMPLETED) {
+            return routing; // Durable retry must preserve the first completion timestamp.
+        }
+        if (routing.getFinancialClearance() == null
+                || !routing.getFinancialClearance().permitsFulfillmentActivation()
+                || (routing.getRoutingStatus() != OrderRoutingStatus.ACTIVE_IN_DEPARTMENT
+                    && routing.getRoutingStatus() != OrderRoutingStatus.IN_PROGRESS)) {
+            throw new IllegalStateException(
+                    "Order cannot be completed in state " + routing.getRoutingStatus()
+                    + " with clearance " + routing.getFinancialClearance());
         }
         routing.setRoutingStatus(OrderRoutingStatus.COMPLETED);
         routing.setCompletedAt(Instant.now());
@@ -377,10 +417,26 @@ public class PatientJourneyOrchestratorService {
     @ClinicalAudit(action = "CLINICIAN_INBOX_DELIVER_RESULT", resourceType = "ClinicianResultInbox")
     public ClinicianResultInboxEntity deliverVerifiedResultToClinicianInbox(DeliverResultToInboxCommand cmd) {
         Objects.requireNonNull(cmd, "DeliverResultToInboxCommand is required");
+        if (cmd.facilityId() == null || cmd.patientId() == null || cmd.encounterId() == null
+                || cmd.orderId() == null || cmd.resultId() == null
+                || cmd.resultDomain() == null || cmd.resultDomain().isBlank()
+                || cmd.responsibleClinicianId() == null || cmd.responsibleClinicianId().isBlank()) {
+            throw new IllegalArgumentException("Verified result must identify facility, patient, encounter, order, result, domain and responsible clinician");
+        }
         Optional<ClinicianResultInboxEntity> existing = inboxRepo
                 .findByFacilityIdAndResultIdAndResponsibleClinicianId(cmd.facilityId(), cmd.resultId(), cmd.responsibleClinicianId());
-        if (existing.isPresent() && !cmd.amendedResult()) {
-            return existing.get();
+        if (existing.isPresent()) {
+            ClinicianResultInboxEntity original = existing.get();
+            if (!Objects.equals(original.getFacilityId(), cmd.facilityId())
+                    || !Objects.equals(original.getPatientId(), cmd.patientId())
+                    || !Objects.equals(original.getEncounterId(), cmd.encounterId())
+                    || !Objects.equals(original.getOrderId(), cmd.orderId())
+                    || !Objects.equals(original.getResultDomain(), cmd.resultDomain())) {
+                throw new SecurityException("Result replay attempts to change a patient's original order/encounter");
+            }
+            if (!cmd.amendedResult()) {
+                return original;
+            }
         }
 
         ClinicianResultInboxEntity item = existing.orElseGet(ClinicianResultInboxEntity::new);
@@ -395,6 +451,13 @@ public class PatientJourneyOrchestratorService {
         item.setFallbackClinicianId(cmd.fallbackClinicianId());
         item.setCriticalFlag(cmd.criticalResult());
         item.setAmendedResult(cmd.amendedResult());
+        if (cmd.amendedResult()) {
+            // Any amended result, including a *critical* amendment, invalidates the
+            // previous clinician acknowledgment and must trigger a fresh review.
+            item.setAcknowledgedAt(null);
+            item.setAcknowledgedBy(null);
+            item.setAcknowledgmentNotes(null);
+        }
         // Creating an inbox task does not prove that an electronic notification was sent.
         item.setElectronicNotificationSent(false);
         item.setReturnToQueueRequired(cmd.returnToQueueRequired());
@@ -436,7 +499,21 @@ public class PatientJourneyOrchestratorService {
         if (clinicianId == null || clinicianId.isBlank()) {
             throw new IllegalArgumentException("Acknowledging clinicianId is required");
         }
-        item.setAcknowledgedBy(clinicianId);
+        if (!clinicianId.trim().equals(item.getResponsibleClinicianId())) {
+            throw new SecurityException("Only the currently responsible clinician may acknowledge this result");
+        }
+        if (item.isCriticalFlag() && (notes == null || notes.isBlank())) {
+            throw new IllegalArgumentException("Critical results require documented clinician review/read-back notes");
+        }
+        if (item.getAcknowledgedAt() != null) {
+            if (clinicianId.trim().equals(item.getAcknowledgedBy())
+                    && ((markResolved && item.getInboxStatus() == ClinicianInboxStatus.RESOLVED)
+                    || (!markResolved && item.getInboxStatus() == ClinicianInboxStatus.ACKNOWLEDGED))) {
+                return item; // Repeat receipt does not rewrite the original timestamp or emit duplicate events.
+            }
+            throw new IllegalStateException("Result is already acknowledged; use a governed follow-up transition");
+        }
+        item.setAcknowledgedBy(clinicianId.trim());
         item.setAcknowledgedAt(Instant.now());
         item.setAcknowledgmentNotes(notes);
         item.setInboxStatus(markResolved ? ClinicianInboxStatus.RESOLVED : ClinicianInboxStatus.ACKNOWLEDGED);
@@ -455,11 +532,14 @@ public class PatientJourneyOrchestratorService {
                 .findByCriticalFlagTrueAndAcknowledgedAtIsNullAndEscalationDeadlineAtBefore(now != null ? now : Instant.now());
         for (ClinicianResultInboxEntity item : overdue) {
             if (item.getInboxStatus() == ClinicianInboxStatus.ESCALATED
+                    || item.getInboxStatus() == ClinicianInboxStatus.OVERDUE
                     || item.getInboxStatus() == ClinicianInboxStatus.RESOLVED) {
                 continue; // Avoid repeat escalation on each SLA scan.
             }
-            item.setInboxStatus(ClinicianInboxStatus.ESCALATED);
-            if (item.getFallbackClinicianId() != null && !item.getFallbackClinicianId().isBlank()) {
+            boolean hasFallback = item.getFallbackClinicianId() != null
+                    && !item.getFallbackClinicianId().isBlank();
+            item.setInboxStatus(hasFallback ? ClinicianInboxStatus.ESCALATED : ClinicianInboxStatus.OVERDUE);
+            if (hasFallback) {
                 item.setResponsibleClinicianId(item.getFallbackClinicianId());
             }
             inboxRepo.save(item);

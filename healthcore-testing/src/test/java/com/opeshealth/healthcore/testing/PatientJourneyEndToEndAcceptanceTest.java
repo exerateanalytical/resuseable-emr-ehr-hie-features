@@ -714,6 +714,135 @@ class PatientJourneyEndToEndAcceptanceTest {
     }
 
     @Test
+    @DisplayName("Safety regression — routing replay cannot change patient, encounter, or department")
+    void rejectsCrossPatientRoutingReplayEvenWhenIdempotencyKeyIsReused() {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        UUID encounter = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        FacilityBillingPolicyConfig config = FacilityBillingPolicyConfig.defaultFacilityPolicy();
+        RouteSignedOrderCommand signed = new RouteSignedOrderCommand(
+                facility, patient, encounter, null, order, OrderTargetDepartment.LABORATORY,
+                null, false, true, false, false, false, 12000, 0,
+                "dr-1", "ROUTE-IDEMP-1");
+        DepartmentOrderRoutingEntity original = journeyService.routeSignedOrder(signed, config);
+        assertSame(original, journeyService.routeSignedOrder(signed, config));
+
+        RouteSignedOrderCommand changedIdentity = new RouteSignedOrderCommand(
+                facility, UUID.randomUUID(), encounter, null, order, OrderTargetDepartment.LABORATORY,
+                null, false, true, false, false, false, 12000, 0,
+                "dr-1", "ROUTE-IDEMP-1");
+        assertThrows(SecurityException.class,
+                () -> journeyService.routeSignedOrder(changedIdentity, config));
+
+        RouteSignedOrderCommand changedTarget = new RouteSignedOrderCommand(
+                facility, patient, encounter, null, order, OrderTargetDepartment.PHARMACY,
+                null, false, true, false, false, false, 12000, 0,
+                "dr-1", "ROUTE-CHANGED-TARGET");
+        assertThrows(SecurityException.class,
+                () -> journeyService.routeSignedOrder(changedTarget, config));
+
+        RouteSignedOrderCommand sameOrderNewKey = new RouteSignedOrderCommand(
+                facility, patient, encounter, null, order, OrderTargetDepartment.LABORATORY,
+                null, false, true, false, false, false, 12000, 0,
+                "dr-1", "ROUTE-ANOTHER-DELIVERY");
+        assertSame(original, journeyService.routeSignedOrder(sameOrderNewKey, config));
+        assertEquals(1, routingStore.size(), "At-least-once delivery must not double-route an order");
+    }
+
+    @Test
+    @DisplayName("Safety regression — completed orders are idempotent and cancelled/held orders are blocked")
+    void cannotFulfillCancelledOrdersOrRewriteOriginalCompletion() {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        UUID encounter = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        FacilityBillingPolicyConfig policy = FacilityBillingPolicyConfig.defaultFacilityPolicy();
+        DepartmentOrderRoutingEntity active = journeyService.routeSignedOrder(new RouteSignedOrderCommand(
+                facility, patient, encounter, null, order, OrderTargetDepartment.LABORATORY,
+                null, false, true, false, false, false, 2000, 0,
+                "dr-1", "ORDER-COMPLETE-1"), policy);
+
+        DepartmentOrderRoutingEntity first = journeyService.markRoutedOrderCompleted(facility, order);
+        Instant completed = first.getCompletedAt();
+        assertNotNull(completed);
+        assertSame(first, journeyService.markRoutedOrderCompleted(facility, order));
+        assertEquals(completed, first.getCompletedAt());
+
+        first.setRoutingStatus(OrderRoutingStatus.CANCELLED);
+        assertThrows(IllegalStateException.class, () -> journeyService.markRoutedOrderCompleted(facility, order));
+
+        first.setRoutingStatus(OrderRoutingStatus.ACTIVE_IN_DEPARTMENT);
+        first.setFinancialClearance(PaymentClearanceOutcome.PAYMENT_PENDING);
+        assertThrows(IllegalStateException.class, () -> journeyService.markRoutedOrderCompleted(facility, order));
+    }
+
+    @Test
+    @DisplayName("Safety regression — only current clinician can acknowledge critical results; amendments reopen review")
+    void criticalInboxAcknowledgmentCannotBeForgedOrReusedAfterAmendment() {
+        UUID fac = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        UUID encounter = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        UUID result = UUID.randomUUID();
+        DeliverResultToInboxCommand critical = new DeliverResultToInboxCommand(
+                fac, patient, encounter, order, result, "LAB",
+                "dr-primary", "CLINIC", "dr-fallback", true, false, true, 15);
+        ClinicianResultInboxEntity item = journeyService.deliverVerifiedResultToClinicianInbox(critical);
+        assertThrows(SecurityException.class,
+                () -> journeyService.acknowledgeClinicianInboxItem(
+                        fac, item.getId(), "another-doctor", "Received read-back", true));
+        assertThrows(IllegalArgumentException.class,
+                () -> journeyService.acknowledgeClinicianInboxItem(
+                        fac, item.getId(), "dr-primary", "", true));
+        assertNull(item.getAcknowledgedAt());
+
+        journeyService.acknowledgeClinicianInboxItem(
+                fac, item.getId(), "dr-primary", "Critical value read back and documented", true);
+        Instant firstAck = item.getAcknowledgedAt();
+        long eventCount = outboxStore.stream()
+                .filter(e -> "ClinicianResultAcknowledged".equals(e.getEventType())).count();
+        assertSame(item, journeyService.acknowledgeClinicianInboxItem(
+                fac, item.getId(), "dr-primary", "Critical value read back and documented", true));
+        assertEquals(firstAck, item.getAcknowledgedAt());
+        assertEquals(eventCount, outboxStore.stream()
+                .filter(e -> "ClinicianResultAcknowledged".equals(e.getEventType())).count());
+
+        DeliverResultToInboxCommand amended = new DeliverResultToInboxCommand(
+                fac, patient, encounter, order, result, "LAB",
+                "dr-primary", "CLINIC", "dr-fallback", true, true, true, 15);
+        assertSame(item, journeyService.deliverVerifiedResultToClinicianInbox(amended));
+        assertEquals(ClinicianInboxStatus.CRITICAL_ESCALATION_PENDING, item.getInboxStatus());
+        assertNull(item.getAcknowledgedAt());
+        assertNull(item.getAcknowledgedBy());
+        assertFalse(journeyService.verifyCanFinalizeEncounter(fac, encounter).canFinalize());
+
+        DeliverResultToInboxCommand poisoned = new DeliverResultToInboxCommand(
+                fac, UUID.randomUUID(), encounter, order, result, "LAB",
+                "dr-primary", "CLINIC", "dr-fallback", true, false, true, 15);
+        assertThrows(SecurityException.class,
+                () -> journeyService.deliverVerifiedResultToClinicianInbox(poisoned));
+    }
+
+    @Test
+    @DisplayName("Safety regression — overdue critical result without fallback is never silently assigned")
+    void criticalEscalationWithoutFallbackIsExplicitlyOverdue() {
+        UUID fac = UUID.randomUUID();
+        ClinicianResultInboxEntity item = journeyService.deliverVerifiedResultToClinicianInbox(
+                new DeliverResultToInboxCommand(
+                        fac, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                        "LAB", "dr-primary", "EMERGENCY", null, true, false, true, 1));
+        journeyService.escalateOverdueCriticalInboxItems(Instant.now().plus(Duration.ofMinutes(5)));
+        assertEquals(ClinicianInboxStatus.OVERDUE, item.getInboxStatus());
+        assertEquals("dr-primary", item.getResponsibleClinicianId());
+        long escalations = outboxStore.stream()
+                .filter(e -> "ClinicianReviewRequired".equals(e.getEventType())).count();
+        journeyService.escalateOverdueCriticalInboxItems(Instant.now().plus(Duration.ofMinutes(5)));
+        assertEquals(escalations, outboxStore.stream()
+                .filter(e -> "ClinicianReviewRequired".equals(e.getEventType())).count());
+    }
+
+    @Test
     @DisplayName("Section 9 & 14 — All 6 versioned JSON workflow definitions deserialize cleanly with all 25 attributes")
     void allSixMachineReadableWorkflowJsonDefinitionsDeserializeCleanly() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
