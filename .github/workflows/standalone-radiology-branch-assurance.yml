@@ -1,0 +1,67 @@
+name: Standalone Radiology — Java 25 & PostgreSQL Workflow Verification
+
+on:
+  push:
+    branches:
+      - 'test/healthcore-radiology-postgres-java25-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-radiology-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  radiology-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Install Temurin JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Compile radiology, diagnostic prerequisites and unit tests
+        run: >-
+          mvn -B -ntp -pl healthcore-bom,healthcore-starter-radiology,healthcore-starter-diagnostics-core
+          -am clean install -DskipITs=true
+      - name: Run standalone radiology PostgreSQL Testcontainers workflows
+        run: >-
+          mvn -B -ntp -f examples/radiology-center/pom.xml
+          clean verify -DskipITs=false
+      - name: Require non-skipped independent radiology integration evidence
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import sys
+          reports = list(Path('examples/radiology-center/target/failsafe-reports').glob('TEST-*IndependentWorkflowIT.xml'))
+          if not reports:
+              sys.exit('No independent radiology PostgreSQL Failsafe XML evidence')
+          total = failed = errors = skipped = 0
+          for p in reports:
+              root = ET.parse(p).getroot()
+              total += int(root.get('tests', '0'))
+              failed += int(root.get('failures', '0'))
+              errors += int(root.get('errors', '0'))
+              skipped += int(root.get('skipped', '0'))
+          print(f'Radiology IT: tests={total}, failures={failed}, errors={errors}, skipped={skipped}')
+          if total < 2 or failed or errors or skipped:
+              sys.exit('Standalone radiology release gate rejected incomplete/failed evidence')
+          PY
+      - name: Publish Surefire/Failsafe evidence on success and failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiology-postgres-jdk25-evidence
+          path: |
+            '**/target/surefire-reports/TEST-*.xml'
+            '**/target/failsafe-reports/TEST-*.xml'
+          if-no-files-found: warn

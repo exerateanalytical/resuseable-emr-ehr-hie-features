@@ -78,6 +78,9 @@ class RadiologyRisServiceTest {
                 service.signReport(new SignRadiologyReportRequest(
                         exam.getId(), "Acute hemorrhage", "Intracranial bleed", "dr-rad-1", true, "NEURO_CRITICAL", null)));
 
+        assertThrows(ResponseStatusException.class, () ->
+                service.updateMpps(exam.getId(), new MppsUpdateRequest("COMPLETED", "tech-01", 3, 210)));
+        service.updateMpps(exam.getId(), new MppsUpdateRequest("IN_PROGRESS", "tech-01", 1, 10));
         service.updateMpps(exam.getId(), new MppsUpdateRequest("COMPLETED", "tech-01", 3, 210));
         assertEquals("COMPLETED", exam.getMppsStatus());
 
@@ -96,5 +99,41 @@ class RadiologyRisServiceTest {
         assertTrue(acked.isCriticalAcknowledged());
         assertEquals("dr-er-1", acked.getAcknowledgedBy());
         assertNotNull(acked.getAcknowledgedAt());
+        java.time.Instant originalAck = acked.getAcknowledgedAt();
+        assertSame(acked, service.acknowledgeCriticalFinding(
+                report.getId(), new AcknowledgeCriticalRequest(
+                        "dr-er-1", "Verbal read-back completed; neurosurgery consulted.")));
+        assertEquals(originalAck, acked.getAcknowledgedAt());
+        assertThrows(IllegalStateException.class, () -> service.acknowledgeCriticalFinding(
+                report.getId(), new AcknowledgeCriticalRequest(
+                        "another-clinician", "I now claim the existing acknowledgment")));
+        verify(reportRepo, times(2)).save(any()); // First sign, first ACK only.
+    }
+
+    @Test
+    void preventsAmendmentOfAnotherPatientsImagingReport() {
+        when(worklistRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(reportRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        ModalityWorklistEntity a = service.scheduleImagingExam(new ScheduleExamRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "MR", "MR-BRAIN",
+                "Synthetic brain MRI", "BRAIN", "Synthetic indication", "MR-01", "dr-1", false, null));
+        ModalityWorklistEntity b = service.scheduleImagingExam(new ScheduleExamRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "MR", "MR-BRAIN",
+                "Synthetic brain MRI", "BRAIN", "Synthetic indication", "MR-01", "dr-1", false, null));
+        when(worklistRepo.findByIdAndFacilityId(a.getId(), facilityId)).thenReturn(Optional.of(a));
+        when(worklistRepo.findByIdAndFacilityId(b.getId(), facilityId)).thenReturn(Optional.of(b));
+        for (ModalityWorklistEntity study : java.util.List.of(a, b)) {
+            service.updateMpps(study.getId(), new MppsUpdateRequest("IN_PROGRESS", "tech-01", 1, 10));
+            service.updateMpps(study.getId(), new MppsUpdateRequest("COMPLETED", "tech-01", 2, 30));
+        }
+        RadiologyReportEntity original = service.signReport(new SignRadiologyReportRequest(
+                a.getId(), "Synthetic normal findings", "Synthetic benign assessment",
+                "radiologist-1", false, null, null));
+        when(reportRepo.findByIdAndFacilityId(original.getId(), facilityId)).thenReturn(Optional.of(original));
+
+        assertThrows(SecurityException.class, () -> service.signReport(
+                new SignRadiologyReportRequest(b.getId(), "Copied findings", "Wrong patient",
+                        "radiologist-1", false, null, original.getId())));
+        verify(reportRepo, times(1)).save(any());
     }
 }
