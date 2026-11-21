@@ -103,7 +103,7 @@ public class IntegrationDlqReplayService {
             throw new IllegalArgumentException("RecordDeadLetterRequest with channelType and destinationEndpoint is required");
         }
         UUID dlqId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         DeadLetterEntry entry = new DeadLetterEntry(
                 dlqId,
                 facilityId,

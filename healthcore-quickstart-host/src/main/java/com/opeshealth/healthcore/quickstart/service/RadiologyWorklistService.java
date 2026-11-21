@@ -144,7 +144,7 @@ public class RadiologyWorklistService {
             throw new IllegalArgumentException("ScheduleImagingOrderRequest with patientId and modality is required");
         }
         UUID orderId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String accession = "ACC-" + request.modality().name() + "-"
                 + orderId.toString().substring(0, 8).toUpperCase(Locale.ROOT);
         String studyUid = "1.2.826.0.1.3680043.8.498." + Math.abs(orderId.getMostSignificantBits());

@@ -162,7 +162,7 @@ public class ClinicalResearchOmopService {
         if (!studiesById.containsKey(request.studyId().trim())) {
             throw new NoSuchElementException("Research study protocol not found: " + request.studyId());
         }
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         ResearchEConsentRecord record = new ResearchEConsentRecord(
                 UUID.randomUUID(),
                 facilityId,
@@ -294,7 +294,7 @@ public class ClinicalResearchOmopService {
         UUID exportId = UUID.randomUUID();
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     "RESEARCH_OMOP_EXPORTER",
                     "ROLE_RESEARCHER",
                     "RESEARCH_OMOP_CDM_EXPORT",

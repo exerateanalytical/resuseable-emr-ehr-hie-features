@@ -38,6 +38,20 @@ public final class FacilityContext {
                 new IllegalStateException("Missing active facility tenant context (JWT facility_id or X-Facility-Id)"));
     }
 
+    /**
+     * Resolve an optional client-supplied facility against the verified active tenant.
+     * A supplied identifier can narrow the facility, but cannot switch tenants.
+     * Automated cross-facility jobs must establish an authorized FacilityContext
+     * explicitly before invoking clinical services.
+     */
+    public static UUID requireAuthorizedFacilityId(UUID requestedFacilityId) {
+        UUID activeFacility = requireFacilityId();
+        if (requestedFacilityId != null && !requestedFacilityId.equals(activeFacility)) {
+            throw new SecurityException("Requested facility is not authorized for this tenant context");
+        }
+        return activeFacility;
+    }
+
     public static void clear() {
         CURRENT_FACILITY.remove();
     }

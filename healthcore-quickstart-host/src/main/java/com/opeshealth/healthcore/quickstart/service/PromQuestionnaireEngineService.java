@@ -218,7 +218,7 @@ public class PromQuestionnaireEngineService {
             throw new IllegalArgumentException("itemScoresByLinkId answers must not be empty");
         }
 
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         PromInstrumentCode instrument = request.instrument();
         int maxPerItem = switch (instrument) {
             case PHQ_9, GAD_7 -> 3;

@@ -1,0 +1,69 @@
+name: HealthCore Full Maven Reactor — Java 25 Candidate Assurance
+
+on:
+  push:
+    branches:
+      - 'test/healthcore-full-java25-reactor-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: healthcore-full-reactor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-java25-reactor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout entire HealthCore repository
+        uses: actions/checkout@v4
+
+      - name: Install Temurin Java 25 and restore Maven dependency cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Compile all root Maven modules and execute all unit suites
+        run: mvn -B -ntp -fae clean verify -DskipITs=true
+
+      - name: Verify reactor actually compiled clinical bridge and CPOE router
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f healthcore-starter-cpoe-event-router/target/classes/com/opeshealth/healthcore/cpoe/autoconfigure/CpoeOrderEventRoutingAutoConfiguration.class
+          test -f healthcore-starter-journey-queue-bridge/target/classes/com/opeshealth/healthcore/journeyqueue/auto/JourneyQueueBridgeAutoConfiguration.class
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import sys
+
+          report_paths = list(Path('.').glob('healthcore-*/target/surefire-reports/TEST-*.xml'))
+          if not report_paths:
+              sys.exit('Full reactor release gate rejected: no unit reports generated')
+          total = failures = errors = 0
+          for path in report_paths:
+              r = ET.parse(path).getroot()
+              total += int(r.get('tests', '0'))
+              failures += int(r.get('failures', '0'))
+              errors += int(r.get('errors', '0'))
+          print(f'Full reactor: unit tests={total}, failures={failures}, errors={errors}, report files={len(report_paths)}')
+          if total == 0 or failures or errors:
+              sys.exit('Full reactor release gate rejected incomplete or failing tests')
+          PY
+
+      - name: Publish Maven Surefire and JaCoCo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healthcore-full-java25-reactor-evidence
+          path: |
+            '**/target/surefire-reports/**'
+            '**/target/failsafe-reports/**'
+            '**/target/site/jacoco/jacoco.xml'
+          if-no-files-found: warn

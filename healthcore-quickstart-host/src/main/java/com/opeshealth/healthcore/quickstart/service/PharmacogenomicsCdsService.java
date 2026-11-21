@@ -172,7 +172,7 @@ public class PharmacogenomicsCdsService {
                 : inferPhenotype(normalizedGene, diplotype);
 
         UUID profileId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String loinc = GENE_TO_LOINC.getOrDefault(normalizedGene, "69548-6");
         String hgnc = GENE_TO_HGNC.getOrDefault(normalizedGene, "HGNC:0000");
 

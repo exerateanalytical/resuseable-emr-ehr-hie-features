@@ -148,7 +148,7 @@ public class ClinicalQualityMeasureService {
 
         LocalDate periodStart = request.periodStart() != null ? request.periodStart() : LocalDate.now().withDayOfYear(1);
         LocalDate periodEnd = request.periodEnd() != null ? request.periodEnd() : LocalDate.now();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
 
         int initialPop = 0;
         int exclusions = 0;

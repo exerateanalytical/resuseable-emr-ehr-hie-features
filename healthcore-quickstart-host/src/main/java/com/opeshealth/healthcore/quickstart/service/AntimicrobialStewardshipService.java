@@ -200,7 +200,7 @@ public class AntimicrobialStewardshipService {
             throw new IllegalArgumentException("antibioticName is required");
         }
 
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String abxName = request.antibioticName().trim();
         WhoAwareCategory category = classifyWhoAware(abxName);
 
@@ -264,7 +264,7 @@ public class AntimicrobialStewardshipService {
             throw new IllegalArgumentException("antibioticTested is required");
         }
 
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         SusceptibilityInterpretation interp = request.interpretation() != null
                 ? request.interpretation()
                 : SusceptibilityInterpretation.S;
@@ -386,7 +386,7 @@ public class AntimicrobialStewardshipService {
                 .thenComparing(Comparator.comparingDouble(AntibiogramPathogenDrugCell::percentSusceptible).reversed()));
 
         return new CumulativeAntibiogramReport(
-                facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID,
+                com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId),
                 Instant.now(),
                 scoped.size(),
                 mdroCount,

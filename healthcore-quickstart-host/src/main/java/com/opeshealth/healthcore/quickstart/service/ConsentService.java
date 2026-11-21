@@ -388,7 +388,7 @@ public class ConsentService {
                 ? parsed.getPolicyFirstRep().getUri()
                 : DS4P_POLICY_URI;
 
-        UUID resolvedFacilityId = facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID;
+        UUID resolvedFacilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId);
         syncAiConsentFromParsedFhirConsent(resolvedFacilityId, patientId, parsed, validFrom, validUntil);
 
         return registerConsentDirective(new ConsentDirectiveRequest(
@@ -538,7 +538,7 @@ public class ConsentService {
                     ? "DS4P_BREAK_THE_GLASS_OVERRIDE_ACCESS"
                     : (result.redactedItemsCount() > 0 ? "DS4P_SEGMENTED_REDACTED_ACCESS" : "DS4P_PERMITTED_ACCESS");
             fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     result.actorId(),
                     "ROLE_CLINICIAN",
                     auditAction,
@@ -649,7 +649,7 @@ public class ConsentService {
         if (request == null || request.patientId() == null) {
             throw new IllegalArgumentException("BreakTheGlassRequest with patientId is required");
         }
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
 
         if (request.clinicianId() == null || request.clinicianId().isBlank()
                 || request.emergencyReason() == null || request.emergencyReason().trim().length() < 10) {
@@ -904,7 +904,7 @@ public class ConsentService {
         if (request == null || request.patientId() == null) {
             throw new IllegalArgumentException("AiProcessingConsentRequest with patientId is required");
         }
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         Instant now = Instant.now();
         Instant validFrom = request.validFrom() != null ? request.validFrom() : now;
         Instant validUntil = request.validUntil() != null
@@ -1011,7 +1011,7 @@ public class ConsentService {
             globalOptIn = existing != null ? existing.globalAiAssistedProcessingOptIn() : optIn;
         }
         return upsertAiProcessingConsent(new AiProcessingConsentRequest(
-                facilityId != null ? facilityId : (existing != null ? existing.facilityId() : PatientService.DEFAULT_FACILITY_ID),
+                facilityId != null ? facilityId : (existing != null ? existing.facilityId() : com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId()),
                 patientId,
                 globalOptIn,
                 merged,
@@ -1039,7 +1039,7 @@ public class ConsentService {
         PatientAiProcessingConsent existing = aiConsentsByPatientId.get(patientId);
         UUID resolvedFacility = facilityId != null
                 ? facilityId
-                : (existing != null ? existing.facilityId() : PatientService.DEFAULT_FACILITY_ID);
+                : (existing != null ? existing.facilityId() : com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId());
         UUID recordId = existing != null ? existing.consentRecordId() : UUID.randomUUID();
         Instant now = Instant.now();
 
@@ -1552,7 +1552,7 @@ public class ConsentService {
     private AiConsentValidationOutcome recordAiConsentValidationAudit(AiConsentValidationOutcome outcome) {
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     "FHIR_AI_CONSENT_VALIDATOR",
                     "ROLE_SYSTEM_VALIDATOR",
                     outcome.allowed() ? "FHIR_AI_CONSENT_VALIDATION_PERMITTED" : "FHIR_AI_CONSENT_VALIDATION_DENIED",

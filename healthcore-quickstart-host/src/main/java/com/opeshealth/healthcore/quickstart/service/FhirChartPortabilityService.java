@@ -231,7 +231,7 @@ public class FhirChartPortabilityService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     actorId != null ? actorId : "PORTABILITY_CLIENT",
                     "ROLE_CLINICIAN",
                     "FHIR_PATIENT_EVERYTHING_EXPORT",

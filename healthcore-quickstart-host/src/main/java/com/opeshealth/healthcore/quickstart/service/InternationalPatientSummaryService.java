@@ -466,7 +466,7 @@ public class InternationalPatientSummaryService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    PatientService.DEFAULT_FACILITY_ID.toString(),
+                    com.opeshealth.healthcore.security.tenant.FacilityContext.requireFacilityId().toString(),
                     options.requestingActorId() != null ? options.requestingActorId() : "IPS_EXPORTER",
                     "CLINICIAN",
                     "FHIR_IPS_SUMMARY_GENERATED",

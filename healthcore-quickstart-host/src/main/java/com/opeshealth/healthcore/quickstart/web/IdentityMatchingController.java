@@ -172,7 +172,7 @@ public class IdentityMatchingController {
 
         PatientAggregateEntity probe = new PatientAggregateEntity();
         probe.setId(request.patientId());
-        probe.setFacilityId(resolvedFacility != null ? resolvedFacility : PatientService.DEFAULT_FACILITY_ID);
+        probe.setFacilityId(com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(resolvedFacility));
         probe.setMrn(request.mrn());
         probe.setFamilyName(request.familyName());
         probe.setGivenName(request.givenName());

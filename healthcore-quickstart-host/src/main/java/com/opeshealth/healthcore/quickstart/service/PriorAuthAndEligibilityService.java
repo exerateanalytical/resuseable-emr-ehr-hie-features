@@ -157,7 +157,7 @@ public class PriorAuthAndEligibilityService {
         }
 
         UUID coverageId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         BigDecimal annualLimit = request.annualBenefitLimitXaf() != null
                 ? request.annualBenefitLimitXaf()
                 : new BigDecimal("5000000.00");
@@ -299,7 +299,7 @@ public class PriorAuthAndEligibilityService {
         }
 
         UUID priorAuthId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         BigDecimal requested = (request.requestedAmountXaf() != null && request.requestedAmountXaf().compareTo(BigDecimal.ZERO) > 0)
                 ? request.requestedAmountXaf()
                 : new BigDecimal("180000.00");
