@@ -157,7 +157,7 @@ public final class SchedulingEntities {
         public void setActive(boolean active) { this.active = active; }
     }
 
-    @Entity
+    @Entity(name = "SchedulingAppointment")
     @Table(name = "hc_scheduled_appointments")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
