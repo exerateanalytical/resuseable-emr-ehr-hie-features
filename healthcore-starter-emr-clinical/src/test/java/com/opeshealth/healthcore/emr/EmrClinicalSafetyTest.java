@@ -366,6 +366,162 @@ class EmrClinicalSafetyTest {
         assertEquals(0, service.computeNews2(otherwiseComplete, false, "A"));
     }
 
+    @Test
+    void clinicalReferralCannotCrossTenantsAndCompletionIsReplaySafe() {
+        UUID patient = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(patient);
+        when(encounterRepo.findById(encounterId)).thenReturn(Optional.of(encounter));
+        when(referralRepo.save(any(ClinicalReferralEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ClinicalReferralEntity referral = new ClinicalReferralEntity();
+        referral.setFacilityId(facilityId);
+        referral.setEncounterId(encounterId);
+        referral.setPatientId(patient);
+        referral.setTargetFacility("Synthetic specialist clinic");
+        referral.setSpecialty("CARDIOLOGY");
+        referral.setReason("Synthetic specialist review");
+        ClinicalReferralEntity created = service.createReferral(referral);
+        when(referralRepo.findById(created.getId())).thenReturn(Optional.of(created));
+
+        FacilityContext.setFacilityId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.completeReferral(
+                created.getId(), "Specialist assessment complete"));
+        FacilityContext.setFacilityId(facilityId);
+        ClinicalReferralEntity completed = service.completeReferral(
+                created.getId(), "Specialist assessment complete");
+        java.time.Instant recordedAt = completed.getCompletedAt();
+        assertNotNull(recordedAt);
+        assertSame(completed, service.completeReferral(
+                created.getId(), "Specialist assessment complete"));
+        assertEquals(recordedAt, completed.getCompletedAt());
+        assertThrows(IllegalStateException.class, () -> service.completeReferral(
+                created.getId(), "Conflicting second outcome"));
+        verify(referralRepo, times(2)).save(created); // creation and first closure only
+    }
+
+    @Test
+    void dischargeCannotReleaseForeignBedAndSecondCallNeverDuplicatesFollowup() {
+        UUID patient = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+        AdmissionEntity adm = new AdmissionEntity();
+        adm.setFacilityId(facilityId);
+        adm.setEncounterId(encounterId);
+        adm.setPatientId(patient);
+        WardBedEntity bed = new WardBedEntity();
+        bed.setFacilityId(facilityId);
+        adm.setWardBedId(bed.getId());
+        bed.setOccupied(true);
+        bed.setActiveAdmissionId(adm.getId());
+
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(patient);
+        when(encounterRepo.findById(encounterId)).thenReturn(Optional.of(encounter));
+        when(admissionRepo.findById(adm.getId())).thenReturn(Optional.of(adm));
+        when(bedRepo.findById(bed.getId())).thenReturn(Optional.of(bed));
+
+        FacilityContext.setFacilityId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.dischargePatient(
+                adm.getId(), "HOME", "Synthetic discharge", null));
+        FacilityContext.setFacilityId(facilityId);
+
+        bed.setActiveAdmissionId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.dischargePatient(
+                adm.getId(), "HOME", "Synthetic discharge", null));
+        bed.setActiveAdmissionId(adm.getId());
+        assertThrows(IllegalArgumentException.class, () -> service.dischargePatient(
+                adm.getId(), "HOME", " ", null));
+
+        AdmissionEntity discharged = service.dischargePatient(
+                adm.getId(), "HOME", "Synthetic discharge and follow-up", null);
+        assertNotNull(discharged.getDischargedAt());
+        assertFalse(bed.isOccupied());
+        java.time.Instant dischargedAt = discharged.getDischargedAt();
+        assertSame(discharged, service.dischargePatient(
+                adm.getId(), "HOME", "A repeated callback", null));
+        assertEquals(dischargedAt, discharged.getDischargedAt());
+        verify(admissionRepo, times(1)).save(adm);
+        verify(bedRepo, times(1)).save(bed);
+        verify(carePlanRepo, times(1)).save(any(CarePlanEntity.class));
+        verify(outboxRepo, times(1)).save(any(TransactionalOutboxEntity.class));
+    }
+
+    @Test
+    void inpatientNursingRecordsRequireActiveMatchingAdmission() {
+        UUID patient = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+        AdmissionEntity adm = new AdmissionEntity();
+        adm.setFacilityId(facilityId);
+        adm.setEncounterId(encounterId);
+        adm.setPatientId(patient);
+        when(admissionRepo.findById(adm.getId())).thenReturn(Optional.of(adm));
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(patient);
+        when(encounterRepo.findById(encounterId)).thenReturn(Optional.of(encounter));
+
+        FluidBalanceEntity fluid = new FluidBalanceEntity();
+        fluid.setFacilityId(facilityId);
+        fluid.setAdmissionId(adm.getId());
+        fluid.setPatientId(UUID.randomUUID());
+        fluid.setVolumeMl(200);
+        assertThrows(SecurityException.class, () -> service.recordFluidBalance(fluid));
+
+        fluid.setPatientId(patient);
+        adm.setDischargedAt(java.time.Instant.now());
+        assertThrows(IllegalStateException.class, () -> service.recordFluidBalance(fluid));
+        adm.setDischargedAt(null);
+
+        ShiftHandoverEntity handover = new ShiftHandoverEntity();
+        handover.setFacilityId(UUID.randomUUID());
+        handover.setAdmissionId(adm.getId());
+        assertThrows(SecurityException.class, () -> service.recordShiftHandover(handover));
+
+        MedReconciliationEntity reconciliation = new MedReconciliationEntity();
+        reconciliation.setFacilityId(facilityId);
+        reconciliation.setAdmissionId(adm.getId());
+        reconciliation.setPatientId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.reconcileMedication(reconciliation));
+
+        verify(fluidRepo, never()).save(any());
+        verify(handoverRepo, never()).save(any());
+        verify(medRecRepo, never()).save(any());
+    }
+
+    @Test
+    void cosignRequiresSamePatientFacilityAndPendingCosignStatus() {
+        UUID encounterId = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        ClinicalNoteRevisionEntity note = new ClinicalNoteRevisionEntity();
+        note.setEncounterId(encounterId);
+        note.setPatientId(patient);
+        note.setAuthorId("resident-01");
+        note.setNoteType("SOAP");
+        note.setStatus("PENDING_COSIGN");
+        when(noteRepo.findById(note.getId())).thenReturn(Optional.of(note));
+
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(patient);
+        when(encounterRepo.findById(encounterId)).thenReturn(Optional.of(encounter));
+        when(workforceSpi.isPractitionerActive(facilityId, "dr-active")).thenReturn(true);
+        when(noteRepo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        FacilityContext.setFacilityId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.cosignNote(note.getId(), "dr-active"));
+        FacilityContext.setFacilityId(facilityId);
+
+        ClinicalNoteRevisionEntity signed = service.cosignNote(note.getId(), "dr-active");
+        assertEquals("SIGNED", signed.getStatus());
+        assertEquals("dr-active", signed.getCosignedBy());
+        assertThrows(IllegalStateException.class, () -> service.cosignNote(note.getId(), "dr-active"));
+        verify(noteRepo, times(1)).save(note);
+    }
+
     private ClinicalOrderEntity buildMedicationOrder(String code, String dosage, String orderedBy) {
         ClinicalOrderEntity order = new ClinicalOrderEntity();
         order.setFacilityId(facilityId);
