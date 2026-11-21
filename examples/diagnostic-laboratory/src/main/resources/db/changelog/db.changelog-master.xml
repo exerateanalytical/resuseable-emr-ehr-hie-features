@@ -23,6 +23,11 @@
 
     <include file="classpath:db/changelog/core/000-persistence-master.xml"/>
     <include file="classpath:db/changelog/security/001-security-audit.xml"/>
+    <!-- The current LIS adapter uses the terminology CDSS bean and its persisted rule entities. -->
+    <include file="classpath:db/changelog/terminology/001-terminology-cdss.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/001-diagnostics-core.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/002-diagnostics-core-workflows.xml"/>
+    <!-- Transitional compatibility: the LIS starter currently depends on legacy combined
+         pharmacy/LIS entities. Remove only after extracting a LIS-only persistence pack. -->
+    <include file="classpath:db/changelog/pharmacy_lis/001-pharmacy-lis.xml"/>
 </databaseChangeLog>
