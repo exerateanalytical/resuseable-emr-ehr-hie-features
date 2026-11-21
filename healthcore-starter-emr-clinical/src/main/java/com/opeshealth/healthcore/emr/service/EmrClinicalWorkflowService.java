@@ -284,9 +284,17 @@ public class EmrClinicalWorkflowService {
     public Map<String, Object> recordVitalsAndCheckPanic(VitalSignsEntity vitals) {
         Objects.requireNonNull(vitals, "Vital signs record required");
         requireEncounterInActiveFacility(vitals.getEncounterId(), vitals.getPatientId());
+        String acvpu = vitals.getConsciousnessAcvpu();
+        if (acvpu != null && !acvpu.isBlank()
+                && !Set.of("A", "ALERT", "C", "V", "P", "U")
+                        .contains(acvpu.trim().toUpperCase(Locale.ROOT))) {
+            throw new IllegalArgumentException("Unsupported ACVPU level; use A, C, V, P, or U");
+        }
         boolean news2Complete = vitals.getTempCelsius() != null
                 && vitals.getHeartRateBpm() != null && vitals.getRespRatePerMin() != null
-                && vitals.getSystolicBp() != null && vitals.getSpo2Percent() != null;
+                && vitals.getSystolicBp() != null && vitals.getSpo2Percent() != null
+                && vitals.getSupplementalOxygen() != null
+                && acvpu != null && !acvpu.isBlank();
         // Do not persist an apparently normal NEWS2 score when essential measurements are missing.
         vitals.setNews2Score(news2Complete ? computeNews2(vitals) : null);
         VitalSignsEntity saved = vitalsRepo.save(vitals);
@@ -297,8 +305,8 @@ public class EmrClinicalWorkflowService {
         if (!news2Complete) {
             alerts.add(new CdsHooksEngine.CdsCard("NEWS2_INCOMPLETE_VITALS",
                     "NEWS2 cannot be calculated from incomplete observations",
-                    "Missing respiratory rate, oxygen saturation, blood pressure, pulse or temperature; "
-                            + "assess the patient clinically and complete the observations.",
+                    "Record respiratory rate, oxygen saturation, blood pressure, pulse, temperature, "
+                            + "supplemental oxygen status and ACVPU; assess clinically until complete.",
                     "warning", "Opes HealthCore Clinical Safety",
                     List.of("Complete observations and reassess acuity"), false));
         }
@@ -789,7 +797,14 @@ public class EmrClinicalWorkflowService {
      * clinical domain validation is required prior to live patient care deployment.</p>
      */
     public int computeNews2(VitalSignsEntity v) {
-        return computeNews2(v, false, "A");
+        // The old default (room air + alert) produced false reassurance when neither
+        // respiratory support nor consciousness was actually documented.
+        if (v == null || v.getSupplementalOxygen() == null
+                || v.getConsciousnessAcvpu() == null || v.getConsciousnessAcvpu().isBlank()) {
+            throw new IllegalArgumentException(
+                    "NEWS2 requires documented supplemental oxygen and ACVPU status");
+        }
+        return computeNews2(v, v.getSupplementalOxygen(), v.getConsciousnessAcvpu());
     }
 
     /**
@@ -802,8 +817,10 @@ public class EmrClinicalWorkflowService {
                 || v.getTempCelsius() == null) {
             throw new IllegalArgumentException("NEWS2 cannot be scored without all core measured vital signs");
         }
-        if (consciousnessAcvpu == null || consciousnessAcvpu.isBlank()) {
-            throw new IllegalArgumentException("NEWS2 requires documented ACVPU consciousness status");
+        if (consciousnessAcvpu == null || consciousnessAcvpu.isBlank()
+                || !Set.of("A", "ALERT", "C", "V", "P", "U")
+                        .contains(consciousnessAcvpu.trim().toUpperCase(Locale.ROOT))) {
+            throw new IllegalArgumentException("NEWS2 requires a valid recorded ACVPU consciousness status");
         }
         int score = 0;
 
