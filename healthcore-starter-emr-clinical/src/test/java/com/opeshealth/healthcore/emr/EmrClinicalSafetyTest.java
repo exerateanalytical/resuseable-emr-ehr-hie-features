@@ -238,6 +238,55 @@ class EmrClinicalSafetyTest {
         assertEquals(19, service.computeNews2(critical, true, "C"));
     }
 
+    @Test
+    void deniesCrossFacilityAppointmentsOrdersAndAdmissionsBeforePersistence() {
+        UUID foreignFacility = UUID.randomUUID();
+        FacilityContext.setFacilityId(foreignFacility);
+
+        AppointmentEntity appointment = new AppointmentEntity();
+        appointment.setFacilityId(facilityId);
+        appointment.setPatientId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.bookAppointment(appointment));
+
+        ClinicalOrderEntity order = buildMedicationOrder("RX-123", "500 mg PO", "dr-active");
+        assertThrows(SecurityException.class, () -> service.placeOrderWithCdss(
+                order, List.of(), List.of(), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+
+        UUID encounterId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+        assertThrows(SecurityException.class,
+                () -> service.admitPatient(facilityId, encounterId, patientId, UUID.randomUUID()));
+
+        verify(appointmentRepo, never()).save(any());
+        verify(orderRepo, never()).save(any());
+        verify(admissionRepo, never()).save(any());
+    }
+
+    @Test
+    void deniesForeignWardBedAndUnconfiguredPractitionerVerifier() {
+        UUID patientId = UUID.randomUUID();
+        UUID encounterId = UUID.randomUUID();
+        UUID bedId = UUID.randomUUID();
+
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(patientId);
+        when(encounterRepo.findById(encounterId)).thenReturn(Optional.of(encounter));
+
+        WardBedEntity foreignBed = new WardBedEntity();
+        foreignBed.setFacilityId(UUID.randomUUID());
+        when(bedRepo.findById(bedId)).thenReturn(Optional.of(foreignBed));
+        assertThrows(SecurityException.class,
+                () -> service.admitPatient(facilityId, encounterId, patientId, bedId));
+        verify(admissionRepo, never()).save(any());
+
+        when(workforceProvider.getIfAvailable()).thenReturn(null);
+        ClinicalOrderEntity order = buildMedicationOrder("RX-123", "500 mg PO", "dr-active");
+        assertThrows(SecurityException.class, () -> service.placeOrderWithCdss(
+                order, List.of(), List.of(), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+        verify(orderRepo, never()).save(any());
+    }
+
     private ClinicalOrderEntity buildMedicationOrder(String code, String dosage, String orderedBy) {
         ClinicalOrderEntity order = new ClinicalOrderEntity();
         order.setFacilityId(facilityId);
