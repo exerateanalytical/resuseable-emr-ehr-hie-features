@@ -52,7 +52,7 @@ public class PharmacyLisService {
          * under concurrent dispensing requests across multiple threads or service replicas.
          */
         @Modifying
-        @Query("UPDATE MedicationBatchEntity b SET b.quantityOnHand = b.quantityOnHand - :qty, b.version = b.version + 1 "
+        @Query("UPDATE PharmacyMedicationBatch b SET b.quantityOnHand = b.quantityOnHand - :qty, b.version = b.version + 1 "
                 + "WHERE b.id = :id AND b.facilityId = :facilityId AND b.quarantined = false AND b.quantityOnHand >= :qty")
         int decrementStockAtomically(
                 @Param("id") UUID id,
@@ -63,18 +63,18 @@ public class PharmacyLisService {
     public interface PharmacyDispenseRepository extends JpaRepository<PharmacyDispenseEntity, UUID> {
         List<PharmacyDispenseEntity> findByFacilityId(UUID facilityId);
         @Modifying
-        @Query("UPDATE PharmacyDispenseEntity p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
+        @Query("UPDATE PharmacyDispenseRecord p SET p.patientId = :survivorId WHERE p.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface LabSpecimenRepository extends JpaRepository<LabSpecimenEntity, UUID> {
         @Modifying
-        @Query("UPDATE LabSpecimenEntity l SET l.patientId = :survivorId WHERE l.patientId = :sourceId")
+        @Query("UPDATE LisSpecimenRecord l SET l.patientId = :survivorId WHERE l.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface DiagnosticReportRepository extends JpaRepository<DiagnosticReportEntity, UUID> {
         Optional<DiagnosticReportEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
         @Modifying
-        @Query("UPDATE DiagnosticReportEntity r SET r.patientId = :survivorId WHERE r.patientId = :sourceId")
+        @Query("UPDATE LisDiagnosticReport r SET r.patientId = :survivorId WHERE r.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 

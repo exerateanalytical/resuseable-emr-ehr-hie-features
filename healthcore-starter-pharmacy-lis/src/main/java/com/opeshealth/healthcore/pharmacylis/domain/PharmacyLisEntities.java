@@ -23,7 +23,7 @@ public final class PharmacyLisEntities {
     private PharmacyLisEntities() {}
 
     /** Lot-level medication inventory supporting FEFO picking, expiry quarantine, and controlled schedules. */
-    @Entity @Table(name = "hc_medication_batches")
+    @Entity(name = "PharmacyMedicationBatch") @Table(name = "hc_medication_batches")
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class MedicationBatchEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -60,7 +60,7 @@ public final class PharmacyLisEntities {
         public long getVersion() { return version; }
     }
 
-    @Entity @Table(name = "hc_pharmacy_dispenses")
+    @Entity(name = "PharmacyDispenseRecord") @Table(name = "hc_pharmacy_dispenses")
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class PharmacyDispenseEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -100,7 +100,7 @@ public final class PharmacyLisEntities {
         public Instant getDispensedAt() { return dispensedAt; }
     }
 
-    @Entity @Table(name = "hc_lab_specimens")
+    @Entity(name = "LisSpecimenRecord") @Table(name = "hc_lab_specimens")
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class LabSpecimenEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
@@ -131,7 +131,7 @@ public final class PharmacyLisEntities {
         public Instant getCollectedAt() { return collectedAt; }
     }
 
-    @Entity @Table(name = "hc_diagnostic_reports")
+    @Entity(name = "LisDiagnosticReport") @Table(name = "hc_diagnostic_reports")
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class DiagnosticReportEntity {
         @Id @Column(name = "id", nullable = false, updatable = false) private UUID id = UuidV7Generator.nextUuid();
