@@ -572,7 +572,21 @@ public class PatientJourneyOrchestratorService {
         Optional<DurableNotificationEntity> existing = notificationRepo
                 .findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
         if (existing.isPresent()) {
-            return existing.get();
+            DurableNotificationEntity previous = existing.get();
+            NotificationChannel requestedChannel =
+                    cmd.channel() != null ? cmd.channel() : NotificationChannel.SMS;
+            if (!Objects.equals(previous.getFacilityId(), cmd.facilityId())
+                    || !Objects.equals(previous.getPatientId(), cmd.patientId())
+                    || !Objects.equals(previous.getEncounterId(), cmd.encounterId())
+                    || !Objects.equals(previous.getTemplateCode(), cmd.templateCode())
+                    || previous.getChannel() != requestedChannel
+                    || !Objects.equals(previous.getRecipientAddress(),
+                            cmd.recipientAddress() == null ? null : cmd.recipientAddress().trim())
+                    || previous.isEmergencyOverride() != cmd.emergencyOverride()) {
+                throw new SecurityException(
+                        "Notification idempotency key conflicts with the original patient, recipient or purpose");
+            }
+            return previous;
         }
 
         if (cmd.recipientAddress() == null || cmd.recipientAddress().isBlank()
