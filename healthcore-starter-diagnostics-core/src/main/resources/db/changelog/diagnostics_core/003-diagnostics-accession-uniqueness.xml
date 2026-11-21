@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <!-- An accession is a durable patient/specimen reference, not an unrestricted ticket.
+         The preflight must halt if earlier data contains collisions; no silent merging. -->
+    <changeSet id="diagcore-005-accession-tenant-unique" author="opeshealth">
+        <preConditions onFail="HALT" onError="HALT">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM (
+                    SELECT facility_id, accession_number
+                    FROM hc_diag_service_orders
+                    GROUP BY facility_id, accession_number
+                    HAVING COUNT(*) &gt; 1
+                ) duplicate_accessions
+            </sqlCheck>
+        </preConditions>
+        <addUniqueConstraint tableName="hc_diag_service_orders"
+                             columnNames="facility_id,accession_number"
+                             constraintName="uq_hc_diag_accession_facility"/>
+        <rollback>
+            <dropUniqueConstraint tableName="hc_diag_service_orders"
+                                  constraintName="uq_hc_diag_accession_facility"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
