@@ -3,6 +3,8 @@ package com.example.healthcore.lab;
 import com.opeshealth.healthcore.diagnostics.core.domain.DiagnosticsCoreEntities.*;
 import com.opeshealth.healthcore.diagnostics.core.service.DiagnosticsCoreService;
 import com.opeshealth.healthcore.diagnostics.core.service.DiagnosticsCoreService.*;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -67,14 +69,44 @@ class IndependentWorkflowIT {
         JwtDecoder testJwtDecoder() {
             return token -> { throw new JwtException("No JWTs accepted by this domain-only integration test"); };
         }
+
+        @Bean
+        SyntheticApprovedQcFixture syntheticApprovedQcPolicyFixture() {
+            return new SyntheticApprovedQcFixture();
+        }
+    }
+
+    /**
+     * Synthetic fixture only: real clinical applications must validate and persist analyzer
+     * QC controls before allowing any patient result release.
+     */
+    static final class SyntheticApprovedQcFixture implements DiagnosticsQcPolicySpi {
+        private final Set<UUID> explicitlyApprovedOrders = ConcurrentHashMap.newKeySet();
+
+        @Override
+        public boolean isReleasePermitted(DiagnosticServiceOrderEntity order) {
+            return explicitlyApprovedOrders.contains(order.getId());
+        }
+
+        void approveSyntheticControlEvidence(UUID orderId) {
+            explicitlyApprovedOrders.add(orderId);
+        }
+
+        void clear() {
+            explicitlyApprovedOrders.clear();
+        }
     }
 
     @Autowired
     private DiagnosticsCoreService diagnostics;
 
+    @Autowired
+    private SyntheticApprovedQcFixture syntheticQcFixture;
+
     @AfterEach
     void clearAuthenticatedFacility() {
         FacilityContext.clear();
+        syntheticQcFixture.clear();
     }
 
     @Test
@@ -111,6 +143,12 @@ class IndependentWorkflowIT {
         assertEquals("ACKNOWLEDGED_READBACK", ack.getStatus());
         assertNotNull(ack.getAcknowledgedAt());
 
+        // Real default is fail-closed: a basic order must not be released without
+        // QC evidence supplied by a configured/authorized clinical adapter.
+        assertThrows(IllegalStateException.class,
+                () -> diagnostics.verifyAndReleaseReport(order.getId()));
+        // Test fixture only. Must be replaced with persisted Westgard/analyzer QC evidence.
+        syntheticQcFixture.approveSyntheticControlEvidence(order.getId());
         DiagnosticServiceOrderEntity released = diagnostics.verifyAndReleaseReport(order.getId());
         assertEquals("VERIFIED_RELEASED", released.getStatus());
         assertNotNull(released.getVerifiedAt());
