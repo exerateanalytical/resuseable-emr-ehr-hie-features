@@ -26,4 +26,5 @@
     <include file="classpath:db/changelog/terminology/001-terminology-cdss.xml"/>
     <include file="classpath:db/changelog/pharmacy_commerce/001-pharmacy-commerce.xml"/>
     <include file="classpath:db/changelog/pharmacy_commerce/002-pharmacy-commerce-workflows.xml"/>
+    <include file="classpath:db/changelog/pharmacy_commerce/003-pharmacy-procurement-integrity.xml"/>
 </databaseChangeLog>
