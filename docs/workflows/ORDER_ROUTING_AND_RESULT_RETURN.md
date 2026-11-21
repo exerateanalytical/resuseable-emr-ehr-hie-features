@@ -18,6 +18,14 @@ When a clinician signs orders during an encounter, `PatientJourneyOrchestratorSe
 - `hc_workflow_subflow_links` enforces `UNIQUE(facility_id, parent_workflow_id, child_workflow_id)` to track all parallel child subworkflows belonging to one `OPD_CONSULTATION_FLOW` parent.
 - `verifyCanFinalizeEncounter(facilityId, encounterId)` blocks premature encounter closure whenever any routed order is still `ROUTED_AWAITING_CLEARANCE` or `ACTIVE_IN_DEPARTMENT`, or any critical/amended clinician inbox entry remains unacknowledged.
 
+### Automatic departmental queue composition
+
+When `healthcore-starter-journey-queue-bridge` is installed, `routeSignedOrder` now enqueues an internal laboratory, radiology, pharmacy, procedure, or referral task **within the routing transaction**. The adapter saves `queueEntryId` on the routing record and uses the canonical patient, encounter, facility and order references for consistent identity. An unpaid routine order stays `WAITING` and cannot be claimed. `confirmPaymentAndReleaseOrder` activates the **same** queue entry after clearance, with no duplicate ticket. The routing completion gate requires the corresponding operational queue entry to be `COMPLETED`.
+
+External pharmacies intentionally bypass the internal department queue; they require separate authenticated network dispatch and receipt processing. Without this optional bridge, the workflow engine remains a generic routing SDK and its consumer must provision queues explicitly.
+
+This is a source-level integration with JUnit and a proposed PostgreSQL outpatient consumer test; real Spring Boot 4 / Java 25, DB rollback, external provider delivery, payment-webhook authorization, and cross-facility HTTP security are not yet verified. `routeSignedOrder` must only be called for a clinically signed order; a durable outbox/inbox subscriber is still required to automate consumption of signed CPOE events in real deployed systems.
+
 ## 2. Automatic Result Return & Amended-Result Handling
 When a laboratory result is verified (`LaboratoryResultVerified`) or a radiology report is signed (`RadiologyReportSigned`), `deliverVerifiedResultToClinicianInbox` creates or updates a durable `ClinicianResultInboxEntity`:
 - Standard verified results enter `AWAITING_REVIEW`.

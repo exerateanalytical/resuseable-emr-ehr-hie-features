@@ -49,5 +49,9 @@
             <groupId>com.opeshealth.healthcore</groupId>
             <artifactId>healthcore-starter-workflow-engine</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.opeshealth.healthcore</groupId>
+            <artifactId>healthcore-starter-journey-queue-bridge</artifactId>
+        </dependency>
     </dependencies>
 </project>

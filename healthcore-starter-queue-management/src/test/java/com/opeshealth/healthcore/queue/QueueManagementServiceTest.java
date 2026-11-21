@@ -152,6 +152,18 @@ class QueueManagementServiceTest {
         DepartmentQueueEntryEntity replay = service.enqueue(facId, req, "cpoe");
 
         assertEquals(first.getId(), replay.getId(), "Event replay must never create duplicate queue entries");
+        // Reusing the key for a different patient's order must not leak or rebind it.
+        EnqueueRequest conflictingPatient = new EnqueueRequest(
+                "LABORATORY", UUID.randomUUID(), req.encounterId(), orderId, null, null,
+                QueuePriority.ROUTINE, "PAYMENT_PENDING", null, 90, "ORD-" + orderId);
+        assertThrows(SecurityException.class,
+                () -> service.enqueue(facId, conflictingPatient, "malicious-caller"));
+        EnqueueRequest conflictingOrder = new EnqueueRequest(
+                "LABORATORY", req.patientId(), req.encounterId(), UUID.randomUUID(), null, null,
+                QueuePriority.ROUTINE, "PAYMENT_PENDING", null, 90, "ORD-" + orderId);
+        assertThrows(SecurityException.class,
+                () -> service.enqueue(facId, conflictingOrder, "malicious-caller"));
+        assertEquals(1, entries.size());
         assertEquals(QueueStatus.WAITING, first.getQueueStatus());
         assertFalse(first.isEligibleForActivation());
         assertThrows(IllegalStateException.class, () -> service.claimTask(facId, first.getId(), "lab.tech"));
@@ -164,4 +176,40 @@ class QueueManagementServiceTest {
         assertEquals(QueueStatus.IN_SERVICE, claimed.getQueueStatus());
         assertThrows(SecurityException.class, () -> service.claimTask(UUID.randomUUID(), first.getId(), "intruder"));
     }
+    @Test
+    void completionIsBoundToFinancialClearanceAndClaimedWorker() {
+        UUID facility = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        DepartmentQueueEntryEntity entry = service.enqueue(facility,
+                new EnqueueRequest("LAB_COLLECTION", UUID.randomUUID(), UUID.randomUUID(),
+                        order, null, null, QueuePriority.ROUTINE,
+                        "PAYMENT_PENDING", null, 60, "ORDER-" + order), "router");
+        assertThrows(IllegalStateException.class,
+                () -> service.completeEntry(facility, entry.getId(), "lab-tech"));
+        for (QueueStatus bypass : List.of(QueueStatus.READY, QueueStatus.CALLED,
+                QueueStatus.IN_SERVICE, QueueStatus.COMPLETED)) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.transitionOperationalStatus(
+                            facility, entry.getId(), bypass, "unpaid gate bypass"));
+        }
+
+        service.updateFinancialClearance(facility, entry.getId(), "PAID");
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "lab-tech"));
+        service.claimTask(facility, entry.getId(), "lab-tech");
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "other-tech"));
+
+        DepartmentQueueEntryEntity completed = service.completeEntry(facility, entry.getId(), "lab-tech");
+        assertEquals(QueueStatus.COMPLETED, completed.getQueueStatus());
+        java.time.Instant originalCompletedAt = completed.getCompletedAt();
+        assertNotNull(originalCompletedAt);
+        assertSame(completed, service.completeEntry(facility, entry.getId(), "lab-tech"));
+        assertEquals(originalCompletedAt, completed.getCompletedAt());
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "other-tech"));
+        assertThrows(IllegalStateException.class,
+                () -> service.updateFinancialClearance(facility, entry.getId(), "PAID"));
+    }
+
 }

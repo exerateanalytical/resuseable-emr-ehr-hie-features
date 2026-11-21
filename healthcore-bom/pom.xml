@@ -204,6 +204,11 @@
             </dependency>
             <dependency>
                 <groupId>com.opeshealth.healthcore</groupId>
+                <artifactId>healthcore-starter-journey-queue-bridge</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opeshealth.healthcore</groupId>
                 <artifactId>healthcore-starter-clinical-ai</artifactId>
                 <version>${project.version}</version>
             </dependency>

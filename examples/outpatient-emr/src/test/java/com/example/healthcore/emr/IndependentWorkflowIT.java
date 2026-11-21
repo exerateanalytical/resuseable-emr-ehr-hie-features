@@ -2,6 +2,13 @@ package com.example.healthcore.emr;
 
 import com.opeshealth.healthcore.emr.domain.EmrEntities.*;
 import com.opeshealth.healthcore.emr.service.EmrClinicalWorkflowService;
+import com.opeshealth.healthcore.queue.service.QueueManagementService;
+import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.DepartmentQueueEntryEntity;
+import com.opeshealth.healthcore.queue.domain.QueueManagementEntities.QueueStatus;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.DepartmentOrderRoutingEntity;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.OrderTargetDepartment;
+import com.opeshealth.healthcore.workflow.journey.ClinicalJourneyContracts.PaymentClearanceOutcome;
+import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService.OrderRoutingQueueProvisioningSpi;
 import com.opeshealth.healthcore.security.rbac.WorkforceCredentialSpi;
 import com.opeshealth.healthcore.security.tenant.FacilityContext;
 import com.opeshealth.healthcore.terminology.cdss.CdsHooksEngine;
@@ -73,6 +80,12 @@ class IndependentWorkflowIT {
 
     @Autowired
     private EmrClinicalWorkflowService clinical;
+
+    @Autowired
+    private OrderRoutingQueueProvisioningSpi queueBridge;
+
+    @Autowired
+    private QueueManagementService departmentQueue;
 
     @AfterEach
     void clearFacilityContext() {
@@ -211,6 +224,81 @@ class IndependentWorkflowIT {
 
         FacilityContext.setFacilityId(foreign);
         assertThrows(SecurityException.class, () -> clinical.signOrAmendNote(deniedNote, true));
+    }
+
+    @Test
+    void createsRealDepartmentalWorklistAndReleasesSameTaskAfterBillingClearance() throws Exception {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        FacilityContext.setFacilityId(facility);
+        EncounterEntity encounter = clinical.startEncounter(facility, patient, "AMB", "OPD-GENERAL");
+
+        DepartmentOrderRoutingEntity routing = new DepartmentOrderRoutingEntity();
+        routing.setFacilityId(facility);
+        routing.setPatientId(patient);
+        routing.setEncounterId(encounter.getId());
+        routing.setOrderId(UUID.randomUUID());
+        routing.setTargetDepartment(OrderTargetDepartment.LABORATORY);
+        routing.setFinancialClearance(PaymentClearanceOutcome.PAYMENT_PENDING);
+
+        UUID ticket = queueBridge.createOrGetQueueEntry(routing, false, "dr-synthetic-licensed");
+        assertNotNull(ticket);
+        assertEquals(ticket, queueBridge.createOrGetQueueEntry(
+                routing, false, "dr-synthetic-licensed"), "Order replay must preserve its queue entry");
+        routing.setQueueEntryId(ticket);
+        assertEquals(1L, countQueueForOrder(facility, routing.getOrderId()));
+
+        assertThrows(IllegalStateException.class,
+                () -> departmentQueue.claimTask(facility, ticket, "lab-scientist"));
+        assertThrows(IllegalStateException.class, () -> queueBridge.requireQueueCompleted(routing));
+
+        routing.setFinancialClearance(PaymentClearanceOutcome.PAID);
+        queueBridge.synchronizeFinancialClearance(routing);
+        DepartmentQueueEntryEntity claimed = departmentQueue.claimTask(facility, ticket, "lab-scientist");
+        assertEquals(QueueStatus.IN_SERVICE, claimed.getQueueStatus());
+        assertThrows(SecurityException.class,
+                () -> departmentQueue.completeEntry(facility, ticket, "another-scientist"));
+        DepartmentQueueEntryEntity done = departmentQueue.completeEntry(facility, ticket, "lab-scientist");
+        assertEquals(QueueStatus.COMPLETED, done.getQueueStatus());
+        assertDoesNotThrow(() -> queueBridge.requireQueueCompleted(routing));
+        assertEquals("COMPLETED", readQueueStatus(ticket));
+
+        DepartmentOrderRoutingEntity wrongPatient = new DepartmentOrderRoutingEntity();
+        wrongPatient.setFacilityId(facility);
+        wrongPatient.setPatientId(UUID.randomUUID());
+        wrongPatient.setEncounterId(encounter.getId());
+        wrongPatient.setOrderId(routing.getOrderId());
+        wrongPatient.setTargetDepartment(OrderTargetDepartment.LABORATORY);
+        wrongPatient.setFinancialClearance(PaymentClearanceOutcome.PAID);
+        wrongPatient.setQueueEntryId(ticket);
+        assertThrows(SecurityException.class,
+                () -> queueBridge.requireQueueCompleted(wrongPatient));
+    }
+
+    private long countQueueForOrder(UUID facility, UUID order) throws Exception {
+        try (Connection connection = newConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM hc_department_queue_entries "
+                             + "WHERE facility_id = ? AND order_id = ?")) {
+            statement.setObject(1, facility);
+            statement.setObject(2, order);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getLong(1);
+            }
+        }
+    }
+
+    private String readQueueStatus(UUID id) throws Exception {
+        try (Connection connection = newConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT queue_status FROM hc_department_queue_entries WHERE id = ?")) {
+            statement.setObject(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getString(1);
+            }
+        }
     }
 
     private long countPatientEncounters(UUID facility, UUID patient) throws Exception {

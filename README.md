@@ -9,7 +9,15 @@
 
 ## Overview
 
-**Opes HealthCore** is **not** a single-purpose end-user application — it is a **100% Pure Java 25 + Spring Boot 4.0** (plus **Kotlin/Compose Multiplatform** for Android, iPhone & iPad) reusable modular starter SDK. Teams can assemble any clinical or public-health platform in under 1 hour:
+**Engineering release status — pre-production.** The SDK targets Java 25 and Spring Boot 4. The current draft integration stack has **not** passed the full Java 25 Maven reactor, independent PostgreSQL/Testcontainers workflows for all 11 examples, OIDC/tenant security tests or a clinical release audit. Existing classpath smoke tests are not end-to-end verification. Do not deploy the reference examples for patient care without these gates.
+
+### Automatic clinical order → departmental worklist composition
+
+The optional `healthcore-starter-journey-queue-bridge` connects reusable `healthcore-starter-workflow-engine` and `healthcore-starter-queue-management` without circular dependencies. The outpatient EMR capability pack includes the bridge. After an authorized signed order is passed to `routeSignedOrder`, a matching laboratory, radiology, in-house pharmacy, procedure or referral queue task is created, with idempotent `queueEntryId` linking, unpaid-service hold, clearance activation, and completion checks. A special **external pharmacy handoff is not an internal dispensing queue**.
+
+The standalone outpatient integration test source now includes a real PostgreSQL departmental queue lifecycle scenario. More implementation is required before a deployed application can claim that clinical CPOE events are automatically consumed, the LIS/RIS/pharmacy services execute and return signed results, critical reports are acknowledged by licensed clinicians, or all documents/reports print correctly. [Bridge module and constraints](healthcore-starter-journey-queue-bridge/README.md).
+
+**Opes HealthCore** is **not** a single-purpose end-user application — it is a modular SDK targeting **Java 25 + Spring Boot 4.0** (plus **Kotlin/Compose Multiplatform** for Android, iPhone & iPad) reusable modular starter SDK. Teams can assemble any clinical or public-health platform in under 1 hour:
 
 - **Full Hospital EMR / EHR** (10-stage clinical workflow: Appointments -> ESI Triage -> LOINC Vitals & NEWS2 -> Immutable SOAP Notes w/ Co-Sign & License Gate -> CDSS-gated CPOE -> Bed ADT & Fluid I&O/Handover/MedRec -> 5-Rights eMAR -> Discharge -> CarePlans -> Referrals)
 - **Standalone Pharmacy Information System (PIS)** (`healthcore-starter-pharmacy-inventory` mounts ONLY FEFO inventory, expiry quarantine & dual-witness controlled dispensing without LIS routes)

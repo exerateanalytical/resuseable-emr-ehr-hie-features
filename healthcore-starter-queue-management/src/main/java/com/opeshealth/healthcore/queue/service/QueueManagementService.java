@@ -164,9 +164,21 @@ public class QueueManagementService {
                 ? req.idempotencyKey().trim()
                 : buildDefaultIdempotencyKey(dept, req.orderId(), req.encounterId(), req.taskId());
 
-        Optional<DepartmentQueueEntryEntity> existing = entryRepo.findByFacilityIdAndIdempotencyKey(facilityId, idempotencyKey);
+        Optional<DepartmentQueueEntryEntity> existing =
+                entryRepo.findByFacilityIdAndIdempotencyKey(facilityId, idempotencyKey);
         if (existing.isPresent()) {
-            return existing.get();
+            DepartmentQueueEntryEntity previous = existing.get();
+            if (!facilityId.equals(previous.getFacilityId())
+                    || !dept.equals(previous.getDepartmentCode())
+                    || !Objects.equals(previous.getPatientId(), req.patientId())
+                    || !Objects.equals(previous.getEncounterId(), req.encounterId())
+                    || !Objects.equals(previous.getOrderId(), req.orderId())
+                    || !Objects.equals(previous.getTaskId(), req.taskId())
+                    || !Objects.equals(previous.getWorkflowInstanceId(), req.workflowInstanceId())) {
+                throw new SecurityException(
+                        "Queue idempotency key conflicts with original facility, patient, encounter or task");
+            }
+            return previous;
         }
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
@@ -270,6 +282,21 @@ public class QueueManagementService {
     @ClinicalAudit(action = "QUEUE_COMPLETE_ENTRY", resourceType = "DepartmentQueueEntry")
     public DepartmentQueueEntryEntity completeEntry(UUID facilityId, UUID queueEntryId, String actorId) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED) {
+            if (actorId == null || !actorId.equals(entry.getClaimedBy())) {
+                throw new SecurityException("Only the original worker may replay completed queue work");
+            }
+            return entry; // Replay preserves the original time and does not double-publish.
+        }
+        if (!entry.isEligibleForActivation()) {
+            throw new IllegalStateException("Cannot complete a task while financial or clinical hold is active");
+        }
+        if (actorId == null || actorId.isBlank()
+                || !actorId.equals(entry.getClaimedBy())
+                || entry.getQueueStatus() != QueueStatus.IN_SERVICE) {
+            throw new SecurityException(
+                    "Only the assigned worker may complete a claimed in-service queue task");
+        }
         entry.setQueueStatus(QueueStatus.COMPLETED);
         entry.setCompletedAt(Instant.now());
         DepartmentQueueEntryEntity saved = entryRepo.save(entry);
@@ -281,6 +308,13 @@ public class QueueManagementService {
     @ClinicalAudit(action = "QUEUE_UPDATE_CLEARANCE", resourceType = "DepartmentQueueEntry")
     public DepartmentQueueEntryEntity updateFinancialClearance(UUID facilityId, UUID queueEntryId, String clearanceState) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED
+                || entry.getQueueStatus() == QueueStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot modify financial clearance after queue closure");
+        }
+        if (clearanceState == null || clearanceState.isBlank()) {
+            throw new IllegalArgumentException("Explicit financial clearance state required");
+        }
         String normalized = clearanceState.trim().toUpperCase(Locale.ROOT);
         entry.setFinancialClearanceState(normalized);
         boolean eligible = ACTIVATION_CLEARED_STATES.contains(normalized);
@@ -305,6 +339,20 @@ public class QueueManagementService {
     public DepartmentQueueEntryEntity transitionOperationalStatus(
             UUID facilityId, UUID queueEntryId, QueueStatus targetStatus, String reason) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        // This generic hold/skip path cannot bypass a financial gate, a worker
+        // claim, or the accountable completion method.
+        if (targetStatus == null
+                || targetStatus == QueueStatus.COMPLETED
+                || targetStatus == QueueStatus.IN_SERVICE
+                || targetStatus == QueueStatus.CALLED
+                || targetStatus == QueueStatus.READY) {
+            throw new IllegalArgumentException(
+                    "Use the dedicated clearance, call, claim and completion methods for active work");
+        }
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED
+                || entry.getQueueStatus() == QueueStatus.CANCELLED) {
+            throw new IllegalStateException("Finalized work cannot transition to another queue status");
+        }
         entry.setQueueStatus(targetStatus);
         if (reason != null) {
             entry.setHoldReason(reason);
