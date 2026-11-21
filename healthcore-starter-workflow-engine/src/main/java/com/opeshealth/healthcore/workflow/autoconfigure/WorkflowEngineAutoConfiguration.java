@@ -78,7 +78,8 @@ public class WorkflowEngineAutoConfiguration {
             DurableProcessedEventRepository processedEventRepo,
             ObjectProvider<OutboxRelayService.OutboxRepository> outboxRepoProvider,
             WorkflowBillingClearancePolicySpi billingPolicy,
-            ObjectProvider<NotificationProviderAdapterSpi> notificationAdaptersProvider) {
+            ObjectProvider<NotificationProviderAdapterSpi> notificationAdaptersProvider,
+            ObjectProvider<OrderRoutingQueueProvisioningSpi> queueProvisioningProvider) {
         return new PatientJourneyOrchestratorService(
                 workflowService,
                 subflowRepo,
@@ -88,6 +89,7 @@ public class WorkflowEngineAutoConfiguration {
                 processedEventRepo,
                 outboxRepoProvider.getIfAvailable(),
                 billingPolicy,
-                notificationAdaptersProvider.orderedStream().toList());
+                notificationAdaptersProvider.orderedStream().toList(),
+                queueProvisioningProvider.getIfAvailable());
     }
 }
