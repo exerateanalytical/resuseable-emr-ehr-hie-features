@@ -118,6 +118,24 @@ class PatientJourneyPostgresIT {
                         dup.executeUpdate();
                     }
                 }, "PostgreSQL UNIQUE constraint must reject duplicate order routing idempotency key");
+
+                // A replay can arrive with a *different* idempotency key. Verify
+                // the database also guards the canonical (facility_id, order_id).
+                assertThrows(SQLException.class, () -> {
+                    try (PreparedStatement duplicateOrder = c1.prepareStatement(insertRouting)) {
+                        duplicateOrder.setObject(1, UUID.randomUUID());
+                        duplicateOrder.setObject(2, facId);
+                        duplicateOrder.setObject(3, patientId);
+                        duplicateOrder.setObject(4, encounterId);
+                        duplicateOrder.setObject(5, orderId);
+                        duplicateOrder.setString(6, "LABORATORY");
+                        duplicateOrder.setString(7, "PAYMENT_PENDING");
+                        duplicateOrder.setString(8, "ROUTED_AWAITING_CLEARANCE");
+                        duplicateOrder.setString(9, "DIFFERENT-IDEMP-" + orderId);
+                        duplicateOrder.setLong(10, 0L);
+                        duplicateOrder.executeUpdate();
+                    }
+                }, "PostgreSQL must reject two department routes for one clinical order");
             }
 
             // 3. Reconnect via fresh JDBC connection (restart & recovery check) and verify durable rows survive
