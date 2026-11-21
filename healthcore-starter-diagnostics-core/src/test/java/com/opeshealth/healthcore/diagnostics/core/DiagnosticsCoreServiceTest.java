@@ -88,4 +88,89 @@ class DiagnosticsCoreServiceTest {
                 "QI-15189-01", "PRE_ANALYTICAL", "ACC-LAB-01", "Hemolysis due to needle gauge mismatch", "qa.tech"));
         assertEquals("OPEN", inc.getStatus());
     }
+
+
+    @Test
+    void blocksUnconfiguredOrNoncriticalEscalationAndUnreleasedAmendment() {
+        UUID facility = UUID.randomUUID();
+        FacilityContext.setFacilityId(facility);
+
+        ReferringPartnerRepository partners = mock(ReferringPartnerRepository.class);
+        DiagnosticCatalogRepository catalog = mock(DiagnosticCatalogRepository.class);
+        DiagnosticServiceOrderRepository orders = mock(DiagnosticServiceOrderRepository.class);
+        CriticalNotificationRepository alerts = mock(CriticalNotificationRepository.class);
+        ResultAmendmentRepository amendments = mock(ResultAmendmentRepository.class);
+        QualityIncidentRepository incidents = mock(QualityIncidentRepository.class);
+        when(orders.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DiagnosticsCoreService service = new DiagnosticsCoreService(
+                partners, catalog, orders, alerts, amendments, incidents, null, null);
+        DiagnosticServiceOrderEntity order = service.createOrder(new CreateDiagnosticOrderRequest(
+                "SAFE-001", "LABORATORY", "LOINC-2823-3", "SYNTHETIC-1", null, 30));
+        when(orders.findByIdAndFacilityId(order.getId(), facility)).thenReturn(Optional.of(order));
+
+        EscalateCriticalResultRequest request = new EscalateCriticalResultRequest(
+                order.getId(), new BigDecimal("4.1"), "Potassium", "clinician-01");
+        assertThrows(IllegalStateException.class, () -> service.escalateCriticalResult(request));
+        DiagnosticCatalogItemEntity potassium = new DiagnosticCatalogItemEntity();
+        potassium.setCatalogCode("LOINC-2823-3");
+        potassium.setCriticalHigh(new BigDecimal("6.2"));
+        potassium.setCriticalLow(new BigDecimal("2.5"));
+        when(catalog.findByFacilityIdAndCatalogCode(facility, order.getCatalogCode()))
+                .thenReturn(Optional.of(potassium));
+        assertThrows(IllegalArgumentException.class, () -> service.escalateCriticalResult(request));
+
+        assertThrows(IllegalStateException.class, () -> service.amendVerifiedResult(new AmendResultRequest(
+                order.getId(), "Old report", "New report", "Analyzer correction", "scientist-01")));
+        assertThrows(IllegalArgumentException.class, () -> service.escalateCriticalResult(
+                new EscalateCriticalResultRequest(order.getId(), null, "No measured value", "clinician-01")));
+        verify(alerts, never()).save(any());
+        verify(amendments, never()).save(any());
+    }
+
+    @Test
+    void readBackRetriesPreserveFirstClinicianTimestampAndReleasedOrderCannotBeRejected() {
+        UUID facility = UUID.randomUUID();
+        FacilityContext.setFacilityId(facility);
+        DiagnosticServiceOrderRepository orders = mock(DiagnosticServiceOrderRepository.class);
+        CriticalNotificationRepository alerts = mock(CriticalNotificationRepository.class);
+        DiagnosticsCoreService service = new DiagnosticsCoreService(
+                mock(ReferringPartnerRepository.class), mock(DiagnosticCatalogRepository.class),
+                orders, alerts, mock(ResultAmendmentRepository.class),
+                mock(QualityIncidentRepository.class), null, null);
+
+        CriticalValueNotificationEntity notification = new CriticalValueNotificationEntity();
+        notification.setFacilityId(facility);
+        notification.setNotifiedClinician("doctor-1");
+        when(alerts.findByIdAndFacilityId(notification.getId(), facility))
+                .thenReturn(Optional.of(notification));
+        when(alerts.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThrows(IllegalStateException.class, () -> service.acknowledgeCriticalReadBack(
+                notification.getId(), "wrong-doctor", true));
+        assertThrows(IllegalArgumentException.class, () -> service.acknowledgeCriticalReadBack(
+                notification.getId(), " ", true));
+        assertNull(notification.getAcknowledgedAt());
+
+        CriticalValueNotificationEntity first = service.acknowledgeCriticalReadBack(
+                notification.getId(), "doctor-1", true);
+        Instant firstAcknowledged = first.getAcknowledgedAt();
+        assertNotNull(firstAcknowledged);
+        assertSame(first, service.acknowledgeCriticalReadBack(notification.getId(), "doctor-1", true));
+        assertEquals(firstAcknowledged, notification.getAcknowledgedAt());
+        assertThrows(IllegalStateException.class, () -> service.acknowledgeCriticalReadBack(
+                notification.getId(), "doctor-2", true));
+        verify(alerts, times(1)).save(notification);
+
+        DiagnosticServiceOrderEntity released = new DiagnosticServiceOrderEntity();
+        released.setFacilityId(facility);
+        released.setStatus("VERIFIED_RELEASED");
+        released.setVerifiedAt(Instant.now());
+        when(orders.findByIdAndFacilityId(released.getId(), facility)).thenReturn(Optional.of(released));
+        assertThrows(IllegalStateException.class, () -> service.rejectAndRequestRecollection(
+                released.getId(), "late rejection"));
+        assertSame(released, service.verifyAndReleaseReport(released.getId()));
+        verify(orders, never()).save(released);
+    }
+
 }
