@@ -309,12 +309,10 @@ public final class DiagnosticsCoreEntities {
         @Column(name = "order_id", nullable = false)
         private UUID orderId;
 
-        @Lob
-        @Column(name = "prior_result_summary", nullable = false)
+        @Column(name = "prior_result_summary", nullable = false, length = org.hibernate.Length.LONG32)
         private String priorResultSummary;
 
-        @Lob
-        @Column(name = "amended_result_summary", nullable = false)
+        @Column(name = "amended_result_summary", nullable = false, length = org.hibernate.Length.LONG32)
         private String amendedResultSummary;
 
         @Column(name = "amendment_reason", nullable = false, length = 240)
@@ -368,12 +366,10 @@ public final class DiagnosticsCoreEntities {
         @Column(name = "accession_number", length = 64)
         private String accessionNumber;
 
-        @Lob
-        @Column(name = "description", nullable = false)
+        @Column(name = "description", nullable = false, length = org.hibernate.Length.LONG32)
         private String description;
 
-        @Lob
-        @Column(name = "corrective_action")
+        @Column(name = "corrective_action", length = org.hibernate.Length.LONG32)
         private String correctiveAction;
 
         @Column(name = "status", nullable = false, length = 24)
