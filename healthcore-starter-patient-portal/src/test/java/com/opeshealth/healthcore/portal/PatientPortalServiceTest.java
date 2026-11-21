@@ -52,7 +52,8 @@ class PatientPortalServiceTest {
         UUID patientId = UUID.randomUUID();
         PatientPortalAccountEntity acct = service.enrollAccount(facId, new EnrollPortalAccountRequest(
                 patientId, "sub-patient-1", "en", "p@example.org", "+237600000001"));
-        when(accountRepo.findByFacilityIdAndPatientId(facId, patientId)).thenReturn(Optional.of(acct));
+        when(accountRepo.findByFacilityIdAndIdentitySubjectAndActiveTrue(facId, "sub-patient-1"))
+                .thenReturn(Optional.of(acct));
         when(proxyRepo.findByFacilityIdAndPatientIdAndProxySubjectAndRevokedFalse(eq(facId), eq(patientId), any()))
                 .thenReturn(List.of());
 
@@ -70,6 +71,7 @@ class PatientPortalServiceTest {
         fin.setResultDisplay("Glucose");
         fin.setNumericValue(new BigDecimal("5.1"));
         fin.setAbnormalFlag(AbnormalFlag.NORMAL);
+        fin.setVerifiedAt(Instant.now());
         when(ordersResultsService.listPatientResults(facId, patientId)).thenReturn(List.of(prelim, fin));
 
         List<PortalReleasedResultView> released = service.getReleasedResults(facId, "sub-patient-1", patientId);
@@ -79,7 +81,57 @@ class PatientPortalServiceTest {
         // Scoped proxy grant succeeds for patient
         PatientProxyGrantEntity grant = service.grantProxyAccess(facId, "sub-patient-1", false,
                 new GrantProxyRequest(patientId, "sub-parent", "MOTHER",
-                        Set.of(PortalScope.VIEW_RESULTS), Instant.now().plus(30, ChronoUnit.DAYS)));
+                        Set.of(PortalScope.RESULTS), Instant.now().plus(30, ChronoUnit.DAYS)));
         assertFalse(grant.isRevoked());
+        when(proxyRepo.findByFacilityIdAndPatientIdAndProxySubjectAndRevokedFalse(
+                facId, patientId, "sub-parent")).thenReturn(List.of(grant));
+        assertEquals(1, service.getReleasedResults(facId, "sub-parent", patientId).size());
+        assertThrows(AccessDeniedException.class,
+                () -> service.getPatientAppointments(facId, "sub-parent", patientId));
+        assertThrows(AccessDeniedException.class,
+                () -> service.getReleasedResults(UUID.randomUUID(), "sub-parent", patientId));
+
+    }
+
+    @Test
+    void rejectsFinalResultWithoutVerificationTimestampAndToleratesMissingAbnormalFlag() {
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+        PatientPortalAccountEntity account = service.enrollAccount(facilityId,
+                new EnrollPortalAccountRequest(patientId, "patient-subject", "en", null, null));
+        when(accountRepo.findByFacilityIdAndIdentitySubjectAndActiveTrue(facilityId, "patient-subject"))
+                .thenReturn(Optional.of(account));
+
+        ClinicalResultEntity unverifiedFinal = new ClinicalResultEntity();
+        unverifiedFinal.setStatus(ResultStatus.FINAL);
+        unverifiedFinal.setResultCode("2823-3");
+
+        ClinicalResultEntity verifiedFinal = new ClinicalResultEntity();
+        verifiedFinal.setStatus(ResultStatus.FINAL);
+        verifiedFinal.setResultCode("2345-7");
+        verifiedFinal.setResultDisplay("Glucose");
+        verifiedFinal.setVerifiedAt(Instant.now());
+        when(ordersResultsService.listPatientResults(facilityId, patientId))
+                .thenReturn(List.of(unverifiedFinal, verifiedFinal));
+
+        List<PortalReleasedResultView> results =
+                service.getReleasedResults(facilityId, "patient-subject", patientId);
+        assertEquals(1, results.size());
+        assertEquals("2345-7", results.get(0).resultCode());
+        assertEquals("UNKNOWN", results.get(0).abnormalFlag());
+    }
+
+    @Test
+    void missingCallerSubjectCannotGrantProxyOrReadPatientRecords() {
+        UUID facilityId = UUID.randomUUID();
+        UUID patientId = UUID.randomUUID();
+        GrantProxyRequest grant = new GrantProxyRequest(
+                patientId, "proxy-subject", "GUARDIAN", Set.of(PortalScope.RESULTS),
+                Instant.now().plus(1, ChronoUnit.DAYS));
+        assertThrows(AccessDeniedException.class,
+                () -> service.grantProxyAccess(facilityId, null, false, grant));
+        assertThrows(AccessDeniedException.class,
+                () -> service.getReleasedResults(facilityId, null, patientId));
+        verifyNoInteractions(ordersResultsService);
     }
 }
