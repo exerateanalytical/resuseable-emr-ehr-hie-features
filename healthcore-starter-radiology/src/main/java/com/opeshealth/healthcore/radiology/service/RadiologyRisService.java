@@ -151,26 +151,39 @@ public class RadiologyRisService {
         ModalityWorklistEntity item = worklistRepo.findByIdAndFacilityId(worklistId, facilityId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Worklist item not found"));
 
-        String next = req.status() == null ? "" : req.status().trim().toUpperCase(Locale.ROOT);
+        if (req == null || req.status() == null) {
+            throw new IllegalArgumentException("MPPS status and accountable technologist are required");
+        }
+        String next = req.status().trim().toUpperCase(Locale.ROOT);
         if (!Set.of("IN_PROGRESS", "COMPLETED", "DISCONTINUED").contains(next)) {
             throw new IllegalArgumentException("Invalid MPPS transition status: " + req.status());
         }
-        if ("COMPLETED".equals(item.getMppsStatus()) || "DISCONTINUED".equals(item.getMppsStatus())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot modify terminal MPPS state: " + item.getMppsStatus());
+        if (req.seriesCount() < 0 || req.instanceCount() < 0) {
+            throw new IllegalArgumentException("MPPS series and instance counts cannot be negative");
         }
-        if ("IN_PROGRESS".equals(next) && item.getStartedAt() == null) {
+        String previous = item.getMppsStatus();
+        if ("COMPLETED".equals(previous) || "DISCONTINUED".equals(previous)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot modify terminal MPPS state: " + previous);
+        }
+        if ("COMPLETED".equals(next) && !"IN_PROGRESS".equals(previous)
+                || "IN_PROGRESS".equals(next) && !"SCHEDULED".equals(previous)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Invalid MPPS clinical transition: " + previous + " to " + next);
+        }
+        if (req.performingTechnologistId() == null || req.performingTechnologistId().isBlank()) {
+            throw new IllegalArgumentException("MPPS transition requires an accountable technologist");
+        }
+        if ("IN_PROGRESS".equals(next)) {
             item.setStartedAt(Instant.now());
         }
         if ("COMPLETED".equals(next) || "DISCONTINUED".equals(next)) {
             item.setCompletedAt(Instant.now());
         }
         item.setMppsStatus(next);
-        if (req.performingTechnologistId() != null && !req.performingTechnologistId().isBlank()) {
-            item.setPerformingTechnologistId(req.performingTechnologistId().trim());
-        }
-        item.setSeriesCount(Math.max(0, req.seriesCount()));
-        item.setInstanceCount(Math.max(0, req.instanceCount()));
+        item.setPerformingTechnologistId(req.performingTechnologistId().trim());
+        item.setSeriesCount(req.seriesCount());
+        item.setInstanceCount(req.instanceCount());
 
         ModalityWorklistEntity saved = worklistRepo.save(item);
         audit(facilityId, saved.getPatientId(), saved.getPerformingTechnologistId(), "RIS_MPPS_" + next,
@@ -198,8 +211,14 @@ public class RadiologyRisService {
 
         String status = "FINAL";
         if (req.supersedesReportId() != null) {
-            reportRepo.findByIdAndFacilityId(req.supersedesReportId(), facilityId)
+            RadiologyReportEntity prior = reportRepo.findByIdAndFacilityId(req.supersedesReportId(), facilityId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Prior report to amend not found"));
+            if (!item.getId().equals(prior.getWorklistItemId())
+                    || !item.getPatientId().equals(prior.getPatientId())
+                    || !item.getStudyInstanceUid().equals(prior.getStudyInstanceUid())
+                    || !Set.of("FINAL", "AMENDED").contains(prior.getReportStatus())) {
+                throw new SecurityException("Amendment must reference a signed report for the same patient and imaging study");
+            }
             status = "AMENDED";
         }
 
@@ -236,9 +255,19 @@ public class RadiologyRisService {
         if (!report.isCriticalFinding()) {
             throw new IllegalArgumentException("Report does not have an active critical finding.");
         }
+        String responsibleClinician = req.acknowledgedBy().trim();
+        String notes = req.readbackNotes().trim();
+        if (report.isCriticalAcknowledged()) {
+            if (responsibleClinician.equals(report.getAcknowledgedBy())
+                    && notes.equals(report.getReadbackNotes())
+                    && report.getAcknowledgedAt() != null) {
+                return report; // Exact replay preserves clinician and first acknowledgment timestamp.
+            }
+            throw new IllegalStateException("Previously acknowledged critical report cannot be reattributed or rewritten");
+        }
         report.setCriticalAcknowledged(true);
-        report.setAcknowledgedBy(req.acknowledgedBy().trim());
-        report.setReadbackNotes(req.readbackNotes().trim());
+        report.setAcknowledgedBy(responsibleClinician);
+        report.setReadbackNotes(notes);
         report.setAcknowledgedAt(Instant.now());
 
         RadiologyReportEntity saved = reportRepo.save(report);
