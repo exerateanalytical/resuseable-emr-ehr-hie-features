@@ -28,6 +28,7 @@
     <include file="classpath:db/changelog/mpi/002-mpi-fhir-demographics.xml"/>
     <include file="classpath:db/changelog/scheduling/001-scheduling.xml"/>
     <include file="classpath:db/changelog/emr/001-emr-clinical.xml"/>
+    <include file="classpath:db/changelog/emr/003-emr-news2-observation-context.xml"/>
     <!-- This EMR starter currently scans ward/referral entities; validation requires their tables.
          They must be split into an optional inpatient capability pack before strict isolation is claimed. -->
     <include file="classpath:db/changelog/emr/002-emr-ward-workflows.xml"/>
