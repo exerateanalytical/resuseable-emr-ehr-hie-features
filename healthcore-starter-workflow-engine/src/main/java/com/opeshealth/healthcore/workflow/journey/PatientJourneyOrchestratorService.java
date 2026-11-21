@@ -234,13 +234,32 @@ public class PatientJourneyOrchestratorService {
     public DepartmentOrderRoutingEntity routeSignedOrder(
             RouteSignedOrderCommand cmd, FacilityBillingPolicyConfig facilityConfig) {
         Objects.requireNonNull(cmd, "RouteSignedOrderCommand is required");
+        if (cmd.facilityId() == null || cmd.patientId() == null || cmd.encounterId() == null
+                || cmd.orderId() == null || cmd.targetDepartment() == null
+                || cmd.actorId() == null || cmd.actorId().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Facility, patient, encounter, signed order, target department and actor are required");
+        }
+        if (cmd.billedAmountMinor() < 0 || cmd.paidAmountMinor() < 0) {
+            throw new IllegalArgumentException("Order amounts cannot be negative");
+        }
         String idempKey = (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank())
                 ? cmd.idempotencyKey()
                 : "ROUTE-" + cmd.orderId() + "-" + cmd.targetDepartment().name();
 
-        Optional<DepartmentOrderRoutingEntity> existing = routingRepo.findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
+        Optional<DepartmentOrderRoutingEntity> existing =
+                routingRepo.findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
         if (existing.isPresent()) {
+            verifySameRouteIdentity(existing.get(), cmd);
             return existing.get();
+        }
+        // The domain maps one clinical order to a single department routing.
+        // Replaying the order with a new idempotency key must not create a second task.
+        Optional<DepartmentOrderRoutingEntity> previousOrder =
+                routingRepo.findByFacilityIdAndOrderId(cmd.facilityId(), cmd.orderId());
+        if (previousOrder.isPresent()) {
+            verifySameRouteIdentity(previousOrder.get(), cmd);
+            return previousOrder.get();
         }
 
         ServiceClearanceCategory cat = switch (cmd.targetDepartment()) {
@@ -319,6 +338,19 @@ public class PatientJourneyOrchestratorService {
         return saved;
     }
 
+    private static void verifySameRouteIdentity(
+            DepartmentOrderRoutingEntity previous, RouteSignedOrderCommand command) {
+        if (!Objects.equals(previous.getFacilityId(), command.facilityId())
+                || !Objects.equals(previous.getPatientId(), command.patientId())
+                || !Objects.equals(previous.getEncounterId(), command.encounterId())
+                || !Objects.equals(previous.getOrderId(), command.orderId())
+                || previous.getTargetDepartment() != command.targetDepartment()
+                || !Objects.equals(previous.getExternalPharmacyCode(), command.externalPharmacyCode())) {
+            throw new SecurityException(
+                    "Routing replay conflicts with the original patient, encounter, order or department");
+        }
+    }
+
     /**
      * Section 5 &amp; 10 — Idempotent payment confirmation releasing a financially held clinical order
      * without duplicating orders, routing tasks, or financial postings on event replay.
@@ -360,8 +392,16 @@ public class PatientJourneyOrchestratorService {
     public DepartmentOrderRoutingEntity markRoutedOrderCompleted(UUID facilityId, UUID orderId) {
         DepartmentOrderRoutingEntity routing = routingRepo.findByFacilityIdAndOrderId(facilityId, orderId)
                 .orElseThrow(() -> new NoSuchElementException("Order routing task not found for order " + orderId));
-        if (routing.getRoutingStatus() == OrderRoutingStatus.ROUTED_AWAITING_CLEARANCE) {
-            throw new IllegalStateException("Cannot fulfill order while financial hold is active: " + routing.getFinancialClearance());
+        if (routing.getRoutingStatus() == OrderRoutingStatus.COMPLETED) {
+            return routing; // Durable retry must preserve the first completion timestamp.
+        }
+        if (routing.getFinancialClearance() == null
+                || !routing.getFinancialClearance().permitsFulfillmentActivation()
+                || (routing.getRoutingStatus() != OrderRoutingStatus.ACTIVE_IN_DEPARTMENT
+                    && routing.getRoutingStatus() != OrderRoutingStatus.IN_PROGRESS)) {
+            throw new IllegalStateException(
+                    "Order cannot be completed in state " + routing.getRoutingStatus()
+                    + " with clearance " + routing.getFinancialClearance());
         }
         routing.setRoutingStatus(OrderRoutingStatus.COMPLETED);
         routing.setCompletedAt(Instant.now());
