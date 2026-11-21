@@ -339,8 +339,15 @@ public class QueueManagementService {
     public DepartmentQueueEntryEntity transitionOperationalStatus(
             UUID facilityId, UUID queueEntryId, QueueStatus targetStatus, String reason) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
-        if (targetStatus == null || targetStatus == QueueStatus.COMPLETED) {
-            throw new IllegalArgumentException("Use completeEntry for accountable work completion");
+        // This generic hold/skip path cannot bypass a financial gate, a worker
+        // claim, or the accountable completion method.
+        if (targetStatus == null
+                || targetStatus == QueueStatus.COMPLETED
+                || targetStatus == QueueStatus.IN_SERVICE
+                || targetStatus == QueueStatus.CALLED
+                || targetStatus == QueueStatus.READY) {
+            throw new IllegalArgumentException(
+                    "Use the dedicated clearance, call, claim and completion methods for active work");
         }
         if (entry.getQueueStatus() == QueueStatus.COMPLETED
                 || entry.getQueueStatus() == QueueStatus.CANCELLED) {
