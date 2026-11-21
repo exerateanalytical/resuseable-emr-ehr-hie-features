@@ -152,6 +152,18 @@ class QueueManagementServiceTest {
         DepartmentQueueEntryEntity replay = service.enqueue(facId, req, "cpoe");
 
         assertEquals(first.getId(), replay.getId(), "Event replay must never create duplicate queue entries");
+        // Reusing the key for a different patient's order must not leak or rebind it.
+        EnqueueRequest conflictingPatient = new EnqueueRequest(
+                "LABORATORY", UUID.randomUUID(), req.encounterId(), orderId, null, null,
+                QueuePriority.ROUTINE, "PAYMENT_PENDING", null, 90, "ORD-" + orderId);
+        assertThrows(SecurityException.class,
+                () -> service.enqueue(facId, conflictingPatient, "malicious-caller"));
+        EnqueueRequest conflictingOrder = new EnqueueRequest(
+                "LABORATORY", req.patientId(), req.encounterId(), UUID.randomUUID(), null, null,
+                QueuePriority.ROUTINE, "PAYMENT_PENDING", null, 90, "ORD-" + orderId);
+        assertThrows(SecurityException.class,
+                () -> service.enqueue(facId, conflictingOrder, "malicious-caller"));
+        assertEquals(1, entries.size());
         assertEquals(QueueStatus.WAITING, first.getQueueStatus());
         assertFalse(first.isEligibleForActivation());
         assertThrows(IllegalStateException.class, () -> service.claimTask(facId, first.getId(), "lab.tech"));
@@ -190,6 +202,8 @@ class QueueManagementServiceTest {
         assertNotNull(originalCompletedAt);
         assertSame(completed, service.completeEntry(facility, entry.getId(), "lab-tech"));
         assertEquals(originalCompletedAt, completed.getCompletedAt());
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "other-tech"));
         assertThrows(IllegalStateException.class,
                 () -> service.updateFinancialClearance(facility, entry.getId(), "PAID"));
     }
