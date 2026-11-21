@@ -1,0 +1,72 @@
+name: Standalone Diagnostic Laboratory — JDK 25 & PostgreSQL Verification
+
+on:
+  push:
+    branches:
+      - 'test/healthcore-diagnostic-lab-java25-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnostic-laboratory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-standalone-diagnostic-laboratory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout candidate
+      - uses: actions/setup-java@v4
+        name: Set up JDK 25
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Compile and unit-test LIS and diagnostic dependencies
+        run: >-
+          mvn -B -ntp
+          -pl healthcore-bom,healthcore-starter-lis-diagnostics,healthcore-starter-diagnostics-core
+          -am clean install -DskipITs=true
+
+      - name: Test actual standalone laboratory app with PostgreSQL 16
+        run: >-
+          mvn -B -ntp
+          -f examples/diagnostic-laboratory/pom.xml
+          clean verify -DskipITs=false
+
+      - name: Fail closed without real independent workflow integration test evidence
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import sys
+          reports = list(Path('examples/diagnostic-laboratory/target/failsafe-reports').glob('TEST-*IndependentWorkflowIT.xml'))
+          if not reports:
+              sys.exit('No independent PostgreSQL laboratory Failsafe XML available')
+          tests = failures = errors = skipped = 0
+          for p in reports:
+              root = ET.parse(p).getroot()
+              tests += int(root.get('tests', '0'))
+              failures += int(root.get('failures', '0'))
+              errors += int(root.get('errors', '0'))
+              skipped += int(root.get('skipped', '0'))
+          print(f'Diagnostic laboratory tests={tests}, failures={failures}, errors={errors}, skipped={skipped}')
+          if tests < 2 or failures or errors or skipped:
+              sys.exit('Rejecting incomplete or failed independent laboratory integration evidence')
+          PY
+      - name: Upload JDK25 Surefire/Failsafe reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-lab-postgres-evidence
+          path: |
+            '**/target/surefire-reports/TEST-*.xml'
+            '**/target/failsafe-reports/TEST-*.xml'
+          if-no-files-found: warn
