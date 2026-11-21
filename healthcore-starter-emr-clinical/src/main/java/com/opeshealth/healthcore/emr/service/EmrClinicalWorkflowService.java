@@ -188,6 +188,11 @@ public class EmrClinicalWorkflowService {
 
     @Transactional
     public AppointmentEntity bookAppointment(AppointmentEntity appt) {
+        Objects.requireNonNull(appt, "Appointment required");
+        assertActiveFacility(appt.getFacilityId());
+        if (appt.getPatientId() == null) {
+            throw new IllegalArgumentException("Appointment patient identity required");
+        }
         if (appt.getStatus() == null || appt.getStatus().isBlank()) {
             appt.setStatus("REQUESTED");
         }
@@ -199,6 +204,7 @@ public class EmrClinicalWorkflowService {
     public AppointmentEntity transitionAppointment(UUID appointmentId, String nextStatus) {
         AppointmentEntity appt = appointmentRepo.findById(appointmentId)
                 .orElseThrow(() -> new NoSuchElementException("Appointment not found: " + appointmentId));
+        assertActiveFacility(appt.getFacilityId());
         String current = appt.getStatus().toUpperCase(Locale.ROOT);
         String target = nextStatus.toUpperCase(Locale.ROOT);
         Set<String> allowed = APPOINTMENT_TRANSITIONS.getOrDefault(current, Set.of());
@@ -207,6 +213,14 @@ public class EmrClinicalWorkflowService {
         }
         appt.setStatus(target);
         return appointmentRepo.save(appt);
+    }
+
+    private void assertActiveFacility(UUID facilityId) {
+        UUID authenticatedFacility = FacilityContext.getFacilityId()
+                .orElseThrow(() -> new SecurityException("Authenticated facility context required"));
+        if (facilityId == null || !authenticatedFacility.equals(facilityId)) {
+            throw new SecurityException("Cross-facility clinical operation denied");
+        }
     }
 
     /** Enforces the authenticated facility and patient link for encounter-scoped clinical actions. */
@@ -349,6 +363,11 @@ public class EmrClinicalWorkflowService {
     public Map<String, Object> placeOrderWithLoadedPatientContext(CpoeOrderRequest request) {
         Objects.requireNonNull(request, "CpoeOrderRequest is required");
         ClinicalOrderEntity order = Objects.requireNonNull(request.order(), "ClinicalOrderEntity is required");
+        assertActiveFacility(order.getFacilityId());
+        if (order.getPatientId() == null || order.getEncounterId() == null) {
+            throw new IllegalArgumentException("Clinical order must identify the patient and encounter");
+        }
+        requireEncounterInActiveFacility(order.getEncounterId(), order.getPatientId());
 
         boolean isMedication = "MEDICATION".equalsIgnoreCase(order.getOrderCategory());
         boolean allergyProfileProvided = request.allergyCodes() != null && !request.allergyCodes().isEmpty();
@@ -419,6 +438,14 @@ public class EmrClinicalWorkflowService {
             BigDecimal patientWeightKg,
             BigDecimal patientEgfr) {
 
+        Objects.requireNonNull(order, "Clinical order required");
+        assertActiveFacility(order.getFacilityId());
+        if (order.getPatientId() == null || order.getEncounterId() == null) {
+            throw new IllegalArgumentException("Clinical order patient and encounter are mandatory");
+        }
+        // Validate the persisted encounter and patient together. A valid JWT facility alone
+        // must not permit attaching prescriptions to another patient's visit.
+        requireEncounterInActiveFacility(order.getEncounterId(), order.getPatientId());
         enforceActivePractitionerLicense(order.getFacilityId(), order.getOrderedBy());
 
         List<CdsHooksEngine.CdsCard> cards = cdsHooksEngine.evaluateOrderSafety(
@@ -445,8 +472,13 @@ public class EmrClinicalWorkflowService {
     @Transactional
     @ClinicalAudit(action = "EMR_ADMIT_INPATIENT", resourceType = "Admission")
     public AdmissionEntity admitPatient(UUID facilityId, UUID encounterId, UUID patientId, UUID wardBedId) {
+        assertActiveFacility(facilityId);
+        requireEncounterInActiveFacility(encounterId, patientId);
         WardBedEntity bed = bedRepo.findById(wardBedId)
                 .orElseThrow(() -> new NoSuchElementException("Ward bed not found: " + wardBedId));
+        if (!facilityId.equals(bed.getFacilityId())) {
+            throw new SecurityException("Bed belongs to a different facility");
+        }
         if (bed.isOccupied()) {
             throw new IllegalStateException("Ward bed " + bed.getBedNumber() + " is already occupied");
         }
@@ -470,19 +502,27 @@ public class EmrClinicalWorkflowService {
     public AdmissionEntity transferBed(UUID admissionId, UUID newWardBedId) {
         AdmissionEntity adm = admissionRepo.findById(admissionId)
                 .orElseThrow(() -> new NoSuchElementException("Admission not found: " + admissionId));
+        assertActiveFacility(adm.getFacilityId());
         if (adm.getDischargedAt() != null) {
             throw new IllegalStateException("Cannot transfer bed for an already discharged admission");
         }
         WardBedEntity targetBed = bedRepo.findById(newWardBedId)
                 .orElseThrow(() -> new NoSuchElementException("Target bed not found: " + newWardBedId));
+        if (!adm.getFacilityId().equals(targetBed.getFacilityId())) {
+            throw new SecurityException("Target bed belongs to a different facility");
+        }
         if (targetBed.isOccupied()) {
             throw new IllegalStateException("Target ward bed " + targetBed.getBedNumber() + " is already occupied");
         }
-        bedRepo.findById(adm.getWardBedId()).ifPresent(oldBed -> {
-            oldBed.setOccupied(false);
-            oldBed.setActiveAdmissionId(null);
-            bedRepo.save(oldBed);
-        });
+        WardBedEntity oldBed = bedRepo.findById(adm.getWardBedId())
+                .orElseThrow(() -> new IllegalStateException("Existing admission bed not found"));
+        if (!adm.getFacilityId().equals(oldBed.getFacilityId())
+                || !adm.getId().equals(oldBed.getActiveAdmissionId())) {
+            throw new SecurityException("Existing bed ownership does not match active admission");
+        }
+        oldBed.setOccupied(false);
+        oldBed.setActiveAdmissionId(null);
+        bedRepo.save(oldBed);
         targetBed.setOccupied(true);
         targetBed.setActiveAdmissionId(adm.getId());
         bedRepo.save(targetBed);
@@ -548,11 +588,7 @@ public class EmrClinicalWorkflowService {
                 .orElseThrow(() -> new NoSuchElementException(
                         "5-Rights Check FAILED: Medication order not found: " + mar.getOrderId()));
 
-        UUID activeFacility = FacilityContext.getFacilityId().orElse(null);
-        if (activeFacility != null && !activeFacility.equals(order.getFacilityId())) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "5-Rights Check FAILED: Medication order belongs to a different facility tenant");
-        }
+        assertActiveFacility(order.getFacilityId());
         if (!"MEDICATION".equalsIgnoreCase(order.getOrderCategory())) {
             throw new IllegalStateException("5-Rights Check FAILED: Referenced order is not a MEDICATION order");
         }
@@ -598,15 +634,19 @@ public class EmrClinicalWorkflowService {
                 && mar.getAdministeredAt().isBefore(order.getOrderedAt())) {
             throw new IllegalStateException("5-Rights Check FAILED (Right Time): Administration timestamp precedes order creation");
         }
-        if (admissionRepo != null) {
-            admissionRepo.findById(mar.getAdmissionId()).ifPresent(adm -> {
-                if (!adm.getPatientId().equals(mar.getPatientId())) {
-                    throw new SecurityException("5-Rights Check FAILED (Right Patient): Admission belongs to a different patient");
-                }
-                if (adm.getDischargedAt() != null) {
-                    throw new IllegalStateException("5-Rights Check FAILED (Right Time): Cannot administer inpatient eMAR after discharge");
-                }
-            });
+        // A missing or foreign admission must never be treated as a successful 5-Rights check.
+        AdmissionEntity admission = admissionRepo.findById(mar.getAdmissionId())
+                .orElseThrow(() -> new SecurityException(
+                        "5-Rights Check FAILED: Active inpatient admission is required"));
+        assertActiveFacility(admission.getFacilityId());
+        if (!mar.getPatientId().equals(admission.getPatientId())
+                || !order.getEncounterId().equals(admission.getEncounterId())) {
+            throw new SecurityException(
+                    "5-Rights Check FAILED (Right Patient): Order, encounter and admission do not match");
+        }
+        if (admission.getDischargedAt() != null) {
+            throw new IllegalStateException(
+                    "5-Rights Check FAILED (Right Time): Cannot administer medication after discharge");
         }
 
         return emarRepo.save(mar);
@@ -700,6 +740,8 @@ public class EmrClinicalWorkflowService {
     public SpecialtyRecordEntity recordSpecialtyExam(
             UUID facilityId, UUID encounterId, UUID patientId, String specialtyCode,
             Map<String, Object> payload, String recordedBy) {
+        assertActiveFacility(facilityId);
+        requireEncounterInActiveFacility(encounterId, patientId);
         SpecialtyPackSpi pack = specialtyPacks.get(specialtyCode.toUpperCase(Locale.ROOT));
         if (pack == null) {
             throw new IllegalArgumentException("Unsupported specialty pack: " + specialtyCode);
@@ -724,7 +766,7 @@ public class EmrClinicalWorkflowService {
                 ? workforceCredentialProvider.getIfAvailable()
                 : null;
         if (spi == null) {
-            return;
+            throw new SecurityException("Clinical signing/prescribing requires a configured practitioner credential verifier");
         }
         if (facilityId == null || practitionerId == null || practitionerId.isBlank()) {
             throw new SecurityException(
@@ -755,8 +797,13 @@ public class EmrClinicalWorkflowService {
      * and ACVPU consciousness level (C/V/P/U = +3).
      */
     public int computeNews2(VitalSignsEntity v, boolean supplementalOxygen, String consciousnessAcvpu) {
-        if (v == null) {
-            return 0;
+        if (v == null || v.getRespRatePerMin() == null || v.getSpo2Percent() == null
+                || v.getSystolicBp() == null || v.getHeartRateBpm() == null
+                || v.getTempCelsius() == null) {
+            throw new IllegalArgumentException("NEWS2 cannot be scored without all core measured vital signs");
+        }
+        if (consciousnessAcvpu == null || consciousnessAcvpu.isBlank()) {
+            throw new IllegalArgumentException("NEWS2 requires documented ACVPU consciousness status");
         }
         int score = 0;
 

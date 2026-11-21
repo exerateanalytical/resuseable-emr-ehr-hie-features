@@ -22,7 +22,7 @@ mvn -B -ntp -f examples/outpatient-emr/pom.xml clean verify -DskipITs=false
 
 The `WorkflowSmokeTest` checks **classpath presence only**. The new `IndependentWorkflowIT` requires an actual database, migrations, domain services, and fresh JDBC connection assertions. The test supplies a fail-closed JWT decoder and a synthetic licensed-practitioner fixture for domain verification. It **does not authenticate a real patient or clinician via HTTP**, which remains a mandatory independent security gate.
 
-The active facility is derived from verified authentication context in production. An arbitrary `X-Facility-Id` header is not authorization. The refactored encounter service rejects mismatches between caller facility, encounter, and patient for creation, triage, vitals and note-signing.
+The active facility is derived from verified authentication context in production. An arbitrary `X-Facility-Id` header is not authorization. The refactored clinical service rejects mismatches on encounter/triage/vitals/note-signing **and** facility-scopes appointments, orders, admissions, eMAR and specialty records. A practitioner credential verifier is now mandatory for signed clinical actions; missing verifier configuration **fails closed** instead of silently allowing prescribing. Not every legacy clinical method has yet been audited (including nursing handover/referral paths); no global tenant-isolation certification is claimed.
 
 ## Current clinical flow
 
