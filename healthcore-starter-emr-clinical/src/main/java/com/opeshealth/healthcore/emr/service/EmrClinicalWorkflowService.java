@@ -48,13 +48,13 @@ public class EmrClinicalWorkflowService {
     public interface AppointmentRepository extends JpaRepository<AppointmentEntity, UUID> {
         List<AppointmentEntity> findByFacilityIdAndScheduledStartBetween(UUID facilityId, Instant from, Instant to);
         @Modifying
-        @Query("UPDATE AppointmentEntity a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
+        @Query("UPDATE EmrAppointment a SET a.patientId = :survivorId WHERE a.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface EncounterRepository extends JpaRepository<EncounterEntity, UUID> {
         List<EncounterEntity> findByPatientIdOrderByStartedAtDesc(UUID patientId);
         @Modifying
-        @Query("UPDATE EncounterEntity e SET e.patientId = :survivorId WHERE e.patientId = :sourceId")
+        @Query("UPDATE EmrEncounter e SET e.patientId = :survivorId WHERE e.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface TriageRepository extends JpaRepository<TriageAssessmentEntity, UUID> {}
@@ -66,7 +66,7 @@ public class EmrClinicalWorkflowService {
         List<ClinicalOrderEntity> findByFacilityIdAndPatientIdAndOrderCategoryAndStatus(
                 UUID facilityId, UUID patientId, String orderCategory, String status);
         @Modifying
-        @Query("UPDATE ClinicalOrderEntity o SET o.patientId = :survivorId WHERE o.patientId = :sourceId")
+        @Query("UPDATE EmrClinicalOrder o SET o.patientId = :survivorId WHERE o.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
 
@@ -84,7 +84,7 @@ public class EmrClinicalWorkflowService {
     public interface EmarRepository extends JpaRepository<EmarAdministrationEntity, UUID> {}
     public interface CarePlanRepository extends JpaRepository<CarePlanEntity, UUID> {
         @Modifying
-        @Query("UPDATE CarePlanEntity c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
+        @Query("UPDATE EmrCarePlan c SET c.patientId = :survivorId WHERE c.patientId = :sourceId")
         int relinkPatient(@Param("sourceId") UUID sourceId, @Param("survivorId") UUID survivorId);
     }
     public interface SpecialtyRecordRepository extends JpaRepository<SpecialtyRecordEntity, UUID> {}
