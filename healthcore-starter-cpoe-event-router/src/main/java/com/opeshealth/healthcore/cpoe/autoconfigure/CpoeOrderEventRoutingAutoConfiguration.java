@@ -13,7 +13,7 @@ import com.opeshealth.healthcore.workflow.journey.PatientJourneyEntities.OrderTa
 import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService;
 import com.opeshealth.healthcore.workflow.journey.PatientJourneyOrchestratorService.RouteSignedOrderCommand;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.event.EventListener;
@@ -27,7 +27,10 @@ import java.util.UUID;
 /**
  * Opt-in and fail-closed bridge from the *persisted* EMR CPOE outbox into
  * departmental order routing. No financial or clinical attestations are fabricated:
- * the host application MUST configure a real clinical signature/payer policy SPI.
+ * the host application MUST explicitly set healthcore.cpoe-routing.enabled=true
+ * AND configure a real clinical signature/payer policy SPI. When enabled without
+ * the SPI, the Spring bean dependency cannot resolve and application startup fails
+ * rather than silently consuming or bypassing clinical orders.
  */
 @AutoConfiguration(after = {EmrClinicalAutoConfiguration.class, WorkflowEngineAutoConfiguration.class, JourneyQueueBridgeAutoConfiguration.class})
 public class CpoeOrderEventRoutingAutoConfiguration {
@@ -60,7 +63,7 @@ public class CpoeOrderEventRoutingAutoConfiguration {
     ) {}
 
     @Bean
-    @ConditionalOnBean(ClinicalOrderRoutingAuthorizationSpi.class)
+    @ConditionalOnProperty(prefix = "healthcore.cpoe-routing", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(CpoeOrderEventListener.class)
     public CpoeOrderEventListener healthCoreCpoeOrderEventListener(
             ClinicalOrderRepository orders,
