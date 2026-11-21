@@ -9,6 +9,11 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -34,7 +39,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("workflow-it")
 @Testcontainers
 @SpringBootTest(classes = DiagnosticLaboratoryApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.NONE)
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Import(IndependentWorkflowIT.RejectAllJwtDecoderTestConfig.class)
 class IndependentWorkflowIT {
 
     @Container
@@ -48,6 +54,19 @@ class IndependentWorkflowIT {
         props.add("spring.datasource.password", POSTGRES::getPassword);
         props.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         props.add("spring.liquibase.enabled", () -> "true");
+    }
+
+    /**
+     * This isolated domain-integration test does not authenticate any HTTP request.
+     * A fail-closed decoder keeps the OAuth2 security chain bootable without
+     * external OIDC connectivity; separate actual-JWT HTTP tests remain required.
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class RejectAllJwtDecoderTestConfig {
+        @Bean
+        JwtDecoder testJwtDecoder() {
+            return token -> { throw new JwtException("No JWTs accepted by this domain-only integration test"); };
+        }
     }
 
     @Autowired
