@@ -25,13 +25,5 @@ jobs:
           cache: maven
       - name: Check Java, Maven and Docker
         run: java -version && mvn -version && docker info
-      - name: Compile and install reusable SDK packages
-        run: mvn -B -ntp -fae -DskipTests install
-      - name: Execute all eleven independent consumer integration suites
-        run: |
-          set -euo pipefail
-          for app in standalone-pharmacy diagnostic-laboratory radiology-center pharma-manufacturing life-sciences-lims biobank clinical-research outpatient-emr longitudinal-ehr hospital-his regional-hie; do
-            echo "::group::Validate $app"
-            mvn -B -ntp -f "examples/$app/pom.xml" verify -DskipITs=false
-            echo "::endgroup::"
-          done
+      - name: Verify executed, non-skipped IndependentWorkflowIT suites for all eleven consumers
+        run: bash scripts/run_standalone_workflow_verification.sh
