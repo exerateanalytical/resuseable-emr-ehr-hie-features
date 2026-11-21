@@ -142,9 +142,11 @@ public class DiagnosticsCoreService {
         this.criticalRepo = criticalRepo;
         this.amendmentRepo = amendmentRepo;
         this.incidentRepo = incidentRepo;
+        // Fail closed unless a laboratory/specialty adapter explicitly supplies a
+        // validated QC-release policy. A mere non-rejected order is NOT QC evidence.
         this.qcPolicySpi = qcPolicyProvider != null
-                ? qcPolicyProvider.getIfAvailable(() -> order -> !"REJECTED_RECOLLECT".equals(order.getStatus()))
-                : order -> !"REJECTED_RECOLLECT".equals(order.getStatus());
+                ? qcPolicyProvider.getIfAvailable(() -> order -> false)
+                : order -> false;
         this.criticalSpi = criticalSpiProvider != null
                 ? criticalSpiProvider.getIfAvailable(() -> DiagnosticsCoreService::defaultCriticalCheck)
                 : DiagnosticsCoreService::defaultCriticalCheck;
