@@ -287,6 +287,24 @@ class EmrClinicalSafetyTest {
         verify(orderRepo, never()).save(any());
     }
 
+    @Test
+    void news2FailsClosedWhenCoreVitalsOrConsciousnessAreMissing() {
+        VitalSignsEntity incomplete = new VitalSignsEntity();
+        incomplete.setHeartRateBpm(70);
+        assertThrows(IllegalArgumentException.class, () -> service.computeNews2(incomplete));
+        assertThrows(IllegalArgumentException.class, () -> service.computeNews2(null));
+
+        VitalSignsEntity otherwiseComplete = new VitalSignsEntity();
+        otherwiseComplete.setHeartRateBpm(70);
+        otherwiseComplete.setRespRatePerMin(16);
+        otherwiseComplete.setSpo2Percent(98);
+        otherwiseComplete.setSystolicBp(120);
+        otherwiseComplete.setTempCelsius(BigDecimal.valueOf(37));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.computeNews2(otherwiseComplete, false, null));
+        assertEquals(0, service.computeNews2(otherwiseComplete, false, "A"));
+    }
+
     private ClinicalOrderEntity buildMedicationOrder(String code, String dosage, String orderedBy) {
         ClinicalOrderEntity order = new ClinicalOrderEntity();
         order.setFacilityId(facilityId);
