@@ -20,7 +20,11 @@ if ! gh --version >/dev/null 2>&1; then
   exit 2
 fi
 if [[ -z "${GH_TOKEN:-}" ]]; then
-  echo "Missing COPILOT_ASSIGN_TOKEN. Enable Copilot cloud agent and configure a GitHub user-to-server token as an Actions secret. Never paste tokens into issues." >&2
+  echo "GitHub read token is unavailable." >&2
+  exit 2
+fi
+if [[ "$dry_run" == "false" && "${USER_TOKEN_CONFIGURED:-false}" != "true" ]]; then
+  echo "Real agent dispatch requires a configured COPILOT_ASSIGN_TOKEN user-to-server secret. Default GITHUB_TOKEN is insufficient." >&2
   exit 2
 fi
 if ! gh api --method GET "repos/$repo/branches/$base" --jq '.name' >/dev/null; then

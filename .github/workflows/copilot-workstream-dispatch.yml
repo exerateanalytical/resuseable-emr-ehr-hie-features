@@ -16,13 +16,15 @@ on:
 
 permissions:
   contents: read
+  issues: read
 
 jobs:
   assign:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+      GH_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN || github.token }}
+      USER_TOKEN_CONFIGURED: ${{ secrets.COPILOT_ASSIGN_TOKEN != '' }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       TARGET_BRANCH: fix/healthcore-java25-full-verification-20261120
       DRY_RUN: ${{ inputs.dry_run }}
