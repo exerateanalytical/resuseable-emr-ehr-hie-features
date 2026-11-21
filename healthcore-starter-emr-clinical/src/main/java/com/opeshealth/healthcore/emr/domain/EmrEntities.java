@@ -134,6 +134,9 @@ public final class EmrEntities {
         @Column(name = "spo2_percent") private Integer spo2Percent;
         @Column(name = "weight_kg", precision = 6, scale = 2) private BigDecimal weightKg;
         @Column(name = "height_cm", precision = 6, scale = 2) private BigDecimal heightCm;
+        // Null distinguishes unknown oxygen therapy/mental status from deliberately recorded room air / alert.
+        @Column(name = "supplemental_oxygen") private Boolean supplementalOxygen;
+        @Column(name = "consciousness_acvpu", length = 12) private String consciousnessAcvpu;
         @Column(name = "news2_score") private Integer news2Score;
         @Column(name = "recorded_at", nullable = false) private Instant recordedAt = Instant.now();
 
@@ -158,6 +161,10 @@ public final class EmrEntities {
         public void setWeightKg(BigDecimal weightKg) { this.weightKg = weightKg; }
         public BigDecimal getHeightCm() { return heightCm; }
         public void setHeightCm(BigDecimal heightCm) { this.heightCm = heightCm; }
+        public Boolean getSupplementalOxygen() { return supplementalOxygen; }
+        public void setSupplementalOxygen(Boolean supplementalOxygen) { this.supplementalOxygen = supplementalOxygen; }
+        public String getConsciousnessAcvpu() { return consciousnessAcvpu; }
+        public void setConsciousnessAcvpu(String consciousnessAcvpu) { this.consciousnessAcvpu = consciousnessAcvpu; }
         public Integer getNews2Score() { return news2Score; }
         public void setNews2Score(Integer news2Score) { this.news2Score = news2Score; }
         public Instant getRecordedAt() { return recordedAt; }
