@@ -119,6 +119,15 @@ class AutomaticRoutingJourneyTest {
 
         assertThrows(IllegalStateException.class,
                 () -> journey.markRoutedOrderCompleted(facility, orderId));
+        assertThrows(IllegalArgumentException.class,
+                () -> journey.confirmPaymentAndReleaseOrder(
+                        facility, orderId, PaymentClearanceOutcome.PAYMENT_PENDING,
+                        "PENDING-IS-NOT-PAID", "cashier"));
+        assertThrows(IllegalArgumentException.class,
+                () -> journey.confirmPaymentAndReleaseOrder(
+                        facility, orderId, PaymentClearanceOutcome.REJECTED_OR_EXPIRED,
+                        "REJECTED-IS-NOT-PAID", "cashier"));
+        assertEquals(QueueStatus.WAITING, queue.getQueueStatus());
 
         DepartmentOrderRoutingEntity released = journey.confirmPaymentAndReleaseOrder(
                 facility, orderId, PaymentClearanceOutcome.PAID, "PAID-RECEIPT-1", "cashier");
