@@ -102,6 +102,8 @@ class IndependentWorkflowIT {
         measurements.setSystolicBp(120);
         measurements.setHeartRateBpm(72);
         measurements.setTempCelsius(new BigDecimal("37.0"));
+        measurements.setSupplementalOxygen(false); // Observed room air, not a default.
+        measurements.setConsciousnessAcvpu("A"); // Consciousness assessed and recorded.
         Map<String, Object> vitalsRecorded = clinical.recordVitalsAndCheckPanic(measurements);
         assertEquals(Boolean.TRUE, vitalsRecorded.get("news2Complete"));
         assertEquals(0, ((VitalSignsEntity) vitalsRecorded.get("vitals")).getNews2Score());
@@ -182,6 +184,23 @@ class IndependentWorkflowIT {
         List<CdsHooksEngine.CdsCard> alerts = (List<CdsHooksEngine.CdsCard>) result.get("cdssCards");
         assertTrue(alerts.stream().anyMatch(a -> "NEWS2_INCOMPLETE_VITALS".equals(a.uuid())));
         assertNull(readNews2Score(incomplete.getId()));
+
+        // Five normal physiology measurements are still insufficient without
+        // a documented oxygen requirement and ACVPU status.
+        VitalSignsEntity missingContext = new VitalSignsEntity();
+        missingContext.setEncounterId(encounter.getId());
+        missingContext.setPatientId(patient);
+        missingContext.setRespRatePerMin(16);
+        missingContext.setSpo2Percent(98);
+        missingContext.setSystolicBp(120);
+        missingContext.setHeartRateBpm(72);
+        missingContext.setTempCelsius(new BigDecimal("37.0"));
+        assertEquals(Boolean.FALSE, clinical.recordVitalsAndCheckPanic(missingContext).get("news2Complete"));
+        assertNull(readNews2Score(missingContext.getId()));
+        missingContext.setSupplementalOxygen(false);
+        missingContext.setConsciousnessAcvpu("A");
+        assertEquals(Boolean.TRUE, clinical.recordVitalsAndCheckPanic(missingContext).get("news2Complete"));
+        assertEquals(0, readNews2Score(missingContext.getId()));
 
         ClinicalNoteRevisionEntity deniedNote = new ClinicalNoteRevisionEntity();
         deniedNote.setEncounterId(encounter.getId());
