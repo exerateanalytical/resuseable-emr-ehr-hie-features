@@ -209,9 +209,34 @@ public class EmrClinicalWorkflowService {
         return appointmentRepo.save(appt);
     }
 
+    /** Enforces the authenticated facility and patient link for encounter-scoped clinical actions. */
+    private EncounterEntity requireEncounterInActiveFacility(UUID encounterId, UUID patientId) {
+        UUID activeFacility = FacilityContext.getFacilityId()
+                .orElseThrow(() -> new SecurityException("Authenticated facility context required"));
+        if (encounterId == null || patientId == null) {
+            throw new IllegalArgumentException("Encounter and patient identifiers are required");
+        }
+        EncounterEntity encounter = encounterRepo.findById(encounterId)
+                .orElseThrow(() -> new SecurityException("Encounter not accessible in active facility"));
+        if (!activeFacility.equals(encounter.getFacilityId())
+                || !patientId.equals(encounter.getPatientId())) {
+            throw new SecurityException("Encounter, patient and authenticated facility must match");
+        }
+        return encounter;
+    }
+
     @Transactional
     @ClinicalAudit(action = "EMR_START_ENCOUNTER", resourceType = "Encounter")
     public EncounterEntity startEncounter(UUID facilityId, UUID patientId, String encounterClass, String department) {
+        UUID activeFacility = FacilityContext.getFacilityId()
+                .orElseThrow(() -> new SecurityException("Authenticated facility context required"));
+        if (facilityId == null || !facilityId.equals(activeFacility)) {
+            throw new SecurityException("Cannot register an encounter in another facility");
+        }
+        if (patientId == null || encounterClass == null || encounterClass.isBlank()
+                || department == null || department.isBlank()) {
+            throw new IllegalArgumentException("Patient, encounter class and department are required");
+        }
         EncounterEntity enc = new EncounterEntity();
         enc.setFacilityId(facilityId);
         enc.setPatientId(patientId);
@@ -223,41 +248,74 @@ public class EmrClinicalWorkflowService {
 
     @Transactional
     public TriageAssessmentEntity recordTriage(TriageAssessmentEntity triage) {
+        Objects.requireNonNull(triage, "Triage record required");
         if (triage.getEsiLevel() < 1 || triage.getEsiLevel() > 5) {
             throw new IllegalArgumentException("ESI triage level must be between 1 (Resuscitation) and 5 (Non-urgent)");
+        }
+        if (triage.getChiefComplaint() == null || triage.getChiefComplaint().isBlank()
+                || triage.getTriagedBy() == null || triage.getTriagedBy().isBlank()) {
+            throw new IllegalArgumentException("Triage complaint and accountable clinician are required");
+        }
+        UUID activeFacility = FacilityContext.getFacilityId()
+                .orElseThrow(() -> new SecurityException("Authenticated facility context required"));
+        EncounterEntity encounter = encounterRepo.findById(triage.getEncounterId())
+                .orElseThrow(() -> new SecurityException("Triage encounter inaccessible"));
+        if (!activeFacility.equals(encounter.getFacilityId())) {
+            throw new SecurityException("Cannot triage an encounter in another facility");
         }
         return triageRepo.save(triage);
     }
 
     @Transactional
     public Map<String, Object> recordVitalsAndCheckPanic(VitalSignsEntity vitals) {
-        int news2 = computeNews2(vitals);
-        vitals.setNews2Score(news2);
+        Objects.requireNonNull(vitals, "Vital signs record required");
+        requireEncounterInActiveFacility(vitals.getEncounterId(), vitals.getPatientId());
+        boolean news2Complete = vitals.getTempCelsius() != null
+                && vitals.getHeartRateBpm() != null && vitals.getRespRatePerMin() != null
+                && vitals.getSystolicBp() != null && vitals.getSpo2Percent() != null;
+        // Do not persist an apparently normal NEWS2 score when essential measurements are missing.
+        vitals.setNews2Score(news2Complete ? computeNews2(vitals) : null);
         VitalSignsEntity saved = vitalsRepo.save(vitals);
-        List<CdsHooksEngine.CdsCard> alerts = cdsHooksEngine.evaluateVitalsAndLabPanic(
+        List<CdsHooksEngine.CdsCard> alerts = new ArrayList<>(cdsHooksEngine.evaluateVitalsAndLabPanic(
                 new CdsHooksEngine.VitalsPanicRequest(
                         vitals.getTempCelsius(), vitals.getHeartRateBpm(), vitals.getRespRatePerMin(),
-                        vitals.getSystolicBp(), vitals.getSpo2Percent(), null, null));
-        return Map.of("vitals", saved, "cdssCards", alerts);
+                        vitals.getSystolicBp(), vitals.getSpo2Percent(), null, null)));
+        if (!news2Complete) {
+            alerts.add(new CdsHooksEngine.CdsCard("NEWS2_INCOMPLETE_VITALS",
+                    "NEWS2 cannot be calculated from incomplete observations",
+                    "Missing respiratory rate, oxygen saturation, blood pressure, pulse or temperature; "
+                            + "assess the patient clinically and complete the observations.",
+                    "warning", "Opes HealthCore Clinical Safety",
+                    List.of("Complete observations and reassess acuity"), false));
+        }
+        return Map.of("vitals", saved, "cdssCards", List.copyOf(alerts), "news2Complete", news2Complete);
     }
 
     @Transactional
     @ClinicalAudit(action = "EMR_SIGN_NOTE", resourceType = "ClinicalNote")
     public ClinicalNoteRevisionEntity signOrAmendNote(ClinicalNoteRevisionEntity note, boolean signNow) {
-        if (signNow) {
-            UUID facId = encounterRepo.findById(note.getEncounterId())
-                    .map(EncounterEntity::getFacilityId)
-                    .or(FacilityContext::getFacilityId)
-                    .orElse(null);
-            enforceActivePractitionerLicense(facId, note.getAuthorId());
+        Objects.requireNonNull(note, "Clinical note required");
+        EncounterEntity encounter = requireEncounterInActiveFacility(note.getEncounterId(), note.getPatientId());
+        if (note.getAuthorId() == null || note.getAuthorId().isBlank()
+                || note.getNoteType() == null || note.getNoteType().isBlank()) {
+            throw new IllegalArgumentException("Clinical note type and author are required");
+        }
+        if (noteRepo.findById(note.getId()).filter(existing -> "SIGNED".equals(existing.getStatus())).isPresent()) {
+            throw new IllegalStateException("Signed clinical notes cannot be overwritten; create a linked addendum");
         }
         if (note.getParentNoteId() != null) {
             ClinicalNoteRevisionEntity parent = noteRepo.findById(note.getParentNoteId())
                     .orElseThrow(() -> new NoSuchElementException("Parent note not found"));
+            if (!parent.getEncounterId().equals(note.getEncounterId())
+                    || !parent.getPatientId().equals(note.getPatientId())
+                    || !"SIGNED".equals(parent.getStatus())) {
+                throw new SecurityException("Addendum must reference a signed note in the same encounter");
+            }
             note.setRevisionNumber(parent.getRevisionNumber() + 1);
             note.setNoteType("ADDENDUM");
         }
         if (signNow) {
+            enforceActivePractitionerLicense(encounter.getFacilityId(), note.getAuthorId());
             note.setStatus("SIGNED");
             note.setSignedAt(Instant.now());
         }
