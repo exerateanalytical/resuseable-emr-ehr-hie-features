@@ -32,7 +32,10 @@ import java.util.UUID;
  * rolls both back. An external pharmacy is intentionally never queued as an
  * internal hospital dispensary task.
  */
-@AutoConfiguration(after = {QueueManagementAutoConfiguration.class, WorkflowEngineAutoConfiguration.class})
+// The adapter must be registered BEFORE WorkflowEngineAutoConfiguration eagerly
+// resolves its optional OrderRoutingQueueProvisioningSpi; otherwise that service
+// starts with a null bridge and automatic worklist creation never happens.
+@AutoConfiguration(after = QueueManagementAutoConfiguration.class, before = WorkflowEngineAutoConfiguration.class)
 public class JourneyQueueBridgeAutoConfiguration {
 
     @Bean
