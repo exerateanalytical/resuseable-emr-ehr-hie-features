@@ -45,7 +45,7 @@ Persisted in `hc_durable_notifications` (`DurableNotificationEntity`) with `UNIQ
 
 ### Provider submission and emergency-override safeguards
 
-- **Stable idempotency required:** A notification request must identify its facility, patient, encounter, template and caller-supplied stable idempotency key. The engine does not fabricate random keys for clinical notification retries.
+- **Stable idempotency required:** A notification request must identify its facility, patient, encounter, template and caller-supplied stable idempotency key. The engine does not fabricate random keys for clinical notification retries. Reusing the same key with a different patient, encounter, template, delivery channel, recipient or emergency purpose is rejected as an identity/purpose conflict.
 - **Emergency privacy:** The `emergencyOverride` flag can only accompany `CRITICAL_FOLLOWUP`. It may bypass routine opt-out suppression for urgent follow-up, but **never authorizes sending raw diagnosis details**. Real legal basis, opt-out governance and emergency-use audit still need site-specific approval.
 - **Submission evidence:** A provider adapter must return an accepted result and a nonblank provider submission receipt before the state becomes `SUBMITTED_TO_PROVIDER`. A null response, missing receipt, rejected submission or thrown provider exception leaves the request in `RETRYING`. Provider exception details are never stored verbatim because they may contain PHI.
 - **Delivery receipt replay:** A callback on an already-delivered notification may only repeat the same confirmed delivery receipt; changing it is rejected without rewriting the original delivered time. A submitted message is not proof of delivery.
