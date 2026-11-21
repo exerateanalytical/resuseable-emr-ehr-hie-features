@@ -843,6 +843,121 @@ class PatientJourneyEndToEndAcceptanceTest {
     }
 
     @Test
+    @DisplayName("Privacy regression — emergency delivery never includes diagnoses and requires critical template")
+    void emergencyOverrideCannotBypassNotificationPrivacyOrIdempotency() {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        UUID encounter = UUID.randomUUID();
+        String recipient = "+237699112233";
+        assertThrows(IllegalArgumentException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient, Map.of(),
+                        false, true, true, "EMERGENCY-RAW-PHI")));
+        assertThrows(SecurityException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "RESULT_READY", "en", recipient, Map.of(),
+                        true, true, false, "FAKE-EMERGENCY-OVERRIDE")));
+        assertThrows(IllegalArgumentException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "RESULT_READY", "en", recipient, Map.of(),
+                        false, false, false, null)));
+        assertTrue(notificationStore.isEmpty());
+        assertEquals(0, providerSubmissions.get());
+
+        DurableNotificationEntity emergency = journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient,
+                        Map.of("facility", "Synthetic emergency department"),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP"));
+        assertEquals(NotificationDeliveryState.SUBMITTED_TO_PROVIDER, emergency.getDeliveryState());
+        assertTrue(emergency.isPrivacyMinimized());
+        assertNotNull(emergency.getProviderReceiptId());
+        DurableNotificationEntity exactReplay = journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient,
+                        Map.of("facility", "Synthetic emergency department"),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP"));
+        assertSame(emergency, exactReplay);
+        assertEquals(1, notificationStore.size());
+
+        assertThrows(SecurityException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, UUID.randomUUID(), encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient, Map.of(),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP")));
+        assertThrows(SecurityException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", "+237699998877", Map.of(),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP")));
+        assertEquals(1, notificationStore.size());
+    }
+
+    @Test
+    @DisplayName("Reliability regression — provider failure or missing acceptance receipt cannot become delivered")
+    void providerSubmissionFailureAndConflictingReceiptsRemainAuditable() {
+        UUID facility = UUID.randomUUID();
+        UUID patient = UUID.randomUUID();
+        UUID encounter = UUID.randomUUID();
+        DurableNotificationRepository repo = mock(DurableNotificationRepository.class);
+        when(repo.findByFacilityIdAndIdempotencyKey(any(), anyString()))
+                .thenReturn(Optional.empty());
+        when(repo.save(any(DurableNotificationEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationProviderAdapterSpi adapterWithoutReceipt = new NotificationProviderAdapterSpi() {
+            public boolean supports(NotificationChannel channel) { return channel == NotificationChannel.SMS; }
+            public ProviderSubmissionResult submit(DurableNotificationEntity entity) {
+                return new ProviderSubmissionResult(true, null, null);
+            }
+        };
+        PatientJourneyOrchestratorService withoutReceipt = new PatientJourneyOrchestratorService(
+                null, null, null, null, repo, null, null, null, List.of(adapterWithoutReceipt));
+        DurableNotificationEntity missingProviderProof = withoutReceipt.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS, "RESULT_READY",
+                        "en", "+237699112233", Map.of(), false, false, false, "NO-RECEIPT"));
+        assertEquals(NotificationDeliveryState.RETRYING, missingProviderProof.getDeliveryState());
+        assertNull(missingProviderProof.getSubmittedAt());
+        when(repo.findById(missingProviderProof.getId()))
+                .thenReturn(Optional.of(missingProviderProof));
+        assertThrows(IllegalStateException.class, () -> withoutReceipt.confirmNotificationDeliveryReceipt(
+                facility, missingProviderProof.getId(), "FORGED-DELIVERY"));
+
+        NotificationProviderAdapterSpi failingAdapter = new NotificationProviderAdapterSpi() {
+            public boolean supports(NotificationChannel channel) { return channel == NotificationChannel.SMS; }
+            public ProviderSubmissionResult submit(DurableNotificationEntity entity) {
+                throw new IllegalStateException("patient-secret-DO-NOT-PERSIST");
+            }
+        };
+        PatientJourneyOrchestratorService failing = new PatientJourneyOrchestratorService(
+                null, null, null, null, repo, null, null, null, List.of(failingAdapter));
+        DurableNotificationEntity failed = failing.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS, "RESULT_READY",
+                        "en", "+237699112233", Map.of(), false, false, false, "PROVIDER-ERROR"));
+        assertEquals(NotificationDeliveryState.RETRYING, failed.getDeliveryState());
+        assertFalse(failed.getLastError().contains("patient-secret"));
+
+        DurableNotificationEntity submitted = journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS, "RESULT_READY",
+                        "en", "+237699112233", Map.of(), false, false, false, "RECEIPT-EXACT"));
+        DurableNotificationEntity delivered = journeyService.confirmNotificationDeliveryReceipt(
+                facility, submitted.getId(), "DELIVERY-OK");
+        Instant firstDelivery = delivered.getDeliveredAt();
+        assertSame(delivered, journeyService.confirmNotificationDeliveryReceipt(
+                facility, submitted.getId(), "DELIVERY-OK"));
+        assertEquals(firstDelivery, delivered.getDeliveredAt());
+        assertThrows(SecurityException.class, () -> journeyService.confirmNotificationDeliveryReceipt(
+                facility, submitted.getId(), "SOMEONE-ELSES-RECEIPT"));
+    }
+
+    @Test
     @DisplayName("Section 9 & 14 — All 6 versioned JSON workflow definitions deserialize cleanly with all 25 attributes")
     void allSixMachineReadableWorkflowJsonDefinitionsDeserializeCleanly() throws Exception {
         ObjectMapper mapper = new ObjectMapper();

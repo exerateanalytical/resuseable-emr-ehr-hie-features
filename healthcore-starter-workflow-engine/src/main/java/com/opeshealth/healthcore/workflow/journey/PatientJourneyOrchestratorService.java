@@ -561,22 +561,45 @@ public class PatientJourneyOrchestratorService {
     @ClinicalAudit(action = "NOTIFICATION_DISPATCH", resourceType = "DurableNotification")
     public DurableNotificationEntity dispatchDurableNotification(RequestDurableNotificationCommand cmd) {
         Objects.requireNonNull(cmd, "RequestDurableNotificationCommand is required");
-        String idempKey = (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank())
-                ? cmd.idempotencyKey()
-                : "NOTIF-" + cmd.patientId() + "-" + cmd.templateCode() + "-" + UuidV7Generator.nextUuid();
+        if (cmd.facilityId() == null || cmd.patientId() == null || cmd.encounterId() == null
+                || cmd.templateCode() == null || cmd.templateCode().isBlank()
+                || cmd.idempotencyKey() == null || cmd.idempotencyKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Facility, patient, encounter, template and stable idempotency key are required");
+        }
+        String idempKey = cmd.idempotencyKey().trim();
 
         Optional<DurableNotificationEntity> existing = notificationRepo
                 .findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
         if (existing.isPresent()) {
-            return existing.get();
+            DurableNotificationEntity previous = existing.get();
+            NotificationChannel requestedChannel =
+                    cmd.channel() != null ? cmd.channel() : NotificationChannel.SMS;
+            if (!Objects.equals(previous.getFacilityId(), cmd.facilityId())
+                    || !Objects.equals(previous.getPatientId(), cmd.patientId())
+                    || !Objects.equals(previous.getEncounterId(), cmd.encounterId())
+                    || !Objects.equals(previous.getTemplateCode(), cmd.templateCode())
+                    || previous.getChannel() != requestedChannel
+                    || !Objects.equals(previous.getRecipientAddress(),
+                            cmd.recipientAddress() == null ? null : cmd.recipientAddress().trim())
+                    || previous.isEmergencyOverride() != cmd.emergencyOverride()) {
+                throw new SecurityException(
+                        "Notification idempotency key conflicts with the original patient, recipient or purpose");
+            }
+            return previous;
         }
 
         if (cmd.recipientAddress() == null || cmd.recipientAddress().isBlank()
                 || FORBIDDEN_PLACEHOLDER_RECIPIENTS.contains(cmd.recipientAddress().trim().toLowerCase(Locale.ROOT))) {
             throw new IllegalArgumentException("Valid real recipient address is required; placeholder addresses are forbidden");
         }
-        if (cmd.containsRawClinicalDiagnosis() && !cmd.emergencyOverride()) {
-            throw new IllegalArgumentException("Routine patient notifications must not disclose raw sensitive diagnoses");
+        if (cmd.containsRawClinicalDiagnosis()) {
+            throw new IllegalArgumentException(
+                    "Patient-facing notification messages cannot disclose raw clinical diagnoses, including emergencies");
+        }
+        if (cmd.emergencyOverride() && !"CRITICAL_FOLLOWUP".equalsIgnoreCase(cmd.templateCode())) {
+            throw new SecurityException(
+                    "Emergency consent override is restricted to critical follow-up communication");
         }
 
         String lang = "fr".equalsIgnoreCase(cmd.languageCode()) ? "fr" : "en";
@@ -607,14 +630,24 @@ public class PatientJourneyOrchestratorService {
 
         if (adapter.isPresent()) {
             entity.setAttemptCount(1);
-            ProviderSubmissionResult res = adapter.get().submit(entity);
-            if (res.accepted()) {
-                entity.setDeliveryState(NotificationDeliveryState.SUBMITTED_TO_PROVIDER);
-                entity.setProviderReceiptId(res.providerReceiptId());
-                entity.setSubmittedAt(Instant.now());
-            } else {
+            try {
+                ProviderSubmissionResult res = adapter.get().submit(entity);
+                if (res != null && res.accepted()
+                        && res.providerReceiptId() != null && !res.providerReceiptId().isBlank()) {
+                    entity.setDeliveryState(NotificationDeliveryState.SUBMITTED_TO_PROVIDER);
+                    entity.setProviderReceiptId(res.providerReceiptId().trim());
+                    entity.setSubmittedAt(Instant.now());
+                } else {
+                    entity.setDeliveryState(NotificationDeliveryState.RETRYING);
+                    // Provider details can contain PHI; retain only a stable, bounded reason.
+                    entity.setLastError("NO_PROVIDER_ACCEPTANCE_RECEIPT");
+                }
+            } catch (RuntimeException providerFailure) {
+                // Do not put provider exception messages (which may contain patient data) in the ledger.
+                // A real integration must use a committed outbox and provider idempotency keys to
+                // handle ambiguous send outcomes; this fallback only avoids false delivery claims.
                 entity.setDeliveryState(NotificationDeliveryState.RETRYING);
-                entity.setLastError(res.errorDetail());
+                entity.setLastError("PROVIDER_SUBMISSION_UNCONFIRMED");
             }
         }
         return notificationRepo.save(entity);
@@ -631,14 +664,20 @@ public class PatientJourneyOrchestratorService {
         if (receiptId == null || receiptId.isBlank()) {
             throw new IllegalArgumentException("A non-empty provider delivery receipt is required");
         }
+        String normalizedReceipt = receiptId.trim();
         if (entity.getDeliveryState() == NotificationDeliveryState.DELIVERED) {
-            return entity; // Duplicate confirmed receipt is idempotent.
+            if (!normalizedReceipt.equals(entity.getProviderReceiptId())) {
+                throw new SecurityException("Delivery receipt conflicts with the original confirmed receipt");
+            }
+            return entity; // Exact retry cannot rewrite a previously confirmed delivery.
         }
-        if (entity.getDeliveryState() != NotificationDeliveryState.SUBMITTED_TO_PROVIDER) {
-            throw new IllegalStateException("Cannot confirm delivery of notification in state " + entity.getDeliveryState());
+        if (entity.getDeliveryState() != NotificationDeliveryState.SUBMITTED_TO_PROVIDER
+                || entity.getProviderReceiptId() == null
+                || entity.getProviderReceiptId().isBlank()) {
+            throw new IllegalStateException("Cannot confirm delivery without a recorded provider submission receipt");
         }
         entity.setDeliveryState(NotificationDeliveryState.DELIVERED);
-        entity.setProviderReceiptId(receiptId);
+        entity.setProviderReceiptId(normalizedReceipt);
         entity.setDeliveredAt(Instant.now());
         return notificationRepo.save(entity);
     }
