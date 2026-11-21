@@ -97,6 +97,20 @@ class IndependentWorkflowIT {
         assertEquals("RECEIVED", persistedPoStatus(purchaseOrder.getId(), facility));
         assertEquals(100, persistedPoReceivedCount(purchaseOrder.getId(), facility));
 
+        // A completed PO cannot accept another shipment, even with a fresh batch.
+        assertThrows(IllegalStateException.class, () -> pharmacy.receiveGoods(new GoodsReceiptRequest(
+                product.getId(), "Synthetic Licensed Supplier", "PO-SYN-001",
+                "03400930000012", "LOT-UNAUTHORIZED-EXTRA",
+                LocalDate.now().plusDays(250), 1)));
+
+        // A second PO is not permission to register an already-owned lot twice.
+        pharmacy.createPurchaseOrder(new CreatePurchaseOrderRequest(
+                "PO-SYN-SECOND", supplier.getId(), product.getId(), 10));
+        assertThrows(IllegalStateException.class, () -> pharmacy.receiveGoods(new GoodsReceiptRequest(
+                product.getId(), "Synthetic Licensed Supplier", "PO-SYN-SECOND",
+                "03400930000012", "LOT-PARA-EARLY",
+                LocalDate.now().plusDays(35), 1)));
+
         PharmacyDispenseEntity firstDispense = pharmacy.dispenseFefo(new DispensePrescriptionRequest(
                 "RX-SYN-01", "SYNTHETIC-PATIENT-01", product.getId(),
                 20, 0, "pharmacist-verified-test", null, 20, "Synthetic counseling note"));
@@ -145,6 +159,16 @@ class IndependentWorkflowIT {
                 "SYN-SUP-QUAL", "Synthetic Qualified Distributor", "LIC-SYN-VALID", true));
         pharmacy.createPurchaseOrder(new CreatePurchaseOrderRequest(
                 "PO-CONTROL", qualified.getId(), medicine.getId(), 50));
+        // The receipt must match an authorized PO and qualified supplier.
+        assertThrows(IllegalStateException.class, () -> pharmacy.receiveGoods(new GoodsReceiptRequest(
+                medicine.getId(), "Synthetic Qualified Distributor", "PO-DOES-NOT-EXIST",
+                "03400930000012", "LOT-FAKE-PO", LocalDate.now().plusDays(100), 5)));
+        assertThrows(SecurityException.class, () -> pharmacy.receiveGoods(new GoodsReceiptRequest(
+                medicine.getId(), "Unrelated Unauthorized Distributor", "PO-CONTROL",
+                "03400930000012", "LOT-WRONG-SUPPLIER", LocalDate.now().plusDays(100), 5)));
+        assertThrows(IllegalStateException.class, () -> pharmacy.receiveGoods(new GoodsReceiptRequest(
+                medicine.getId(), "Synthetic Qualified Distributor", "PO-CONTROL",
+                "03400930000012", "LOT-OVER-RECEIPT", LocalDate.now().plusDays(100), 51)));
         PharmacyLotEntity stock = pharmacy.receiveGoods(new GoodsReceiptRequest(
                 medicine.getId(), "Synthetic Qualified Distributor", "PO-CONTROL",
                 "03400930000012", "LOT-CONTROL", LocalDate.now().plusDays(100), 50));

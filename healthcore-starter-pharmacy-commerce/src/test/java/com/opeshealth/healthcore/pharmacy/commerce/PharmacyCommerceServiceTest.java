@@ -64,6 +64,10 @@ class PharmacyCommerceServiceTest {
                 morphine.getId(), "CamPharma Wholesale", "PO-2026-01", "03400930000012", "LOT-SOON", LocalDate.now().plusDays(45), 100));
         assertEquals("RECEIVED", po.getStatus());
 
+        // The second lot must have its own authorized procurement record.
+        PurchaseOrderEntity secondPo = service.createPurchaseOrder(new CreatePurchaseOrderRequest(
+                "PO-2026-02", sup.getId(), morphine.getId(), 100));
+        when(poRepo.findByFacilityIdAndPoNumber(facId, "PO-2026-02")).thenReturn(Optional.of(secondPo));
         PharmacyLotEntity laterLot = service.receiveGoods(new GoodsReceiptRequest(
                 morphine.getId(), "CamPharma Wholesale", "PO-2026-02", "03400930000012", "LOT-LATER", LocalDate.now().plusDays(300), 100));
         when(lotRepo.findByFacilityIdAndProductIdOrderByExpiryDateAsc(facId, morphine.getId())).thenReturn(List.of(soonLot, laterLot));

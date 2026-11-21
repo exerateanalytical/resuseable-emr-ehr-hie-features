@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Reconcile historical duplicate PO references before applying: never silently
+         merge purchasing evidence, lot provenance, or controlled inventory. -->
+    <changeSet id="phcom-003-tenant-po-ref-unique" author="opeshealth">
+        <preConditions onFail="HALT" onError="HALT">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM (
+                    SELECT facility_id, po_number
+                    FROM hc_phcom_purchase_orders
+                    GROUP BY facility_id, po_number
+                    HAVING COUNT(*) &gt; 1
+                ) duplicate_purchase_orders
+            </sqlCheck>
+        </preConditions>
+        <addUniqueConstraint tableName="hc_phcom_purchase_orders"
+                             columnNames="facility_id,po_number"
+                             constraintName="uq_hc_phcom_facility_po"/>
+        <rollback>
+            <dropUniqueConstraint tableName="hc_phcom_purchase_orders"
+                                  constraintName="uq_hc_phcom_facility_po"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Prevent first-write races creating the same medicine batch twice under
+         different purchase orders or retry keys for one facility/product. -->
+    <changeSet id="phcom-004-tenant-product-batch-unique" author="opeshealth">
+        <preConditions onFail="HALT" onError="HALT">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM (
+                    SELECT facility_id, product_id, batch_number
+                    FROM hc_phcom_inventory_lots
+                    GROUP BY facility_id, product_id, batch_number
+                    HAVING COUNT(*) &gt; 1
+                ) duplicate_pharmacy_lots
+            </sqlCheck>
+        </preConditions>
+        <addUniqueConstraint tableName="hc_phcom_inventory_lots"
+                             columnNames="facility_id,product_id,batch_number"
+                             constraintName="uq_hc_phcom_facility_product_batch"/>
+        <rollback>
+            <dropUniqueConstraint tableName="hc_phcom_inventory_lots"
+                                  constraintName="uq_hc_phcom_facility_product_batch"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
