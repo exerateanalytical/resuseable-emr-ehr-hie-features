@@ -186,8 +186,12 @@ class QueueManagementServiceTest {
                         "PAYMENT_PENDING", null, 60, "ORDER-" + order), "router");
         assertThrows(IllegalStateException.class,
                 () -> service.completeEntry(facility, entry.getId(), "lab-tech"));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.transitionOperationalStatus(facility, entry.getId(), QueueStatus.COMPLETED, "bypass"));
+        for (QueueStatus bypass : List.of(QueueStatus.READY, QueueStatus.CALLED,
+                QueueStatus.IN_SERVICE, QueueStatus.COMPLETED)) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.transitionOperationalStatus(
+                            facility, entry.getId(), bypass, "unpaid gate bypass"));
+        }
 
         service.updateFinancialClearance(facility, entry.getId(), "PAID");
         assertThrows(SecurityException.class,
