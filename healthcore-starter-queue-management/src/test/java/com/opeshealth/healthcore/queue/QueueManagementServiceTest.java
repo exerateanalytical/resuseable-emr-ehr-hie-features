@@ -164,4 +164,34 @@ class QueueManagementServiceTest {
         assertEquals(QueueStatus.IN_SERVICE, claimed.getQueueStatus());
         assertThrows(SecurityException.class, () -> service.claimTask(UUID.randomUUID(), first.getId(), "intruder"));
     }
+    @Test
+    void completionIsBoundToFinancialClearanceAndClaimedWorker() {
+        UUID facility = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        DepartmentQueueEntryEntity entry = service.enqueue(facility,
+                new EnqueueRequest("LAB_COLLECTION", UUID.randomUUID(), UUID.randomUUID(),
+                        order, null, null, QueuePriority.ROUTINE,
+                        "PAYMENT_PENDING", null, 60, "ORDER-" + order), "router");
+        assertThrows(IllegalStateException.class,
+                () -> service.completeEntry(facility, entry.getId(), "lab-tech"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.transitionOperationalStatus(facility, entry.getId(), QueueStatus.COMPLETED, "bypass"));
+
+        service.updateFinancialClearance(facility, entry.getId(), "PAID");
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "lab-tech"));
+        service.claimTask(facility, entry.getId(), "lab-tech");
+        assertThrows(SecurityException.class,
+                () -> service.completeEntry(facility, entry.getId(), "other-tech"));
+
+        DepartmentQueueEntryEntity completed = service.completeEntry(facility, entry.getId(), "lab-tech");
+        assertEquals(QueueStatus.COMPLETED, completed.getQueueStatus());
+        java.time.Instant originalCompletedAt = completed.getCompletedAt();
+        assertNotNull(originalCompletedAt);
+        assertSame(completed, service.completeEntry(facility, entry.getId(), "lab-tech"));
+        assertEquals(originalCompletedAt, completed.getCompletedAt());
+        assertThrows(IllegalStateException.class,
+                () -> service.updateFinancialClearance(facility, entry.getId(), "PAID"));
+    }
+
 }
