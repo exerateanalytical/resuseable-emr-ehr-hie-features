@@ -8,6 +8,13 @@ The example composes `healthcore-starter-diagnostics-core` and `healthcore-start
 
 The core diagnostic lifecycle has partner registration, test catalog, referral/order, rejected specimen/recollection, critical-value notification and read-back, verification/release, amendment, and quality incidents. It **does not yet prove** full specimen barcode chain-of-custody, a signed finalized report, analyzer/LIS interfacing, Westgard release enforcement throughout the independent application, human critical-result delivery evidence, or all required forms and reports.
 
+## Safety and duplicate-delivery policy
+
+- **QC fails closed by default.** `DiagnosticsCoreService` will not release an ordinary diagnostic order unless an explicitly configured QC policy approves it. The integration suite registers a **test-only synthetic policy**; this is not real analyzer/Westgard QC evidence and cannot be reused in production.
+- **Accessions are unique within a facility.** New migration `003-diagnostics-accession-uniqueness.xml` checks for existing duplicates and halts rather than silently merging patient records. Exact replay of the same accession, patient, catalog, modality, partner and SLA reuses the existing order; conflicting payloads are rejected.
+- Parallel first-time registrations still rely on the database unique constraint, so one competing request may receive a conflict that the caller must reconcile and retry safely. This is **not** distributed exactly-once processing.
+- Critical-value acknowledgment stores an actor and timestamp but must be backed by independently verified delivery, clinical read-back, proper licensure and human safety review before deployment.
+
 ## Building and running the integration test
 
 Requires Java 25, Maven 3.9+, Docker/Testcontainers, PostgreSQL 16 support, and **synthetic test data**.
