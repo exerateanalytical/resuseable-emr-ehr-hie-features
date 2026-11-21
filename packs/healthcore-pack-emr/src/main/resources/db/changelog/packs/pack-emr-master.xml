@@ -36,4 +36,6 @@
     <include file="classpath:db/changelog/workflow/001-workflow-engine.xml"/>
     <include file="classpath:db/changelog/workflow/002-clinical-journey-contracts.xml"/>
     <include file="classpath:db/changelog/workflow/003-one-routing-per-order.xml"/>
+    <!-- The composable clinical-order bridge requires durable departmental queues. -->
+    <include file="classpath:db/changelog/queue_management/001-queue-management.xml"/>
 </databaseChangeLog>
