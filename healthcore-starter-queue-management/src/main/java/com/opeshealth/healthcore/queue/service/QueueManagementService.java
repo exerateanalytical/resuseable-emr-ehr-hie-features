@@ -270,6 +270,18 @@ public class QueueManagementService {
     @ClinicalAudit(action = "QUEUE_COMPLETE_ENTRY", resourceType = "DepartmentQueueEntry")
     public DepartmentQueueEntryEntity completeEntry(UUID facilityId, UUID queueEntryId, String actorId) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED) {
+            return entry; // Replay preserves the original time and does not double-publish.
+        }
+        if (!entry.isEligibleForActivation()) {
+            throw new IllegalStateException("Cannot complete a task while financial or clinical hold is active");
+        }
+        if (actorId == null || actorId.isBlank()
+                || !actorId.equals(entry.getClaimedBy())
+                || entry.getQueueStatus() != QueueStatus.IN_SERVICE) {
+            throw new SecurityException(
+                    "Only the assigned worker may complete a claimed in-service queue task");
+        }
         entry.setQueueStatus(QueueStatus.COMPLETED);
         entry.setCompletedAt(Instant.now());
         DepartmentQueueEntryEntity saved = entryRepo.save(entry);
@@ -281,6 +293,13 @@ public class QueueManagementService {
     @ClinicalAudit(action = "QUEUE_UPDATE_CLEARANCE", resourceType = "DepartmentQueueEntry")
     public DepartmentQueueEntryEntity updateFinancialClearance(UUID facilityId, UUID queueEntryId, String clearanceState) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED
+                || entry.getQueueStatus() == QueueStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot modify financial clearance after queue closure");
+        }
+        if (clearanceState == null || clearanceState.isBlank()) {
+            throw new IllegalArgumentException("Explicit financial clearance state required");
+        }
         String normalized = clearanceState.trim().toUpperCase(Locale.ROOT);
         entry.setFinancialClearanceState(normalized);
         boolean eligible = ACTIVATION_CLEARED_STATES.contains(normalized);
@@ -305,6 +324,13 @@ public class QueueManagementService {
     public DepartmentQueueEntryEntity transitionOperationalStatus(
             UUID facilityId, UUID queueEntryId, QueueStatus targetStatus, String reason) {
         DepartmentQueueEntryEntity entry = requireOwnedEntry(facilityId, queueEntryId);
+        if (targetStatus == null || targetStatus == QueueStatus.COMPLETED) {
+            throw new IllegalArgumentException("Use completeEntry for accountable work completion");
+        }
+        if (entry.getQueueStatus() == QueueStatus.COMPLETED
+                || entry.getQueueStatus() == QueueStatus.CANCELLED) {
+            throw new IllegalStateException("Finalized work cannot transition to another queue status");
+        }
         entry.setQueueStatus(targetStatus);
         if (reason != null) {
             entry.setHoldReason(reason);
