@@ -99,8 +99,8 @@ public final class RadiologyRisEntities {
         @Column(name = "accession_number", nullable = false, length = 64) private String accessionNumber;
         @Column(name = "study_instance_uid", nullable = false, length = 64) private String studyInstanceUid;
         @Column(name = "report_status", nullable = false, length = 24) private String reportStatus = "FINAL";
-        @Lob @Column(name = "findings_text", nullable = false) private String findingsText;
-        @Lob @Column(name = "impression_text", nullable = false) private String impressionText;
+        @Column(name = "findings_text", nullable = false, length = org.hibernate.Length.LONG32) private String findingsText;
+        @Column(name = "impression_text", nullable = false, length = org.hibernate.Length.LONG32) private String impressionText;
         @Column(name = "radiologist_id", nullable = false, length = 120) private String radiologistId;
         @Column(name = "critical_finding", nullable = false) private boolean criticalFinding;
         @Column(name = "critical_category", length = 64) private String criticalCategory;
