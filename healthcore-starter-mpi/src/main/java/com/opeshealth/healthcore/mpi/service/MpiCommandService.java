@@ -47,7 +47,7 @@ public class MpiCommandService {
                 UUID facilityId, String familyName, LocalDate birthDate);
 
         @Query("""
-                SELECT p FROM PatientAggregateEntity p
+                SELECT p FROM MpiPatientAggregate p
                 WHERE p.facilityId = :facilityId
                   AND p.goldenRecord = true
                   AND p.active = true
