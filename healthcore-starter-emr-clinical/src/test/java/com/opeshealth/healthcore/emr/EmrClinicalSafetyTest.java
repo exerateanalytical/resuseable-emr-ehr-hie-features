@@ -185,6 +185,7 @@ class EmrClinicalSafetyTest {
         AdmissionEntity adm = new AdmissionEntity();
         adm.setFacilityId(facilityId);
         adm.setPatientId(patientId);
+        adm.setEncounterId(order.getEncounterId());
 
         when(orderRepo.findById(order.getId())).thenReturn(Optional.of(order));
         when(admissionRepo.findById(admissionId)).thenReturn(Optional.of(adm));
@@ -288,6 +289,57 @@ class EmrClinicalSafetyTest {
     }
 
     @Test
+    void rejectsCrossPatientEncounterAtOrderSignatureBeforeCdssOrOutbox() {
+        when(workforceSpi.isPractitionerActive(facilityId, "dr-active")).thenReturn(true);
+        ClinicalOrderEntity order = buildMedicationOrder("RX-123", "500 mg PO", "dr-active");
+        EncounterEntity foreignPatientEncounter = new EncounterEntity();
+        foreignPatientEncounter.setFacilityId(facilityId);
+        foreignPatientEncounter.setPatientId(UUID.randomUUID());
+        when(encounterRepo.findById(order.getEncounterId()))
+                .thenReturn(Optional.of(foreignPatientEncounter));
+
+        assertThrows(SecurityException.class, () -> service.placeOrderWithCdss(
+                order, List.of(), List.of(), List.of(), BigDecimal.valueOf(70), BigDecimal.valueOf(90)));
+        assertThrows(SecurityException.class, () -> service.placeOrderWithLoadedPatientContext(
+                new CpoeOrderRequest(order, List.of(), List.of(), BigDecimal.valueOf(70),
+                        BigDecimal.valueOf(90), true)));
+        verify(orderRepo, never()).save(any());
+        verify(outboxRepo, never()).save(any());
+        verifyNoInteractions(cdsHooksEngine);
+    }
+
+    @Test
+    void medicationAdministrationRequiresPresentMatchingActiveAdmission() {
+        when(workforceSpi.isPractitionerActive(facilityId, "rn-01")).thenReturn(true);
+        ClinicalOrderEntity order = buildMedicationOrder("RX-123", "500 mg PO", "dr-active");
+        UUID admissionId = UUID.randomUUID();
+        when(orderRepo.findById(order.getId())).thenReturn(Optional.of(order));
+        EmarAdministrationEntity administration = buildEmar(
+                admissionId, order.getId(), order.getPatientId(),
+                "WB:" + order.getPatientId(), "RX:RX-123", "500 mg PO", "rn-01");
+
+        // Absence of an inpatient record must never be treated as passing five-rights.
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(administration));
+
+        AdmissionEntity otherVisit = new AdmissionEntity();
+        otherVisit.setFacilityId(facilityId);
+        otherVisit.setPatientId(order.getPatientId());
+        otherVisit.setEncounterId(UUID.randomUUID());
+        when(admissionRepo.findById(admissionId)).thenReturn(Optional.of(otherVisit));
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(administration));
+
+        otherVisit.setEncounterId(order.getEncounterId());
+        otherVisit.setFacilityId(UUID.randomUUID());
+        assertThrows(SecurityException.class, () -> service.administerMedicationFiveRights(administration));
+
+        otherVisit.setFacilityId(facilityId);
+        otherVisit.setDischargedAt(java.time.Instant.now());
+        assertThrows(IllegalStateException.class, () -> service.administerMedicationFiveRights(administration));
+
+        verify(emarRepo, never()).save(any());
+    }
+
+    @Test
     void news2FailsClosedWhenCoreVitalsOrConsciousnessAreMissing() {
         VitalSignsEntity incomplete = new VitalSignsEntity();
         incomplete.setHeartRateBpm(70);
@@ -310,6 +362,10 @@ class EmrClinicalSafetyTest {
         order.setFacilityId(facilityId);
         order.setEncounterId(UUID.randomUUID());
         order.setPatientId(UUID.randomUUID());
+        EncounterEntity encounter = new EncounterEntity();
+        encounter.setFacilityId(facilityId);
+        encounter.setPatientId(order.getPatientId());
+        when(encounterRepo.findById(order.getEncounterId())).thenReturn(Optional.of(encounter));
         order.setOrderCategory("MEDICATION");
         order.setCodeSystem("RxNorm");
         order.setOrderCode(code);
