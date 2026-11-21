@@ -72,7 +72,8 @@ public class CpoeOrderEventRoutingAutoConfiguration {
         return new CpoeOrderEventListener(orders, journey, authorization);
     }
 
-    public static final class CpoeOrderEventListener {
+    // Not final: Spring's @Transactional proxy must be able to wrap this event listener.
+    public static class CpoeOrderEventListener {
         private final ClinicalOrderRepository orders;
         private final PatientJourneyOrchestratorService journey;
         private final ClinicalOrderRoutingAuthorizationSpi authorization;
