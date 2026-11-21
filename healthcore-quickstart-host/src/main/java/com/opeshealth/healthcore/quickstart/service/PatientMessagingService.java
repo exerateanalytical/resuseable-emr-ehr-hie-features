@@ -156,7 +156,7 @@ public class PatientMessagingService {
         }
 
         UUID commId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         MessagingChannel channel = request.channel() != null
                 ? request.channel()
                 : (pref != null ? pref.preferredChannel() : MessagingChannel.SMS);

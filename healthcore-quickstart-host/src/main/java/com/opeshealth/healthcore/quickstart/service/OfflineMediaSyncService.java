@@ -130,7 +130,7 @@ public class OfflineMediaSyncService {
             throw new IllegalArgumentException("InitMediaUploadRequest with patientId and totalChunks > 0 is required");
         }
         UUID uploadId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         MediaUploadState state = new MediaUploadState(
                 uploadId,
                 facilityId,

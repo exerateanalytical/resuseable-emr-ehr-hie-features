@@ -160,7 +160,7 @@ public class CarePlanPathwayService {
             throw new IllegalArgumentException("EnrollCarePlanRequest with patientId and pathwayCode is required");
         }
         UUID id = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         LocalDate start = request.startDate() != null ? request.startDate() : LocalDate.now();
         String clinician = request.leadClinicianId() != null && !request.leadClinicianId().isBlank()
                 ? request.leadClinicianId().trim()
