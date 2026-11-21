@@ -69,6 +69,17 @@ public class PatientJourneyOrchestratorService {
 
     public record ProviderSubmissionResult(boolean accepted, String providerReceiptId, String errorDetail) {}
 
+    /**
+     * Optional integration port: keeps the generic workflow SDK independent of the
+     * queue starter. A consumer supplies a durable, idempotent adapter when it
+     * wants automatic departmental worklists.
+     */
+    public interface OrderRoutingQueueProvisioningSpi {
+        UUID createOrGetQueueEntry(DepartmentOrderRoutingEntity routing, boolean emergency, String actorId);
+        void synchronizeFinancialClearance(DepartmentOrderRoutingEntity routing);
+        void requireQueueCompleted(DepartmentOrderRoutingEntity routing);
+    }
+
     public record RouteSignedOrderCommand(
             UUID facilityId,
             UUID patientId,
@@ -133,6 +144,7 @@ public class PatientJourneyOrchestratorService {
     private final OutboxRelayService.OutboxRepository outboxRepo;
     private final WorkflowBillingClearancePolicySpi billingPolicy;
     private final List<NotificationProviderAdapterSpi> notificationAdapters;
+    private final OrderRoutingQueueProvisioningSpi queueProvisioningSpi;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public PatientJourneyOrchestratorService(
@@ -145,6 +157,22 @@ public class PatientJourneyOrchestratorService {
             OutboxRelayService.OutboxRepository outboxRepo,
             WorkflowBillingClearancePolicySpi billingPolicy,
             List<NotificationProviderAdapterSpi> notificationAdapters) {
+        this(workflowService, subflowRepo, routingRepo, inboxRepo, notificationRepo,
+                processedEventRepo, outboxRepo, billingPolicy, notificationAdapters, null);
+    }
+
+    /** Constructor used by auto-configuration when a departmental queue bridge exists. */
+    public PatientJourneyOrchestratorService(
+            WorkflowOrchestrationService workflowService,
+            WorkflowSubflowLinkRepository subflowRepo,
+            DepartmentOrderRoutingRepository routingRepo,
+            ClinicianResultInboxRepository inboxRepo,
+            DurableNotificationRepository notificationRepo,
+            DurableProcessedEventRepository processedEventRepo,
+            OutboxRelayService.OutboxRepository outboxRepo,
+            WorkflowBillingClearancePolicySpi billingPolicy,
+            List<NotificationProviderAdapterSpi> notificationAdapters,
+            OrderRoutingQueueProvisioningSpi queueProvisioningSpi) {
         this.workflowService = workflowService;
         this.subflowRepo = subflowRepo;
         this.routingRepo = routingRepo;
@@ -154,6 +182,7 @@ public class PatientJourneyOrchestratorService {
         this.outboxRepo = outboxRepo;
         this.billingPolicy = billingPolicy != null ? billingPolicy : new DefaultFacilityBillingClearancePolicy();
         this.notificationAdapters = notificationAdapters != null ? List.copyOf(notificationAdapters) : List.of();
+        this.queueProvisioningSpi = queueProvisioningSpi;
     }
 
     /**
@@ -251,7 +280,7 @@ public class PatientJourneyOrchestratorService {
                 routingRepo.findByFacilityIdAndIdempotencyKey(cmd.facilityId(), idempKey);
         if (existing.isPresent()) {
             verifySameRouteIdentity(existing.get(), cmd);
-            return existing.get();
+            return ensureDepartmentQueue(existing.get(), cmd.emergencyUrgent(), cmd.actorId());
         }
         // The domain maps one clinical order to a single department routing.
         // Replaying the order with a new idempotency key must not create a second task.
@@ -259,7 +288,7 @@ public class PatientJourneyOrchestratorService {
                 routingRepo.findByFacilityIdAndOrderId(cmd.facilityId(), cmd.orderId());
         if (previousOrder.isPresent()) {
             verifySameRouteIdentity(previousOrder.get(), cmd);
-            return previousOrder.get();
+            return ensureDepartmentQueue(previousOrder.get(), cmd.emergencyUrgent(), cmd.actorId());
         }
 
         ServiceClearanceCategory cat = switch (cmd.targetDepartment()) {
@@ -324,6 +353,7 @@ public class PatientJourneyOrchestratorService {
         routing.setIdempotencyKey(idempKey);
 
         DepartmentOrderRoutingEntity saved = routingRepo.save(routing);
+        saved = ensureDepartmentQueue(saved, cmd.emergencyUrgent(), cmd.actorId());
 
         CanonicalWorkflowEventType deptEvent = switch (cmd.targetDepartment()) {
             case LABORATORY -> CanonicalWorkflowEventType.LaboratoryOrderAccepted;
@@ -336,6 +366,27 @@ public class PatientJourneyOrchestratorService {
                 cmd.parentWorkflowId(), null, "workflow-engine", cmd.actorId(),
                 "EVT-" + idempKey, Map.of("clearance", clearance.outcome().name(), "eligible", clearance.fulfillmentEligible())));
         return saved;
+    }
+
+    /**
+     * Creates the operational department queue entry in the SAME transaction as the
+     * routing record, or links a previously committed idempotent queue task.
+     *
+     * External pharmacy handoffs are deliberately not inserted into an in-house
+     * dispensing queue. They must have their own authenticated external adapter.
+     */
+    private DepartmentOrderRoutingEntity ensureDepartmentQueue(
+            DepartmentOrderRoutingEntity routing, boolean emergency, String actorId) {
+        if (queueProvisioningSpi == null || routing.getQueueEntryId() != null
+                || routing.getTargetDepartment() == OrderTargetDepartment.EXTERNAL_PHARMACY) {
+            return routing;
+        }
+        UUID queueId = queueProvisioningSpi.createOrGetQueueEntry(routing, emergency, actorId);
+        if (queueId == null) {
+            throw new IllegalStateException("Internal departmental routing was not provisioned into a queue");
+        }
+        routing.setQueueEntryId(queueId);
+        return routingRepo.save(routing);
     }
 
     private static void verifySameRouteIdentity(
@@ -381,6 +432,12 @@ public class PatientJourneyOrchestratorService {
             routing.setRoutingStatus(OrderRoutingStatus.ACTIVE_IN_DEPARTMENT);
         }
         DepartmentOrderRoutingEntity saved = routingRepo.save(routing);
+        if (queueProvisioningSpi != null
+                && routing.getTargetDepartment() != OrderTargetDepartment.EXTERNAL_PHARMACY) {
+            saved = ensureDepartmentQueue(saved,
+                    confirmedOutcome == PaymentClearanceOutcome.EMERGENCY_OVERRIDE, actorId);
+            queueProvisioningSpi.synchronizeFinancialClearance(saved);
+        }
         emitCanonicalEvent(CanonicalDomainEventEnvelope.create(
                 CanonicalWorkflowEventType.ServiceCleared, facilityId, routing.getPatientId(),
                 routing.getEncounterId(), orderId, routing.getParentWorkflowId(), null,
@@ -402,6 +459,13 @@ public class PatientJourneyOrchestratorService {
             throw new IllegalStateException(
                     "Order cannot be completed in state " + routing.getRoutingStatus()
                     + " with clearance " + routing.getFinancialClearance());
+        }
+        if (queueProvisioningSpi != null
+                && routing.getTargetDepartment() != OrderTargetDepartment.EXTERNAL_PHARMACY) {
+            if (routing.getQueueEntryId() == null) {
+                throw new IllegalStateException("Order cannot be completed without a linked departmental queue entry");
+            }
+            queueProvisioningSpi.requireQueueCompleted(routing);
         }
         routing.setRoutingStatus(OrderRoutingStatus.COMPLETED);
         routing.setCompletedAt(Instant.now());
