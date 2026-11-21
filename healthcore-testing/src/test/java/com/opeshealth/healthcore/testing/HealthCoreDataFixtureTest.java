@@ -300,8 +300,9 @@ class HealthCoreDataFixtureTest {
         when(parentWf.getId()).thenReturn(UUID.randomUUID());
         when(journeySvc.startParentOutpatientJourney(eq(facId), eq(patientId), eq(encounterId), eq(true), eq(false), anyString()))
                 .thenReturn(parentWf);
+        UUID parentWorkflowId = parentWf.getId(); // Resolve mock getter outside Mockito matchers.
         when(journeySvc.evaluateTriageAndConsultationClearance(eq(facId), eq(patientId), eq(encounterId),
-                eq(parentWf.getId()), eq(3), eq(false), any(), any(), anyString()))
+                eq(parentWorkflowId), eq(3), eq(false), any(), any(), anyString()))
                 .thenReturn(new BillingClearanceDecision(PaymentClearanceOutcome.INSURANCE_AUTHORIZED, true, false, true, "Pre-authorized"));
 
         DepartmentQueueEntryEntity qEntry = mock(DepartmentQueueEntryEntity.class);
@@ -322,7 +323,8 @@ class HealthCoreDataFixtureTest {
         assertEquals("patient-journey-queues", summary.consoleKey());
         assertEquals(4, summary.operationsExecuted());
         assertEquals(3, summary.createdIds().size());
-        verify(queueSvc, times(1)).claimTask(eq(facId), eq(qEntry.getId()), eq("dr.iso.ngono"));
+        UUID queueEntryIdForVerify = qEntry.getId();
+        verify(queueSvc, times(1)).claimTask(eq(facId), eq(queueEntryIdForVerify), eq("dr.iso.ngono"));
         verify(journeySvc, times(1)).routeSignedOrder(any(), any());
         assertTrue(FacilityContext.getFacilityId().isEmpty());
     }
