@@ -118,7 +118,17 @@ class PatientPortalServiceTest {
                 service.getReleasedResults(facilityId, "patient-subject", patientId);
         assertEquals(1, results.size());
         assertEquals("2345-7", results.get(0).resultCode());
-        assertEquals("UNKNOWN", results.get(0).abnormalFlag());
+        // The real entity defaults abnormalFlag to NORMAL; do not assert a fake
+        // missing value from a fixture that never actually omitted the field.
+        assertEquals("NORMAL", results.get(0).abnormalFlag());
+
+        // Defensive view mapping must still tolerate legacy/partial result inputs
+        // without an abnormal flag rather than returning an HTTP 500.
+        verifiedFinal.setAbnormalFlag(null);
+        List<PortalReleasedResultView> fallback =
+                service.getReleasedResults(facilityId, "patient-subject", patientId);
+        assertEquals(1, fallback.size());
+        assertEquals("UNKNOWN", fallback.get(0).abnormalFlag());
     }
 
     @Test
