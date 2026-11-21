@@ -472,9 +472,12 @@ public class EmrClinicalWorkflowService {
         }
 
         ClinicalOrderEntity saved = orderRepo.save(order);
+        // The outbox payload carries the clinical identity and encounter provenance.
+        // Downstream consumers MUST also re-read the persisted order and compare it;
+        // never authorize work solely from self-asserted event JSON.
         emitOutbox("ClinicalOrder", saved.getId(),
                 "MEDICATION".equals(saved.getOrderCategory()) ? "MedicationOrderedEvent" : "DiagnosticOrderedEvent",
-                "{\"orderId\":\"" + saved.getId() + "\",\"patientId\":\"" + saved.getPatientId() + "\"}");
+                clinicalOrderEventPayload(saved));
         return Map.of("order", saved, "cdssCards", cards);
     }
 
@@ -953,8 +956,26 @@ public class EmrClinicalWorkflowService {
         return score;
     }
 
+    private String clinicalOrderEventPayload(ClinicalOrderEntity order) {
+        try {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("orderId", order.getId().toString());
+            fields.put("facilityId", order.getFacilityId().toString());
+            fields.put("patientId", order.getPatientId().toString());
+            fields.put("encounterId", order.getEncounterId().toString());
+            fields.put("orderCategory", order.getOrderCategory());
+            fields.put("orderedBy", order.getOrderedBy());
+            return objectMapper.writeValueAsString(fields);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+            throw new IllegalStateException("Clinical order outbox serialization failed", failure);
+        }
+    }
+
     private void emitOutbox(String type, UUID id, String eventType, String payload) {
         TransactionalOutboxEntity e = new TransactionalOutboxEntity();
+        // Facility is mandatory for clinical outbox records and is NOT recovered
+        // from caller-supplied payloads after event delivery.
+        e.setFacilityId(FacilityContext.requireFacilityId());
         e.setIdempotencyKey(type + ":" + eventType + ":" + id + ":" + e.getId());
         e.setAggregateType(type);
         e.setAggregateId(id);
