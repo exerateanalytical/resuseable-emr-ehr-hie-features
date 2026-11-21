@@ -417,10 +417,26 @@ public class PatientJourneyOrchestratorService {
     @ClinicalAudit(action = "CLINICIAN_INBOX_DELIVER_RESULT", resourceType = "ClinicianResultInbox")
     public ClinicianResultInboxEntity deliverVerifiedResultToClinicianInbox(DeliverResultToInboxCommand cmd) {
         Objects.requireNonNull(cmd, "DeliverResultToInboxCommand is required");
+        if (cmd.facilityId() == null || cmd.patientId() == null || cmd.encounterId() == null
+                || cmd.orderId() == null || cmd.resultId() == null
+                || cmd.resultDomain() == null || cmd.resultDomain().isBlank()
+                || cmd.responsibleClinicianId() == null || cmd.responsibleClinicianId().isBlank()) {
+            throw new IllegalArgumentException("Verified result must identify facility, patient, encounter, order, result, domain and responsible clinician");
+        }
         Optional<ClinicianResultInboxEntity> existing = inboxRepo
                 .findByFacilityIdAndResultIdAndResponsibleClinicianId(cmd.facilityId(), cmd.resultId(), cmd.responsibleClinicianId());
-        if (existing.isPresent() && !cmd.amendedResult()) {
-            return existing.get();
+        if (existing.isPresent()) {
+            ClinicianResultInboxEntity original = existing.get();
+            if (!Objects.equals(original.getFacilityId(), cmd.facilityId())
+                    || !Objects.equals(original.getPatientId(), cmd.patientId())
+                    || !Objects.equals(original.getEncounterId(), cmd.encounterId())
+                    || !Objects.equals(original.getOrderId(), cmd.orderId())
+                    || !Objects.equals(original.getResultDomain(), cmd.resultDomain())) {
+                throw new SecurityException("Result replay attempts to change a patient's original order/encounter");
+            }
+            if (!cmd.amendedResult()) {
+                return original;
+            }
         }
 
         ClinicianResultInboxEntity item = existing.orElseGet(ClinicianResultInboxEntity::new);
@@ -435,6 +451,13 @@ public class PatientJourneyOrchestratorService {
         item.setFallbackClinicianId(cmd.fallbackClinicianId());
         item.setCriticalFlag(cmd.criticalResult());
         item.setAmendedResult(cmd.amendedResult());
+        if (cmd.amendedResult()) {
+            // Any amended result, including a *critical* amendment, invalidates the
+            // previous clinician acknowledgment and must trigger a fresh review.
+            item.setAcknowledgedAt(null);
+            item.setAcknowledgedBy(null);
+            item.setAcknowledgmentNotes(null);
+        }
         // Creating an inbox task does not prove that an electronic notification was sent.
         item.setElectronicNotificationSent(false);
         item.setReturnToQueueRequired(cmd.returnToQueueRequired());
@@ -476,7 +499,21 @@ public class PatientJourneyOrchestratorService {
         if (clinicianId == null || clinicianId.isBlank()) {
             throw new IllegalArgumentException("Acknowledging clinicianId is required");
         }
-        item.setAcknowledgedBy(clinicianId);
+        if (!clinicianId.trim().equals(item.getResponsibleClinicianId())) {
+            throw new SecurityException("Only the currently responsible clinician may acknowledge this result");
+        }
+        if (item.isCriticalFlag() && (notes == null || notes.isBlank())) {
+            throw new IllegalArgumentException("Critical results require documented clinician review/read-back notes");
+        }
+        if (item.getAcknowledgedAt() != null) {
+            if (clinicianId.trim().equals(item.getAcknowledgedBy())
+                    && ((markResolved && item.getInboxStatus() == ClinicianInboxStatus.RESOLVED)
+                    || (!markResolved && item.getInboxStatus() == ClinicianInboxStatus.ACKNOWLEDGED))) {
+                return item; // Repeat receipt does not rewrite the original timestamp or emit duplicate events.
+            }
+            throw new IllegalStateException("Result is already acknowledged; use a governed follow-up transition");
+        }
+        item.setAcknowledgedBy(clinicianId.trim());
         item.setAcknowledgedAt(Instant.now());
         item.setAcknowledgmentNotes(notes);
         item.setInboxStatus(markResolved ? ClinicianInboxStatus.RESOLVED : ClinicianInboxStatus.ACKNOWLEDGED);
@@ -495,11 +532,14 @@ public class PatientJourneyOrchestratorService {
                 .findByCriticalFlagTrueAndAcknowledgedAtIsNullAndEscalationDeadlineAtBefore(now != null ? now : Instant.now());
         for (ClinicianResultInboxEntity item : overdue) {
             if (item.getInboxStatus() == ClinicianInboxStatus.ESCALATED
+                    || item.getInboxStatus() == ClinicianInboxStatus.OVERDUE
                     || item.getInboxStatus() == ClinicianInboxStatus.RESOLVED) {
                 continue; // Avoid repeat escalation on each SLA scan.
             }
-            item.setInboxStatus(ClinicianInboxStatus.ESCALATED);
-            if (item.getFallbackClinicianId() != null && !item.getFallbackClinicianId().isBlank()) {
+            boolean hasFallback = item.getFallbackClinicianId() != null
+                    && !item.getFallbackClinicianId().isBlank();
+            item.setInboxStatus(hasFallback ? ClinicianInboxStatus.ESCALATED : ClinicianInboxStatus.OVERDUE);
+            if (hasFallback) {
                 item.setResponsibleClinicianId(item.getFallbackClinicianId());
             }
             inboxRepo.save(item);
