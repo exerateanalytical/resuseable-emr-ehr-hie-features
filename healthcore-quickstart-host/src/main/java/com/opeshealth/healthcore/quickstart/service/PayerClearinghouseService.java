@@ -122,7 +122,7 @@ public class PayerClearinghouseService {
             throw new IllegalArgumentException("ClaimSubmissionRequest with patientId is required");
         }
         UUID claimId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String payerId = request.payerId() != null && !request.payerId().isBlank() ? request.payerId().trim() : "PAYER-UHC-01";
         String claimType = request.claimType() != null && !request.claimType().isBlank()
                 ? request.claimType().trim().toUpperCase(Locale.ROOT)

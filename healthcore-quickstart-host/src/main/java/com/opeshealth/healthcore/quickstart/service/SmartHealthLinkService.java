@@ -210,7 +210,7 @@ public class SmartHealthLinkService {
         }
 
         UUID shlId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String label = (request.label() != null && !request.label().isBlank())
                 ? request.label().trim()
                 : "Opes HealthCore Patient Health Summary";

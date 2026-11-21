@@ -158,7 +158,7 @@ public class RemotePatientMonitoringService {
         }
 
         UUID deviceId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         RegisteredWearableDevice device = new RegisteredWearableDevice(
                 deviceId,
                 facilityId,
@@ -191,7 +191,7 @@ public class RemotePatientMonitoringService {
         }
         validatePhysiologicalBounds(packet);
 
-        UUID facilityId = packet.facilityId() != null ? packet.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(packet.facilityId());
         ConsciousnessAcvpu acvpu = packet.consciousness() != null ? packet.consciousness() : ConsciousnessAcvpu.ALERT;
 
         // Calculate Royal College of Physicians NEWS2 sub-scores

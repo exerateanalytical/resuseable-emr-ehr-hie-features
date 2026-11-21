@@ -362,7 +362,7 @@ public class IdentityMatchingService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    (facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID).toString(),
+                    (com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId)).toString(),
                     "IDENTITY_MATCHING_ENGINE",
                     "MPI_MATCHER",
                     "PATIENT_IDENTITY_MATCH",
@@ -458,7 +458,7 @@ public class IdentityMatchingService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    (facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID).toString(),
+                    (com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId)).toString(),
                     "IDENTITY_MATCHING_ENGINE",
                     "MPI_MATCHER",
                     "MPI_DUPLICATE_DATABASE_SCAN",
@@ -616,7 +616,7 @@ public class IdentityMatchingService {
 
         if (fhirAuditLoggingService != null) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    (updated.facilityId() != null ? updated.facilityId() : PatientService.DEFAULT_FACILITY_ID).toString(),
+                    (com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(updated.facilityId())).toString(),
                     steward,
                     "HIM_DATA_STEWARD",
                     "MPI_DUPLICATE_MANUAL_RESOLUTION",
@@ -1348,7 +1348,7 @@ public class IdentityMatchingService {
 
     private static PatientAggregateEntity toProbeEntity(UUID facilityId, Patient fhirPatient) {
         PatientAggregateEntity probe = new PatientAggregateEntity();
-        probe.setFacilityId(facilityId != null ? facilityId : PatientService.DEFAULT_FACILITY_ID);
+        probe.setFacilityId(com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(facilityId));
         if (fhirPatient.hasIdElement() && fhirPatient.getIdElement().hasIdPart()) {
             try {
                 probe.setId(UUID.fromString(fhirPatient.getIdElement().getIdPart()));

@@ -250,7 +250,7 @@ public class FhirSubscriptionTopicService {
         }
 
         UUID subscriptionId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String secret = (request.hmacSecret() != null && !request.hmacSecret().isBlank())
                 ? request.hmacSecret().trim()
                 : "opes-hmac-" + subscriptionId;
@@ -397,7 +397,7 @@ public class FhirSubscriptionTopicService {
 
         if (fhirAuditLoggingService != null && !matchedDeliveries.isEmpty()) {
             fhirAuditLoggingService.recordFhirAccess(new FhirAuditLoggingService.FhirAccessAuditCommand(
-                    (event.facilityId() != null ? event.facilityId() : PatientService.DEFAULT_FACILITY_ID).toString(),
+                    (com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(event.facilityId())).toString(),
                     "SUBSCRIPTION_DISPATCH_ENGINE",
                     "SYSTEM",
                     "FHIR_SUBSCRIPTION_EVENT_PUSH",

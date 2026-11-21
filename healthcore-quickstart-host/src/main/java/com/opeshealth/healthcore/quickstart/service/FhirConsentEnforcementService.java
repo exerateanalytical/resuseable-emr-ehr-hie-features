@@ -211,7 +211,7 @@ public class FhirConsentEnforcementService {
             throw new IllegalArgumentException("ConsentDirectiveRequest with patientId is required");
         }
         UUID consentId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         ConsentProvisionType provision = request.provisionType() != null
                 ? request.provisionType()
                 : ConsentProvisionType.DENY;
@@ -321,7 +321,7 @@ public class FhirConsentEnforcementService {
                 : 60;
 
         UUID sessionId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         String token = "BTG-" + sessionId.toString().replace("-", "").substring(0, 20).toUpperCase(Locale.ROOT);
         Instant now = Instant.now();
         Instant expiresAt = now.plus(Duration.ofMinutes(minutes));

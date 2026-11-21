@@ -226,7 +226,7 @@ public class SdohGravityReferralService {
         }
 
         UUID screeningId = UUID.randomUUID();
-        UUID facilityId = request.facilityId() != null ? request.facilityId() : PatientService.DEFAULT_FACILITY_ID;
+        UUID facilityId = com.opeshealth.healthcore.security.tenant.FacilityContext.requireAuthorizedFacilityId(request.facilityId());
         SdohDomain domain = request.domain();
         SdohRiskLevel risk = request.riskLevel() != null ? request.riskLevel() : SdohRiskLevel.MODERATE_RISK;
         boolean positive = risk != SdohRiskLevel.NO_RISK_IDENTIFIED;
