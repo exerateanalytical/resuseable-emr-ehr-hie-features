@@ -876,6 +876,26 @@ class PatientJourneyEndToEndAcceptanceTest {
         assertEquals(NotificationDeliveryState.SUBMITTED_TO_PROVIDER, emergency.getDeliveryState());
         assertTrue(emergency.isPrivacyMinimized());
         assertNotNull(emergency.getProviderReceiptId());
+        DurableNotificationEntity exactReplay = journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient,
+                        Map.of("facility", "Synthetic emergency department"),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP"));
+        assertSame(emergency, exactReplay);
+        assertEquals(1, notificationStore.size());
+
+        assertThrows(SecurityException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, UUID.randomUUID(), encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", recipient, Map.of(),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP")));
+        assertThrows(SecurityException.class, () -> journeyService.dispatchDurableNotification(
+                new RequestDurableNotificationCommand(
+                        facility, patient, encounter, NotificationChannel.SMS,
+                        "CRITICAL_FOLLOWUP", "en", "+237699998877", Map.of(),
+                        true, true, false, "VALID-CRITICAL-FOLLOWUP")));
+        assertEquals(1, notificationStore.size());
     }
 
     @Test
