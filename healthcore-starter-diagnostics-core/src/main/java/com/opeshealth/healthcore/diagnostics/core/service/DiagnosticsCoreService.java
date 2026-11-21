@@ -50,6 +50,7 @@ public class DiagnosticsCoreService {
 
     public interface DiagnosticServiceOrderRepository extends JpaRepository<DiagnosticServiceOrderEntity, UUID> {
         Optional<DiagnosticServiceOrderEntity> findByIdAndFacilityId(UUID id, UUID facilityId);
+        Optional<DiagnosticServiceOrderEntity> findByFacilityIdAndAccessionNumber(UUID facilityId, String accessionNumber);
         List<DiagnosticServiceOrderEntity> findByFacilityIdOrderByOrderedAtDesc(UUID facilityId);
     }
 
@@ -196,15 +197,46 @@ public class DiagnosticsCoreService {
     @ClinicalAudit(action = "DIAG_ORDER_CREATE", resourceType = "DiagnosticServiceOrder")
     public DiagnosticServiceOrderEntity createOrder(CreateDiagnosticOrderRequest req) {
         UUID facId = requireFacility();
+        if (req == null || req.accessionNumber() == null || req.accessionNumber().isBlank()
+                || req.modalityDomain() == null || req.modalityDomain().isBlank()
+                || req.catalogCode() == null || req.catalogCode().isBlank()
+                || req.subjectRef() == null || req.subjectRef().isBlank()) {
+            throw new IllegalArgumentException("Accession, modality, catalog and subject reference are mandatory");
+        }
+        String accession = req.accessionNumber().trim().toUpperCase(Locale.ROOT);
+        String modality = req.modalityDomain().trim().toUpperCase(Locale.ROOT);
+        String catalog = req.catalogCode().trim().toUpperCase(Locale.ROOT);
+        String subject = req.subjectRef().trim();
+        String partner = req.referringPartnerCode() == null ? null
+                : req.referringPartnerCode().trim().toUpperCase(Locale.ROOT);
+        int slaMinutes = req.tatSlaMinutes() > 0 ? req.tatSlaMinutes() : 180;
+
+        // At-least-once referral delivery must reuse the same accession, without
+        // duplicating a patient order. A mismatched payload is a conflict, not a retry.
+        Optional<DiagnosticServiceOrderEntity> previous =
+                orderRepo.findByFacilityIdAndAccessionNumber(facId, accession);
+        if (previous.isPresent()) {
+            DiagnosticServiceOrderEntity saved = previous.get();
+            if (modality.equals(saved.getModalityDomain()) && catalog.equals(saved.getCatalogCode())
+                    && subject.equals(saved.getSubjectRef())
+                    && Objects.equals(partner, saved.getReferringPartnerCode())
+                    && slaMinutes == saved.getTatSlaMinutes()) {
+                return saved;
+            }
+            throw new IllegalStateException("Accession already belongs to a different diagnostic order");
+        }
+
         DiagnosticServiceOrderEntity order = new DiagnosticServiceOrderEntity();
         order.setFacilityId(facId);
-        order.setAccessionNumber(req.accessionNumber().trim().toUpperCase(Locale.ROOT));
-        order.setModalityDomain(req.modalityDomain().trim().toUpperCase(Locale.ROOT));
-        order.setCatalogCode(req.catalogCode().trim().toUpperCase(Locale.ROOT));
-        order.setSubjectRef(req.subjectRef().trim());
-        order.setReferringPartnerCode(req.referringPartnerCode());
-        order.setTatSlaMinutes(req.tatSlaMinutes() > 0 ? req.tatSlaMinutes() : 180);
+        order.setAccessionNumber(accession);
+        order.setModalityDomain(modality);
+        order.setCatalogCode(catalog);
+        order.setSubjectRef(subject);
+        order.setReferringPartnerCode(partner);
+        order.setTatSlaMinutes(slaMinutes);
         order.setStatus("REGISTERED");
+        // The database UNIQUE(facility_id, accession_number) constraint additionally
+        // protects concurrent writers that race between lookup and insert.
         return orderRepo.save(order);
     }
 
