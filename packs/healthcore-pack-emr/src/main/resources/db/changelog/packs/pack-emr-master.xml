@@ -35,4 +35,5 @@
     <include file="classpath:db/changelog/orders_results/001-orders-results.xml"/>
     <include file="classpath:db/changelog/workflow/001-workflow-engine.xml"/>
     <include file="classpath:db/changelog/workflow/002-clinical-journey-contracts.xml"/>
+    <include file="classpath:db/changelog/workflow/003-one-routing-per-order.xml"/>
 </databaseChangeLog>
