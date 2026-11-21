@@ -25,5 +25,6 @@
     <include file="classpath:db/changelog/security/001-security-audit.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/001-diagnostics-core.xml"/>
     <include file="classpath:db/changelog/diagnostics_core/002-diagnostics-core-workflows.xml"/>
+    <include file="classpath:db/changelog/diagnostics_core/003-diagnostics-accession-uniqueness.xml"/>
     <include file="classpath:db/changelog/radiology/001-radiology-ris.xml"/>
 </databaseChangeLog>
