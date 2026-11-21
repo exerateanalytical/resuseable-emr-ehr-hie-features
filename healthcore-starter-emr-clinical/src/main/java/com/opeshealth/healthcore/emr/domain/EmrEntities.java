@@ -28,7 +28,7 @@ public final class EmrEntities {
 
     private EmrEntities() {}
 
-    @Entity @Table(name = "hc_appointments")
+    @Entity(name = "EmrAppointment") @Table(name = "hc_appointments")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class AppointmentEntity {
@@ -61,7 +61,7 @@ public final class EmrEntities {
         public void setVisitReason(String visitReason) { this.visitReason = visitReason; }
     }
 
-    @Entity @Table(name = "hc_encounters")
+    @Entity(name = "EmrEncounter") @Table(name = "hc_encounters")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class EncounterEntity {
@@ -220,7 +220,7 @@ public final class EmrEntities {
         public void setSignedAt(Instant signedAt) { this.signedAt = signedAt; }
     }
 
-    @Entity @Table(name = "hc_clinical_orders")
+    @Entity(name = "EmrClinicalOrder") @Table(name = "hc_clinical_orders")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class ClinicalOrderEntity {
@@ -355,7 +355,7 @@ public final class EmrEntities {
         public Instant getAdministeredAt() { return administeredAt; }
     }
 
-    @Entity @Table(name = "hc_care_plans")
+    @Entity(name = "EmrCarePlan") @Table(name = "hc_care_plans")
     @BatchSize(size = 32)
     @Filter(name = "facilityFilter", condition = "facility_id = :facilityId")
     public static class CarePlanEntity {
